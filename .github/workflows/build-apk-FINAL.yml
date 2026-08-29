@@ -22,7 +22,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          ZIP=".github/workflows/LA_PAUSE_CLUB_Android_GitHubReady.zip"
+          ZIP="LA_PAUSE_CLUB_Android_GitHubReady_v1.2.0.zip"
           test -f "$ZIP"
           rm -rf project
           mkdir -p project
