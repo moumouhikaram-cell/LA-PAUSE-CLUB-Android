@@ -1,0 +1,165 @@
+package com.lapauseclub.manager.core;
+
+import android.content.ContentValues;
+import android.database.Cursor;
+import android.database.sqlite.SQLiteDatabase;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.util.Locale;
+import java.util.UUID;
+
+final class CoreOperationalSchemaP1 {
+    static final int SCHEMA_VERSION = 3;
+
+    private CoreOperationalSchemaP1() {}
+
+    static void create(SQLiteDatabase db) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS rate_plans (id TEXT PRIMARY KEY NOT NULL,scope TEXT NOT NULL,resource_id TEXT,resource_type TEXT NOT NULL,name TEXT NOT NULL,pricing_model TEXT NOT NULL,hourly_rate_minor INTEGER NOT NULL DEFAULT 0,player_rates_json TEXT NOT NULL,currency TEXT NOT NULL,enabled INTEGER NOT NULL,revision INTEGER NOT NULL DEFAULT 1,updated_at_ms INTEGER NOT NULL)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_rate_plans_resource ON rate_plans(resource_id)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_rate_plans_type ON rate_plans(resource_type, enabled)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS sessions_p1 (id TEXT PRIMARY KEY NOT NULL,resource_id TEXT NOT NULL,resource_type TEXT NOT NULL,status TEXT NOT NULL,mode TEXT NOT NULL,start_at_ms INTEGER NOT NULL,end_at_ms INTEGER,paused_at_ms INTEGER,pause_total_ms INTEGER NOT NULL DEFAULT 0,players INTEGER NOT NULL DEFAULT 1,planned_minutes REAL,budget_minor INTEGER,rate_per_hour_minor INTEGER NOT NULL DEFAULT 0,rate_plan_id TEXT,pricing_snapshot_json TEXT,base_amount_minor INTEGER NOT NULL DEFAULT 0,discount_amount_minor INTEGER NOT NULL DEFAULT 0,total_amount_minor INTEGER NOT NULL DEFAULT 0,customer_id TEXT,game_title TEXT,note TEXT,revision INTEGER NOT NULL DEFAULT 1,updated_at_ms INTEGER NOT NULL,finished_at_ms INTEGER,cancelled_at_ms INTEGER)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_sessions_p1_resource_status ON sessions_p1(resource_id, status)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_sessions_p1_start ON sessions_p1(start_at_ms DESC)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_sessions_p1_customer ON sessions_p1(customer_id)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS payments_p1 (id TEXT PRIMARY KEY NOT NULL,session_id TEXT,amount_minor INTEGER NOT NULL,method TEXT NOT NULL,at_ms INTEGER NOT NULL,shift_id TEXT,note TEXT,created_at_ms INTEGER NOT NULL)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_payments_p1_session ON payments_p1(session_id)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_payments_p1_shift ON payments_p1(shift_id)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS shifts_p1 (id TEXT PRIMARY KEY NOT NULL,opened_at_ms INTEGER NOT NULL,closed_at_ms INTEGER,status TEXT NOT NULL,opening_cash_minor INTEGER NOT NULL DEFAULT 0,closing_cash_minor INTEGER,expected_cash_minor INTEGER,difference_minor INTEGER,note TEXT,updated_at_ms INTEGER NOT NULL)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_shifts_p1_status ON shifts_p1(status)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS cash_movements_p1 (id TEXT PRIMARY KEY NOT NULL,movement_type TEXT NOT NULL,amount_minor INTEGER NOT NULL,label TEXT NOT NULL,note TEXT,at_ms INTEGER NOT NULL,shift_id TEXT)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_cash_movements_p1_shift ON cash_movements_p1(shift_id)");
+    }
+
+    static void dualWrite(SQLiteDatabase db, JSONObject root, long sourceRevision, String checksum, long now) {
+        JSONArray ratePlans = root.optJSONArray("ratePlans");
+        JSONArray sessions = root.optJSONArray("sessions");
+        JSONArray payments = root.optJSONArray("payments");
+        JSONArray shifts = root.optJSONArray("shifts");
+        JSONArray cashEntries = root.optJSONArray("cashEntries");
+        upsertRatePlans(db, ratePlans, now);
+        upsertSessions(db, sessions, now);
+        upsertPayments(db, payments);
+        upsertShifts(db, shifts, now);
+        upsertCashMovements(db, cashEntries);
+        markDomain(db, "RATE_PLANS", sourceRevision, now);
+        markDomain(db, "SESSIONS", sourceRevision, now);
+        markDomain(db, "PAYMENTS", sourceRevision, now);
+        markDomain(db, "SHIFTS", sourceRevision, now);
+        markDomain(db, "CASH_MOVEMENTS", sourceRevision, now);
+        checkpoint(db, "RATE_PLANS", sourceRevision, checksum, length(ratePlans), now);
+        checkpoint(db, "SESSIONS", sourceRevision, checksum, length(sessions), now);
+        checkpoint(db, "PAYMENTS", sourceRevision, checksum, length(payments), now);
+        checkpoint(db, "SHIFTS", sourceRevision, checksum, length(shifts), now);
+        checkpoint(db, "CASH_MOVEMENTS", sourceRevision, checksum, length(cashEntries), now);
+    }
+
+    static JSONObject status(SQLiteDatabase db) {
+        JSONObject out = new JSONObject();
+        try {
+            out.put("ratePlanCount", scalar(db, "SELECT COUNT(*) FROM rate_plans WHERE enabled=1"));
+            out.put("sessionCountNormalized", scalar(db, "SELECT COUNT(*) FROM sessions_p1"));
+            out.put("activeSessionCountNormalized", scalar(db, "SELECT COUNT(*) FROM sessions_p1 WHERE status IN ('active','paused')"));
+            out.put("paymentCountNormalized", scalar(db, "SELECT COUNT(*) FROM payments_p1"));
+            out.put("shiftCountNormalized", scalar(db, "SELECT COUNT(*) FROM shifts_p1"));
+            out.put("cashMovementCountNormalized", scalar(db, "SELECT COUNT(*) FROM cash_movements_p1"));
+            out.put("normalizedOperationalDomains", new JSONArray().put("RATE_PLANS").put("SESSIONS").put("PAYMENTS").put("SHIFTS").put("CASH_MOVEMENTS"));
+        } catch (Exception ignored) {}
+        return out;
+    }
+
+    private static void upsertRatePlans(SQLiteDatabase db, JSONArray rows, long now) {
+        if (rows == null) return;
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject p = rows.optJSONObject(i); if (p == null) continue;
+            String id = p.optString("id", "").trim(); if (id.isEmpty()) continue;
+            ContentValues v = new ContentValues();
+            v.put("id", id); v.put("scope", nonBlank(p.optString("scope"), "TYPE"));
+            putNullableString(v, "resource_id", p.optString("resourceId", ""));
+            v.put("resource_type", nonBlank(p.optString("resourceType"), "CUSTOM"));
+            v.put("name", nonBlank(p.optString("name"), id));
+            v.put("pricing_model", nonBlank(p.optString("pricingModel"), "FLAT_HOURLY"));
+            v.put("hourly_rate_minor", moneyMinor(p.optDouble("hourlyRate", 0D)));
+            Object rates = p.opt("playerRates"); v.put("player_rates_json", rates == null || rates == JSONObject.NULL ? "{}" : String.valueOf(rates));
+            v.put("currency", nonBlank(p.optString("currency"), "MAD"));
+            v.put("enabled", p.optBoolean("enabled", true) ? 1 : 0);
+            v.put("revision", Math.max(1L, p.optLong("revision", 1L)));
+            v.put("updated_at_ms", p.optLong("updatedAt", now));
+            db.insertWithOnConflict("rate_plans", null, v, SQLiteDatabase.CONFLICT_REPLACE);
+        }
+    }
+
+    private static void upsertSessions(SQLiteDatabase db, JSONArray rows, long now) {
+        if (rows == null) return;
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject s = rows.optJSONObject(i); if (s == null) continue;
+            String id = s.optString("id", "").trim();
+            String resourceId = nonBlank(s.optString("resourceId"), s.optString("stationId"));
+            if (id.isEmpty() || resourceId.trim().isEmpty()) continue;
+            ContentValues v = new ContentValues();
+            v.put("id", id); v.put("resource_id", resourceId);
+            v.put("resource_type", nonBlank(s.optString("resourceType"), "CONSOLE"));
+            v.put("status", nonBlank(s.optString("status"), "active")); v.put("mode", nonBlank(s.optString("mode"), "fixed"));
+            v.put("start_at_ms", s.optLong("startAt", now)); putNullableLong(v, "end_at_ms", s, "endAt"); putNullableLong(v, "paused_at_ms", s, "pausedAt");
+            v.put("pause_total_ms", s.optLong("pauseTotalMs", 0L)); v.put("players", Math.max(1, s.optInt("players", 1)));
+            if (s.has("plannedMinutes") && !s.isNull("plannedMinutes")) v.put("planned_minutes", s.optDouble("plannedMinutes", 0D)); else v.putNull("planned_minutes");
+            if (s.has("budgetAmount") && !s.isNull("budgetAmount")) v.put("budget_minor", moneyMinor(s.optDouble("budgetAmount", 0D))); else v.putNull("budget_minor");
+            v.put("rate_per_hour_minor", moneyMinor(s.optDouble("ratePerHour", 0D))); putNullableString(v, "rate_plan_id", s.optString("ratePlanId", ""));
+            Object pricing = s.opt("pricingSnapshot"); if (pricing == null || pricing == JSONObject.NULL) v.putNull("pricing_snapshot_json"); else v.put("pricing_snapshot_json", String.valueOf(pricing));
+            v.put("base_amount_minor", moneyMinor(s.optDouble("baseAmount", 0D))); v.put("discount_amount_minor", moneyMinor(s.optDouble("discountAmount", 0D))); v.put("total_amount_minor", moneyMinor(s.optDouble("totalAmount", 0D)));
+            putNullableString(v, "customer_id", s.optString("customerId", "")); putNullableString(v, "game_title", s.optString("gameTitle", "")); putNullableString(v, "note", s.optString("note", ""));
+            v.put("revision", Math.max(1L, s.optLong("revision", 1L))); v.put("updated_at_ms", s.optLong("updatedAt", now)); putNullableLong(v, "finished_at_ms", s, "finishedAt"); putNullableLong(v, "cancelled_at_ms", s, "cancelledAt");
+            db.insertWithOnConflict("sessions_p1", null, v, SQLiteDatabase.CONFLICT_REPLACE);
+        }
+    }
+
+    private static void upsertPayments(SQLiteDatabase db, JSONArray rows) {
+        if (rows == null) return;
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject p = rows.optJSONObject(i); if (p == null) continue; String id = p.optString("id", "").trim(); if (id.isEmpty()) continue;
+            ContentValues v = new ContentValues(); v.put("id", id); putNullableString(v, "session_id", p.optString("sessionId", ""));
+            v.put("amount_minor", moneyMinor(p.optDouble("amount", 0D))); v.put("method", nonBlank(p.optString("method"), "cash")); v.put("at_ms", p.optLong("at", System.currentTimeMillis()));
+            putNullableString(v, "shift_id", p.optString("shiftId", "")); putNullableString(v, "note", p.optString("note", "")); v.put("created_at_ms", p.optLong("createdAt", p.optLong("at", System.currentTimeMillis())));
+            db.insertWithOnConflict("payments_p1", null, v, SQLiteDatabase.CONFLICT_REPLACE);
+        }
+    }
+
+    private static void upsertShifts(SQLiteDatabase db, JSONArray rows, long now) {
+        if (rows == null) return;
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject s = rows.optJSONObject(i); if (s == null) continue; String id = s.optString("id", "").trim(); if (id.isEmpty()) continue;
+            ContentValues v = new ContentValues(); v.put("id", id); v.put("opened_at_ms", s.optLong("openedAt", now)); putNullableLong(v, "closed_at_ms", s, "closedAt");
+            v.put("status", nonBlank(s.optString("status"), "open")); v.put("opening_cash_minor", moneyMinor(s.optDouble("openingCash", 0D)));
+            putNullableMoney(v, "closing_cash_minor", s, "closingCash"); putNullableMoney(v, "expected_cash_minor", s, "expectedCash"); putNullableMoney(v, "difference_minor", s, "difference");
+            putNullableString(v, "note", s.optString("note", "")); v.put("updated_at_ms", Math.max(s.optLong("closedAt", 0L), s.optLong("openedAt", now)));
+            db.insertWithOnConflict("shifts_p1", null, v, SQLiteDatabase.CONFLICT_REPLACE);
+        }
+    }
+
+    private static void upsertCashMovements(SQLiteDatabase db, JSONArray rows) {
+        if (rows == null) return;
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject e = rows.optJSONObject(i); if (e == null) continue; String id = e.optString("id", "").trim(); if (id.isEmpty()) continue;
+            ContentValues v = new ContentValues(); v.put("id", id); v.put("movement_type", nonBlank(e.optString("type"), "income")); v.put("amount_minor", moneyMinor(e.optDouble("amount", 0D)));
+            v.put("label", nonBlank(e.optString("label"), "Mouvement")); putNullableString(v, "note", e.optString("note", "")); v.put("at_ms", e.optLong("at", System.currentTimeMillis())); putNullableString(v, "shift_id", e.optString("shiftId", ""));
+            db.insertWithOnConflict("cash_movements_p1", null, v, SQLiteDatabase.CONFLICT_REPLACE);
+        }
+    }
+
+    private static void markDomain(SQLiteDatabase db, String domain, long revision, long now) {
+        ContentValues v = new ContentValues(); v.put("domain", domain); v.put("authority", "SQLITE_DUAL_WRITE"); v.put("migration_state", "PARITY_PROVING"); v.put("source_revision", revision); v.put("updated_at_ms", now);
+        db.insertWithOnConflict("domain_authority", null, v, SQLiteDatabase.CONFLICT_REPLACE);
+    }
+    private static void checkpoint(SQLiteDatabase db, String domain, long revision, String checksum, int rows, long now) {
+        try (Cursor c = db.rawQuery("SELECT checkpoint_id FROM migration_checkpoints WHERE domain=? AND source_revision=? LIMIT 1", new String[]{domain, String.valueOf(revision)})) { if (c.moveToFirst()) return; }
+        ContentValues v = new ContentValues(); v.put("checkpoint_id", "mig-" + domain.toLowerCase(Locale.ROOT) + "-" + UUID.randomUUID()); v.put("domain", domain); v.put("source_revision", revision); v.put("source_checksum", checksum); v.put("row_count", rows); v.put("status", "PARITY_PROVING"); v.put("created_at_ms", now); db.insertOrThrow("migration_checkpoints", null, v);
+    }
+    private static long scalar(SQLiteDatabase db, String sql) { try (Cursor c = db.rawQuery(sql, null)) { return c.moveToFirst() ? c.getLong(0) : 0L; } }
+    private static int length(JSONArray a) { return a == null ? 0 : a.length(); }
+    private static long moneyMinor(double amount) { return Math.round(amount * 100D); }
+    private static String nonBlank(String value, String fallback) { return value == null || value.trim().isEmpty() ? fallback : value.trim(); }
+    private static void putNullableString(ContentValues v, String column, String value) { if (value == null || value.trim().isEmpty() || "null".equalsIgnoreCase(value.trim())) v.putNull(column); else v.put(column, value.trim()); }
+    private static void putNullableLong(ContentValues v, String column, JSONObject source, String key) { if (!source.has(key) || source.isNull(key)) v.putNull(column); else v.put(column, source.optLong(key)); }
+    private static void putNullableMoney(ContentValues v, String column, JSONObject source, String key) { if (!source.has(key) || source.isNull(key)) v.putNull(column); else v.put(column, moneyMinor(source.optDouble(key, 0D))); }
+}
