@@ -1,0 +1,89 @@
+name: Build LA PAUSE OS Android A1 Dual Mode
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "settings.gradle.kts"
+      - "build.gradle.kts"
+      - "gradle.properties"
+      - "app/**"
+      - ".github/workflows/build-a1-dual-mode.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle 8.11.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Configure Android SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          export ANDROID_HOME=/usr/local/lib/android/sdk
+          export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+
+      - name: Static checks
+        shell: bash
+        run: |
+          set -euxo pipefail
+          node --check app/src/main/assets/app.js
+          grep -q "STANDALONE" app/src/main/java/com/lapauseclub/manager/a1/core/OperatingMode.java
+          grep -q "BILLIARD_TABLE" app/src/main/java/com/lapauseclub/manager/a1/core/ResourceType.java
+          grep -q "outbox_events" app/src/main/java/com/lapauseclub/manager/a1/data/AppDatabase.java
+          grep -q "ELAPSED_REALTIME" app/src/main/java/com/lapauseclub/manager/a1/domain/VenueRepository.java
+
+      - name: Unit tests
+        shell: bash
+        run: |
+          set -euxo pipefail
+          gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Build A1 debug APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          gradle --no-daemon --stacktrace :app:assembleDebug
+
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK"
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          "$AAPT" dump badging "$APK" | tee a1-badging.txt
+          grep "package: name='com.lapauseclub.manager.a1'" a1-badging.txt
+          grep "versionName='1.6.0-a1'" a1-badging.txt
+          cp "$APK" "LA-PAUSE-OS-A1-Dual-Mode-debug.apk"
+          sha256sum "LA-PAUSE-OS-A1-Dual-Mode-debug.apk"
+
+      - name: Upload A1 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: LA-PAUSE-OS-A1-Dual-Mode-debug
+          path: LA-PAUSE-OS-A1-Dual-Mode-debug.apk
+          if-no-files-found: error
+          retention-days: 30
