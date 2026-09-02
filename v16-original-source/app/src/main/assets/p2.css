@@ -1,0 +1,1 @@
+.p2-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.p2-device-card{margin-top:0}.p2-device-card .v17-connection-grid{grid-template-columns:repeat(2,minmax(0,1fr))}@media(max-width:780px){.p2-grid{grid-template-columns:1fr}.p2-device-card .v17-connection-grid{grid-template-columns:1fr}}
