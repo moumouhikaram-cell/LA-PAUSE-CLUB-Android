@@ -1,0 +1,1 @@
+Development will continue on a dedicated Phase 1 branch to avoid automatic signed builds on every source commit. The release branch remains the last tested APK baseline until the Phase 1 checkpoint.
