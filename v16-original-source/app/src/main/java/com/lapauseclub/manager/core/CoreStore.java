@@ -15,17 +15,17 @@ import java.util.Locale;
 import java.util.UUID;
 
 /**
- * LA PAUSE v1.6 migration core.
+ * LA PAUSE OS local core.
  *
- * IMPORTANT:
- * - v1.5 SharedPreferences/JSON remains authoritative in this phase.
- * - this DB mirrors valid legacy state, resources and events.
- * - no financial/session mutation is performed from this class yet.
- * - once parity is proven, domains can migrate one by one to authoritative tables.
+ * Migration policy:
+ * - v1.5 SharedPreferences/JSON remains the recovery source while domains prove parity.
+ * - v1.6 introduced snapshots/events/outbox/resources shadow.
+ * - A2 (DB v2) adds normalized Venue + Resource domains in DUAL_WRITE / PARITY_PROVING.
+ * - no destructive migration and no silent authority promotion.
  */
 public final class CoreStore extends SQLiteOpenHelper {
     public static final String DB_NAME = "la_pause_core_v16.db";
-    private static final int DB_VERSION = 1;
+    private static final int DB_VERSION = 2;
     private static final int MAX_SNAPSHOTS = 20;
 
     public CoreStore(Context context) {
@@ -84,7 +84,9 @@ public final class CoreStore extends SQLiteOpenHelper {
                 "created_at_ms INTEGER NOT NULL," +
                 "FOREIGN KEY(event_id) REFERENCES domain_events(event_id))");
 
-        putMeta(db, "migration_mode", "MIRROR");
+        CoreDomainSchemaV2.create(db);
+
+        putMeta(db, "migration_mode", "DOMAIN_DUAL_WRITE");
         putMeta(db, "operating_mode", "STANDALONE");
         putMeta(db, "authority_state", "TABLET_PRIMARY");
         putMeta(db, "core_schema_version", String.valueOf(DB_VERSION));
@@ -92,9 +94,22 @@ public final class CoreStore extends SQLiteOpenHelper {
 
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
+        if (oldVersion == 1 && newVersion == 2) {
+            db.beginTransaction();
+            try {
+                CoreDomainSchemaV2.create(db);
+                CoreDomainSchemaV2.migrateShadowResources(db, System.currentTimeMillis());
+                putMeta(db, "core_schema_version", String.valueOf(DB_VERSION));
+                putMeta(db, "migration_mode", "DOMAIN_DUAL_WRITE");
+                db.setTransactionSuccessful();
+            } finally {
+                db.endTransaction();
+            }
+            return;
+        }
         if (oldVersion != newVersion) {
             throw new IllegalStateException(
-                    "No destructive CoreStore migration allowed: " + oldVersion + " -> " + newVersion
+                    "Unsupported non-destructive CoreStore migration: " + oldVersion + " -> " + newVersion
             );
         }
     }
@@ -115,7 +130,7 @@ public final class CoreStore extends SQLiteOpenHelper {
         try {
             root = new JSONObject(json);
         } catch (Exception invalid) {
-            return; // Never mirror invalid JSON.
+            return;
         }
 
         final String checksum = sha256(json);
@@ -158,7 +173,9 @@ public final class CoreStore extends SQLiteOpenHelper {
             mirrorStations(db, root.optJSONArray("stations"), now);
             importLegacyEvents(db, root.optJSONArray("outbox"), now);
 
-            putMeta(db, "migration_mode", "MIRROR");
+            CoreDomainSchemaV2.dualWrite(db, root, dataRevision, checksum, now);
+
+            putMeta(db, "migration_mode", "DOMAIN_DUAL_WRITE");
             putMeta(db, "legacy_schema_version", String.valueOf(schemaVersion));
             putMeta(db, "legacy_data_revision", String.valueOf(dataRevision));
             putMeta(db, "last_mirror_checksum", checksum);
@@ -183,7 +200,7 @@ public final class CoreStore extends SQLiteOpenHelper {
             if (id.isEmpty()) continue;
 
             String legacyType = station.optString("type", "CUSTOM");
-            String resourceType = mapResourceType(legacyType);
+            String resourceType = CoreDomainSchemaV2.mapResourceType(legacyType);
 
             ContentValues v = new ContentValues();
             v.put("id", id);
@@ -260,23 +277,33 @@ public final class CoreStore extends SQLiteOpenHelper {
         SQLiteDatabase db = getReadableDatabase();
         JSONObject out = new JSONObject();
         try {
-            out.put("coreVersion", "1.6.0-mirror");
-            out.put("migrationMode", getMeta(db, "migration_mode", "MIRROR"));
+            JSONObject a2 = CoreDomainSchemaV2.status(db);
+            JSONArray resourceRegistry = a2.optJSONArray("resourceRegistry");
+
+            out.put("coreVersion", "1.7.1-a2");
+            out.put("dbSchemaVersion", DB_VERSION);
+            out.put("migrationMode", getMeta(db, "migration_mode", "DOMAIN_DUAL_WRITE"));
             out.put("operatingMode", getMeta(db, "operating_mode", "STANDALONE"));
             out.put("authorityState", getMeta(db, "authority_state", "TABLET_PRIMARY"));
             out.put("legacySchemaVersion", parseLong(getMeta(db, "legacy_schema_version", "0")));
             out.put("legacyDataRevision", parseLong(getMeta(db, "legacy_data_revision", "0")));
             out.put("lastMirrorAtMs", parseLong(getMeta(db, "last_mirror_at_ms", "0")));
             out.put("snapshotCount", scalarLong(db, "SELECT COUNT(*) FROM state_snapshots"));
-            out.put("resourceCount", scalarLong(db, "SELECT COUNT(*) FROM resources_shadow"));
+            out.put("resourceCount", resourceRegistry == null ? 0 : resourceRegistry.length());
             out.put("eventCount", scalarLong(db, "SELECT COUNT(*) FROM domain_events"));
             out.put("pendingSyncCount", scalarLong(
                     db, "SELECT COUNT(*) FROM sync_outbox WHERE status='PENDING'"
             ));
+            out.put("checkpointCount", a2.optLong("checkpointCount", 0L));
+            out.put("venueProfile", a2.optJSONObject("venueProfile"));
+            out.put("resourceRegistry", resourceRegistry);
+            out.put("domainAuthority", a2.optJSONArray("domainAuthority"));
+            out.put("normalizedDomains", a2.optJSONArray("normalizedDomains"));
+            out.put("authorityProgress", "VENUE+RESOURCES_DUAL_WRITE");
             out.put("legacyStillAuthoritative", true);
             out.put("networkRequired", false);
         } catch (Exception ignored) {
-            // JSONObject put should not fail for these primitives.
+            // Status must never break venue operations.
         }
         return out;
     }
@@ -292,20 +319,7 @@ public final class CoreStore extends SQLiteOpenHelper {
         }
         SQLiteDatabase db = getWritableDatabase();
         putMeta(db, "operating_mode", normalized);
-        // Until secure pairing + authority lease exists, tablet remains the authority.
         putMeta(db, "authority_state", "TABLET_PRIMARY");
-    }
-
-    private static String mapResourceType(String legacy) {
-        String type = legacy == null ? "" : legacy.trim().toUpperCase(Locale.ROOT);
-        if ("PS5".equals(type) || "PS4".equals(type) || "CONSOLE".equals(type)) return "CONSOLE";
-        if ("SIM".equals(type) || "SIM_RACING".equals(type)) return "SIM_RACING";
-        if ("BILLIARD".equals(type) || "BILLIARD_TABLE".equals(type)) return "BILLIARD_TABLE";
-        if ("SNOOKER".equals(type) || "SNOOKER_TABLE".equals(type)) return "SNOOKER_TABLE";
-        if ("PC".equals(type) || "PC_GAMING".equals(type)) return "PC_GAMING";
-        if ("TABLE_TENNIS".equals(type) || "PING_PONG".equals(type)) return "TABLE_TENNIS";
-        if ("PRIVATE_ROOM".equals(type)) return "PRIVATE_ROOM";
-        return "CUSTOM";
     }
 
     private static void putMeta(SQLiteDatabase db, String key, String value) {
