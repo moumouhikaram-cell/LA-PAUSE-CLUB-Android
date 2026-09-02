@@ -1,0 +1,10 @@
+﻿LA PAUSE CLUB ORIGINAL SOURCE MATERIALIZATION
+Date: 2026-09-02T10:34:25.9827404+02:00
+Source branch: main
+Target integration branch: android-v16-original-integration
+Base SHA256: a06f6f88ccb7e9a8a954a98ffe0bc56a0e6986dd8c40ff58f30d3805fc9f8277
+V1.4 SHA256: d6366e1732a65920be81ef03f0a3fa7f83059897b9dac44d3e1ecbaab4561c72
+V1.5 SHA256: 9e170dd57dcef321766288bc2453355ede99d487de2e68e61e5cbe5dda3b394b
+Package: com.lapauseclub.manager
+Version: 1.5.0
+Purpose: authoritative base for LA PAUSE CLUB v1.6 integration.
