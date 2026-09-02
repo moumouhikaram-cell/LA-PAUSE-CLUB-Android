@@ -10,8 +10,8 @@ android {
         applicationId = "com.lapauseclub.manager.a1"
         minSdk = 26
         targetSdk = 35
-        versionCode = 19
-        versionName = "1.6.0-a1"
+        versionCode = 20
+        versionName = "1.6.1-a1.1"
 
         testInstrumentationRunner = "android.test.InstrumentationTestRunner"
     }

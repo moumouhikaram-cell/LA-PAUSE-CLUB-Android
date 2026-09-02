@@ -103,7 +103,8 @@ public final class VenueRepository {
     }
 
     public synchronized JSONObject addResource(
-            String name, ResourceType type, long ratePerHourMinor, int maxPlayers
+            String name, ResourceType type, long ratePerHourMinor, int maxPlayers,
+            int billingIncrementMinutes, int minimumChargeMinutes
     ) throws JSONException {
         SQLiteDatabase db = helper.getWritableDatabase();
         JSONObject venue = requireVenue(db);
@@ -117,6 +118,8 @@ public final class VenueRepository {
                 defaults.supportsOverlay, defaults.supportsRemoteControl,
                 maxPlayers > 0 ? maxPlayers : defaults.maxPlayers
         );
+        int increment = clampIncrement(billingIncrementMinutes);
+        int minimum = clampMinimum(minimumChargeMinutes);
 
         db.beginTransaction();
         try {
@@ -126,6 +129,8 @@ public final class VenueRepository {
             v.put("name", sanitizeName(name, type.name()));
             v.put("resource_type", type.name());
             v.put("rate_per_hour_minor", Math.max(0L, ratePerHourMinor));
+            v.put("billing_increment_minutes", increment);
+            v.put("minimum_charge_minutes", minimum);
             v.put("metered_time", caps.meteredTime ? 1 : 0);
             v.put("has_display", caps.hasDisplay ? 1 : 0);
             v.put("has_controller", caps.hasController ? 1 : 0);
@@ -142,6 +147,8 @@ public final class VenueRepository {
                             .put("name", sanitizeName(name, type.name()))
                             .put("resourceType", type.name())
                             .put("ratePerHourMinor", Math.max(0L, ratePerHourMinor))
+                            .put("billingIncrementMinutes", increment)
+                            .put("minimumChargeMinutes", minimum)
                             .put("capabilities", caps.toJson()));
             db.setTransactionSuccessful();
         } finally {
@@ -165,6 +172,11 @@ public final class VenueRepository {
         int players = Math.max(1, playerCount);
         if (players > maxPlayers) throw new IllegalStateException("Player count exceeds resource capacity");
 
+        int increment = resource.optInt("billingIncrementMinutes", 0);
+        int minimum = resource.optInt("minimumChargeMinutes", 0);
+        if (increment <= 0) increment = venue.getInt("billingIncrementMinutes");
+        if (minimum <= 0) minimum = venue.getInt("minimumChargeMinutes");
+
         String sessionId = id("session");
         long nowWall = System.currentTimeMillis();
         long nowElapsed = SystemClock.elapsedRealtime();
@@ -182,6 +194,8 @@ public final class VenueRepository {
             s.put("started_elapsed_ms", nowElapsed);
             s.put("started_boot_marker", bootMarker == null ? "unknown" : bootMarker);
             s.put("rate_per_hour_minor", resource.getLong("ratePerHourMinor"));
+            s.put("billing_increment_minutes", clampIncrement(increment));
+            s.put("minimum_charge_minutes", clampMinimum(minimum));
             s.put("created_at_ms", nowWall);
             s.put("updated_at_ms", nowWall);
             db.insertOrThrow("sessions", null, s);
@@ -194,12 +208,25 @@ public final class VenueRepository {
             appendEvent(db, venueId, "SESSION_STARTED", "session", sessionId,
                     new JSONObject().put("resourceId", resourceId)
                             .put("playerCount", players)
-                            .put("ratePerHourMinor", resource.getLong("ratePerHourMinor")));
+                            .put("ratePerHourMinor", resource.getLong("ratePerHourMinor"))
+                            .put("billingIncrementMinutes", clampIncrement(increment))
+                            .put("minimumChargeMinutes", clampMinimum(minimum)));
             db.setTransactionSuccessful();
         } finally {
             db.endTransaction();
         }
         return getSession(db, sessionId);
+    }
+
+    public synchronized JSONObject previewStopSession(String sessionId, String currentBootMarker)
+            throws JSONException {
+        SQLiteDatabase db = helper.getReadableDatabase();
+        JSONObject venue = requireVenue(db);
+        JSONObject session = getSession(db, sessionId);
+        if (!"ACTIVE".equals(session.getString("status"))) {
+            throw new IllegalStateException("Session is not active");
+        }
+        return calculatePreview(session, venue, currentBootMarker);
     }
 
     public synchronized JSONObject stopSession(
@@ -214,28 +241,11 @@ public final class VenueRepository {
             throw new IllegalStateException("Session is not active");
         }
 
+        JSONObject preview = calculatePreview(session, venue, currentBootMarker);
         long nowWall = System.currentTimeMillis();
-        long nowElapsed = SystemClock.elapsedRealtime();
-        long durationSeconds;
-        String durationSource;
-
-        String startedBoot = session.getString("startedBootMarker");
-        long startedElapsed = session.getLong("startedElapsedMs");
-        long startedWall = session.getLong("startedWallMs");
-
-        if (currentBootMarker != null && currentBootMarker.equals(startedBoot) && nowElapsed >= startedElapsed) {
-            durationSeconds = (nowElapsed - startedElapsed) / 1000L;
-            durationSource = "ELAPSED_REALTIME";
-        } else {
-            durationSeconds = Math.max(0L, (nowWall - startedWall) / 1000L);
-            durationSource = "WALL_CLOCK_FALLBACK";
-        }
-
-        long amountMinor = BillingEngine.calculateAmountMinor(
-                durationSeconds, session.getLong("ratePerHourMinor"),
-                venue.getInt("billingIncrementMinutes"), venue.getInt("minimumChargeMinutes")
-        );
-
+        long durationSeconds = preview.getLong("durationSeconds");
+        String durationSource = preview.getString("durationSource");
+        long amountMinor = preview.getLong("amountMinor");
         String method = sanitizePaymentMethod(paymentMethod);
         String paymentId = id("payment");
 
@@ -269,7 +279,10 @@ public final class VenueRepository {
 
             appendEvent(db, venueId, "SESSION_COMPLETED", "session", sessionId,
                     new JSONObject().put("durationSeconds", durationSeconds)
-                            .put("durationSource", durationSource).put("amountMinor", amountMinor));
+                            .put("durationSource", durationSource)
+                            .put("amountMinor", amountMinor)
+                            .put("billingIncrementMinutes", preview.getInt("billingIncrementMinutes"))
+                            .put("minimumChargeMinutes", preview.getInt("minimumChargeMinutes")));
             appendEvent(db, venueId, "PAYMENT_RECORDED", "payment", paymentId,
                     new JSONObject().put("sessionId", sessionId)
                             .put("amountMinor", amountMinor).put("method", method));
@@ -283,20 +296,98 @@ public final class VenueRepository {
                 .put("dashboard", dashboardInternal(db, venueId));
     }
 
+    private JSONObject calculatePreview(JSONObject session, JSONObject venue, String currentBootMarker)
+            throws JSONException {
+        long nowWall = System.currentTimeMillis();
+        long nowElapsed = SystemClock.elapsedRealtime();
+        long durationSeconds;
+        String durationSource;
+
+        String startedBoot = session.getString("startedBootMarker");
+        long startedElapsed = session.getLong("startedElapsedMs");
+        long startedWall = session.getLong("startedWallMs");
+
+        if (currentBootMarker != null && currentBootMarker.equals(startedBoot) && nowElapsed >= startedElapsed) {
+            durationSeconds = (nowElapsed - startedElapsed) / 1000L;
+            durationSource = "ELAPSED_REALTIME";
+        } else {
+            durationSeconds = Math.max(0L, (nowWall - startedWall) / 1000L);
+            durationSource = "WALL_CLOCK_FALLBACK";
+        }
+
+        int increment = session.optInt("billingIncrementMinutes", 0);
+        int minimum = session.optInt("minimumChargeMinutes", 0);
+        if (increment <= 0) increment = venue.getInt("billingIncrementMinutes");
+        if (minimum <= 0) minimum = venue.getInt("minimumChargeMinutes");
+        increment = clampIncrement(increment);
+        minimum = clampMinimum(minimum);
+
+        long amountMinor = BillingEngine.calculateAmountMinor(
+                durationSeconds, session.getLong("ratePerHourMinor"), increment, minimum
+        );
+
+        return new JSONObject()
+                .put("durationSeconds", durationSeconds)
+                .put("durationSource", durationSource)
+                .put("ratePerHourMinor", session.getLong("ratePerHourMinor"))
+                .put("billingIncrementMinutes", increment)
+                .put("minimumChargeMinutes", minimum)
+                .put("amountMinor", amountMinor);
+    }
+
     public synchronized JSONObject setBillingPolicy(int incrementMinutes, int minimumMinutes)
             throws JSONException {
         SQLiteDatabase db = helper.getWritableDatabase();
         JSONObject venue = requireVenue(db);
         long now = System.currentTimeMillis();
-        int increment = Math.max(1, Math.min(60, incrementMinutes));
-        int minimum = Math.max(1, Math.min(240, minimumMinutes));
+        int increment = clampIncrement(incrementMinutes);
+        int minimum = clampMinimum(minimumMinutes);
 
-        ContentValues values = new ContentValues();
-        values.put("billing_increment_minutes", increment);
-        values.put("minimum_charge_minutes", minimum);
-        values.put("updated_at_ms", now);
-        db.update("venues", values, "id=?", new String[]{venue.getString("id")});
+        db.beginTransaction();
+        try {
+            ContentValues values = new ContentValues();
+            values.put("billing_increment_minutes", increment);
+            values.put("minimum_charge_minutes", minimum);
+            values.put("updated_at_ms", now);
+            db.update("venues", values, "id=?", new String[]{venue.getString("id")});
+
+            appendEvent(db, venue.getString("id"), "VENUE_BILLING_POLICY_CHANGED", "venue", venue.getString("id"),
+                    new JSONObject().put("billingIncrementMinutes", increment)
+                            .put("minimumChargeMinutes", minimum));
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+        }
         return requireVenue(db);
+    }
+
+    public synchronized JSONObject setResourceBillingPolicy(
+            String resourceId, int incrementMinutes, int minimumMinutes
+    ) throws JSONException {
+        SQLiteDatabase db = helper.getWritableDatabase();
+        JSONObject venue = requireVenue(db);
+        getResource(db, resourceId);
+        int increment = clampIncrement(incrementMinutes);
+        int minimum = clampMinimum(minimumMinutes);
+        long now = System.currentTimeMillis();
+
+        db.beginTransaction();
+        try {
+            ContentValues values = new ContentValues();
+            values.put("billing_increment_minutes", increment);
+            values.put("minimum_charge_minutes", minimum);
+            values.put("updated_at_ms", now);
+            int changed = db.update("resources", values, "id=?", new String[]{resourceId});
+            if (changed != 1) throw new IllegalArgumentException("Unknown resource");
+
+            appendEvent(db, venue.getString("id"), "RESOURCE_BILLING_POLICY_CHANGED", "resource", resourceId,
+                    new JSONObject().put("billingIncrementMinutes", increment)
+                            .put("minimumChargeMinutes", minimum));
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+        }
+        return getResource(db, resourceId);
     }
 
     private JSONObject dashboardInternal(SQLiteDatabase db, String venueId) throws JSONException {
@@ -311,14 +402,16 @@ public final class VenueRepository {
                 new String[]{venueId, String.valueOf(startOfLocalDayMs())}));
         out.put("pendingOutboxCount", scalarLong(db,
                 "SELECT COUNT(*) FROM outbox_events WHERE status='PENDING'", null));
+        out.put("localEventCount", scalarLong(db,
+                "SELECT COUNT(*) FROM domain_events WHERE venue_id=?", new String[]{venueId}));
         return out;
     }
 
     private JSONArray listResourcesInternal(SQLiteDatabase db, String venueId) throws JSONException {
         JSONArray out = new JSONArray();
         try (Cursor c = db.rawQuery(
-                "SELECT id,name,resource_type,rate_per_hour_minor,metered_time,has_display," +
-                        "has_controller,supports_overlay,supports_remote_control,max_players,status " +
+                "SELECT id,name,resource_type,rate_per_hour_minor,billing_increment_minutes,minimum_charge_minutes," +
+                        "metered_time,has_display,has_controller,supports_overlay,supports_remote_control,max_players,status " +
                         "FROM resources WHERE venue_id=? ORDER BY created_at_ms", new String[]{venueId})) {
             while (c.moveToNext()) out.put(resourceFromCursor(c));
         }
@@ -330,7 +423,8 @@ public final class VenueRepository {
         try (Cursor c = db.rawQuery(
                 "SELECT id,resource_id,customer_name,player_count,status,started_wall_ms," +
                         "started_elapsed_ms,started_boot_marker,ended_wall_ms,duration_seconds," +
-                        "duration_source,rate_per_hour_minor,amount_minor,payment_method " +
+                        "duration_source,rate_per_hour_minor,billing_increment_minutes,minimum_charge_minutes," +
+                        "amount_minor,payment_method " +
                         "FROM sessions WHERE venue_id=? AND status='ACTIVE' ORDER BY started_wall_ms",
                 new String[]{venueId})) {
             while (c.moveToNext()) out.put(sessionFromCursor(c));
@@ -344,7 +438,8 @@ public final class VenueRepository {
         try (Cursor c = db.rawQuery(
                 "SELECT id,resource_id,customer_name,player_count,status,started_wall_ms," +
                         "started_elapsed_ms,started_boot_marker,ended_wall_ms,duration_seconds," +
-                        "duration_source,rate_per_hour_minor,amount_minor,payment_method " +
+                        "duration_source,rate_per_hour_minor,billing_increment_minutes,minimum_charge_minutes," +
+                        "amount_minor,payment_method " +
                         "FROM sessions WHERE venue_id=? AND status='COMPLETED' " +
                         "ORDER BY ended_wall_ms DESC LIMIT " + Math.max(1, Math.min(100, limit)),
                 new String[]{venueId})) {
@@ -364,8 +459,8 @@ public final class VenueRepository {
 
     private JSONObject getResource(SQLiteDatabase db, String resourceId) throws JSONException {
         try (Cursor c = db.rawQuery(
-                "SELECT id,name,resource_type,rate_per_hour_minor,metered_time,has_display," +
-                        "has_controller,supports_overlay,supports_remote_control,max_players,status " +
+                "SELECT id,name,resource_type,rate_per_hour_minor,billing_increment_minutes,minimum_charge_minutes," +
+                        "metered_time,has_display,has_controller,supports_overlay,supports_remote_control,max_players,status " +
                         "FROM resources WHERE id=?", new String[]{resourceId})) {
             if (!c.moveToFirst()) throw new IllegalArgumentException("Unknown resource");
             return resourceFromCursor(c);
@@ -376,8 +471,8 @@ public final class VenueRepository {
         try (Cursor c = db.rawQuery(
                 "SELECT id,resource_id,customer_name,player_count,status,started_wall_ms," +
                         "started_elapsed_ms,started_boot_marker,ended_wall_ms,duration_seconds," +
-                        "duration_source,rate_per_hour_minor,amount_minor,payment_method " +
-                        "FROM sessions WHERE id=?", new String[]{sessionId})) {
+                        "duration_source,rate_per_hour_minor,billing_increment_minutes,minimum_charge_minutes," +
+                        "amount_minor,payment_method FROM sessions WHERE id=?", new String[]{sessionId})) {
             if (!c.moveToFirst()) throw new IllegalArgumentException("Unknown session");
             return sessionFromCursor(c);
         }
@@ -393,10 +488,11 @@ public final class VenueRepository {
     private JSONObject resourceFromCursor(Cursor c) throws JSONException {
         return new JSONObject().put("id", c.getString(0)).put("name", c.getString(1))
                 .put("resourceType", c.getString(2)).put("ratePerHourMinor", c.getLong(3))
-                .put("meteredTime", c.getInt(4) == 1).put("hasDisplay", c.getInt(5) == 1)
-                .put("hasController", c.getInt(6) == 1).put("supportsOverlay", c.getInt(7) == 1)
-                .put("supportsRemoteControl", c.getInt(8) == 1).put("maxPlayers", c.getInt(9))
-                .put("status", c.getString(10));
+                .put("billingIncrementMinutes", c.getInt(4)).put("minimumChargeMinutes", c.getInt(5))
+                .put("meteredTime", c.getInt(6) == 1).put("hasDisplay", c.getInt(7) == 1)
+                .put("hasController", c.getInt(8) == 1).put("supportsOverlay", c.getInt(9) == 1)
+                .put("supportsRemoteControl", c.getInt(10) == 1).put("maxPlayers", c.getInt(11))
+                .put("status", c.getString(12));
     }
 
     private JSONObject sessionFromCursor(Cursor c) throws JSONException {
@@ -404,12 +500,13 @@ public final class VenueRepository {
                 .put("customerName", c.isNull(2) ? JSONObject.NULL : c.getString(2))
                 .put("playerCount", c.getInt(3)).put("status", c.getString(4))
                 .put("startedWallMs", c.getLong(5)).put("startedElapsedMs", c.getLong(6))
-                .put("startedBootMarker", c.getString(7)).put("ratePerHourMinor", c.getLong(11));
+                .put("startedBootMarker", c.getString(7)).put("ratePerHourMinor", c.getLong(11))
+                .put("billingIncrementMinutes", c.getInt(12)).put("minimumChargeMinutes", c.getInt(13));
         out.put("endedWallMs", c.isNull(8) ? JSONObject.NULL : c.getLong(8));
         out.put("durationSeconds", c.isNull(9) ? JSONObject.NULL : c.getLong(9));
         out.put("durationSource", c.isNull(10) ? JSONObject.NULL : c.getString(10));
-        out.put("amountMinor", c.isNull(12) ? JSONObject.NULL : c.getLong(12));
-        out.put("paymentMethod", c.isNull(13) ? JSONObject.NULL : c.getString(13));
+        out.put("amountMinor", c.isNull(14) ? JSONObject.NULL : c.getLong(14));
+        out.put("paymentMethod", c.isNull(15) ? JSONObject.NULL : c.getString(15));
         return out;
     }
 
@@ -418,27 +515,47 @@ public final class VenueRepository {
         long now = System.currentTimeMillis();
         String eventId = id("event");
         ContentValues event = new ContentValues();
-        event.put("id", eventId); event.put("venue_id", venueId); event.put("device_id", deviceId);
-        event.put("event_type", eventType); event.put("entity_type", entityType);
-        event.put("entity_id", entityId); event.put("payload_json", payload.toString());
+        event.put("id", eventId);
+        event.put("venue_id", venueId);
+        event.put("device_id", deviceId);
+        event.put("event_type", eventType);
+        event.put("entity_type", entityType);
+        event.put("entity_id", entityId);
+        event.put("payload_json", payload.toString());
         event.put("created_at_ms", now);
         db.insertOrThrow("domain_events", null, event);
 
         ContentValues outbox = new ContentValues();
-        outbox.put("id", id("outbox")); outbox.put("event_id", eventId);
-        outbox.put("status", "PENDING"); outbox.put("attempts", 0); outbox.put("created_at_ms", now);
+        outbox.put("id", id("outbox"));
+        outbox.put("event_id", eventId);
+        outbox.put("status", "PENDING");
+        outbox.put("attempts", 0);
+        outbox.put("created_at_ms", now);
         db.insertOrThrow("outbox_events", null, outbox);
     }
 
     private static long scalarLong(SQLiteDatabase db, String sql, String[] args) {
-        try (Cursor c = db.rawQuery(sql, args)) { c.moveToFirst(); return c.getLong(0); }
+        try (Cursor c = db.rawQuery(sql, args)) {
+            c.moveToFirst();
+            return c.getLong(0);
+        }
     }
 
     private static long startOfLocalDayMs() {
         java.util.Calendar cal = java.util.Calendar.getInstance();
-        cal.set(java.util.Calendar.HOUR_OF_DAY, 0); cal.set(java.util.Calendar.MINUTE, 0);
-        cal.set(java.util.Calendar.SECOND, 0); cal.set(java.util.Calendar.MILLISECOND, 0);
+        cal.set(java.util.Calendar.HOUR_OF_DAY, 0);
+        cal.set(java.util.Calendar.MINUTE, 0);
+        cal.set(java.util.Calendar.SECOND, 0);
+        cal.set(java.util.Calendar.MILLISECOND, 0);
         return cal.getTimeInMillis();
+    }
+
+    private static int clampIncrement(int value) {
+        return Math.max(1, Math.min(60, value));
+    }
+
+    private static int clampMinimum(int value) {
+        return Math.max(1, Math.min(240, value));
     }
 
     private static String sanitizeName(String value, String fallback) {

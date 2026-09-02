@@ -1,8 +1,10 @@
-name: Build LA PAUSE OS Android A1 Dual Mode
+name: Build LA PAUSE OS Android A1.1 Field Hardening
 
 on:
   workflow_dispatch:
   push:
+    branches:
+      - android-a1-dual-mode-core
     paths:
       - "settings.gradle.kts"
       - "build.gradle.kts"
@@ -55,10 +57,10 @@ jobs:
         run: |
           set -euxo pipefail
           node --check app/src/main/assets/app.js
-          grep -q "STANDALONE" app/src/main/java/com/lapauseclub/manager/a1/core/OperatingMode.java
-          grep -q "BILLIARD_TABLE" app/src/main/java/com/lapauseclub/manager/a1/core/ResourceType.java
-          grep -q "outbox_events" app/src/main/java/com/lapauseclub/manager/a1/data/AppDatabase.java
-          grep -q "ELAPSED_REALTIME" app/src/main/java/com/lapauseclub/manager/a1/domain/VenueRepository.java
+          grep -q "Journal local" app/src/main/assets/app.js
+          grep -q "previewStopSession" app/src/main/java/com/lapauseclub/manager/a1/MainActivity.java
+          grep -q "DB_VERSION = 2" app/src/main/java/com/lapauseclub/manager/a1/data/AppDatabase.java
+          grep -q "billing_increment_minutes" app/src/main/java/com/lapauseclub/manager/a1/domain/VenueRepository.java
 
       - name: Unit tests
         shell: bash
@@ -66,7 +68,7 @@ jobs:
           set -euxo pipefail
           gradle --no-daemon :app:testDebugUnitTest
 
-      - name: Build A1 debug APK
+      - name: Build A1.1 debug APK
         shell: bash
         run: |
           set -euxo pipefail
@@ -79,16 +81,17 @@ jobs:
           APK="app/build/outputs/apk/debug/app-debug.apk"
           test -f "$APK"
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
-          "$AAPT" dump badging "$APK" | tee a1-badging.txt
-          grep "package: name='com.lapauseclub.manager.a1'" a1-badging.txt
-          grep "versionName='1.6.0-a1'" a1-badging.txt
-          cp "$APK" "LA-PAUSE-OS-A1-Dual-Mode-debug.apk"
-          sha256sum "LA-PAUSE-OS-A1-Dual-Mode-debug.apk"
+          "$AAPT" dump badging "$APK" | tee a11-badging.txt
+          grep "package: name='com.lapauseclub.manager.a1'" a11-badging.txt
+          grep "versionCode='20'" a11-badging.txt
+          grep "versionName='1.6.1-a1.1'" a11-badging.txt
+          cp "$APK" "LA-PAUSE-OS-A1.1-Field-Hardening-debug.apk"
+          sha256sum "LA-PAUSE-OS-A1.1-Field-Hardening-debug.apk"
 
-      - name: Upload A1 APK
+      - name: Upload A1.1 APK
         uses: actions/upload-artifact@v4
         with:
-          name: LA-PAUSE-OS-A1-Dual-Mode-debug
-          path: LA-PAUSE-OS-A1-Dual-Mode-debug.apk
+          name: LA-PAUSE-OS-A1.1-Field-Hardening-debug
+          path: LA-PAUSE-OS-A1.1-Field-Hardening-debug.apk
           if-no-files-found: error
           retention-days: 30

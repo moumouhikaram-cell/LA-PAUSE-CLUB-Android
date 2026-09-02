@@ -12,7 +12,6 @@ public final class BillingEngineTest {
 
     @Test
     public void roundsUpToBillingIncrement() {
-        // 5m01s at 30 MAD/h, 5-minute increments => 10 minutes => 5 MAD.
         assertEquals(500L, BillingEngine.calculateAmountMinor(301L, 3000L, 5, 1));
     }
 
@@ -24,5 +23,15 @@ public final class BillingEngineTest {
     @Test
     public void minimumChargeCanExceedElapsedDuration() {
         assertEquals(750L, BillingEngine.calculateAmountMinor(60L, 3000L, 1, 15));
+    }
+
+    @Test
+    public void billiardExactMinuteRoundsOnlyToNextMinute() {
+        assertEquals(300L, BillingEngine.calculateAmountMinor(301L, 3000L, 1, 1));
+    }
+
+    @Test
+    public void fifteenMinuteBlockRoundsFiveMinutesToFifteen() {
+        assertEquals(750L, BillingEngine.calculateAmountMinor(300L, 3000L, 15, 15));
     }
 }

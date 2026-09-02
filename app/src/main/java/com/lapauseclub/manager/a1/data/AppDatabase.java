@@ -6,7 +6,7 @@ import android.database.sqlite.SQLiteOpenHelper;
 
 public final class AppDatabase extends SQLiteOpenHelper {
     public static final String DB_NAME = "la_pause_a1.db";
-    private static final int DB_VERSION = 1;
+    private static final int DB_VERSION = 2;
 
     public AppDatabase(Context context) {
         super(context, DB_NAME, null, DB_VERSION);
@@ -40,6 +40,8 @@ public final class AppDatabase extends SQLiteOpenHelper {
                 "name TEXT NOT NULL," +
                 "resource_type TEXT NOT NULL," +
                 "rate_per_hour_minor INTEGER NOT NULL," +
+                "billing_increment_minutes INTEGER NOT NULL DEFAULT 0," +
+                "minimum_charge_minutes INTEGER NOT NULL DEFAULT 0," +
                 "metered_time INTEGER NOT NULL," +
                 "has_display INTEGER NOT NULL," +
                 "has_controller INTEGER NOT NULL," +
@@ -65,6 +67,8 @@ public final class AppDatabase extends SQLiteOpenHelper {
                 "duration_seconds INTEGER," +
                 "duration_source TEXT," +
                 "rate_per_hour_minor INTEGER NOT NULL," +
+                "billing_increment_minutes INTEGER NOT NULL DEFAULT 0," +
+                "minimum_charge_minutes INTEGER NOT NULL DEFAULT 0," +
                 "amount_minor INTEGER," +
                 "payment_method TEXT," +
                 "created_at_ms INTEGER NOT NULL," +
@@ -120,9 +124,20 @@ public final class AppDatabase extends SQLiteOpenHelper {
 
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        throw new IllegalStateException(
-                "No destructive migration allowed. Add an explicit migration from " +
-                        oldVersion + " to " + newVersion
-        );
+        if (oldVersion == 1 && newVersion >= 2) {
+            // SQLiteOpenHelper already wraps schema upgrades in a transaction.
+            // Do not start a nested transaction here.
+            db.execSQL("ALTER TABLE resources ADD COLUMN billing_increment_minutes INTEGER NOT NULL DEFAULT 0");
+            db.execSQL("ALTER TABLE resources ADD COLUMN minimum_charge_minutes INTEGER NOT NULL DEFAULT 0");
+            db.execSQL("ALTER TABLE sessions ADD COLUMN billing_increment_minutes INTEGER NOT NULL DEFAULT 0");
+            db.execSQL("ALTER TABLE sessions ADD COLUMN minimum_charge_minutes INTEGER NOT NULL DEFAULT 0");
+            oldVersion = 2;
+        }
+        if (oldVersion != newVersion) {
+            throw new IllegalStateException(
+                    "No destructive migration allowed. Missing explicit migration from " +
+                            oldVersion + " to " + newVersion
+            );
+        }
     }
 }

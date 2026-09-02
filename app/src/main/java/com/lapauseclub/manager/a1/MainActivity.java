@@ -1,8 +1,11 @@
 package com.lapauseclub.manager.a1;
 
 import android.app.Activity;
+import android.graphics.Insets;
+import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.view.WindowInsets;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -38,6 +41,7 @@ public final class MainActivity extends Activity {
 
         WebView webView = new WebView(this);
         setContentView(webView);
+        applySystemBarInsets(webView);
 
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -51,6 +55,24 @@ public final class MainActivity extends Activity {
         webView.setWebViewClient(new LocalOnlyWebViewClient());
         webView.addJavascriptInterface(new AndroidBridge(), "LaPauseNative");
         webView.loadUrl("file:///android_asset/index.html");
+    }
+
+    private void applySystemBarInsets(WebView webView) {
+        webView.setOnApplyWindowInsetsListener((view, insets) -> {
+            int top;
+            int bottom;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                Insets bars = insets.getInsets(WindowInsets.Type.systemBars());
+                top = bars.top;
+                bottom = bars.bottom;
+            } else {
+                top = insets.getSystemWindowInsetTop();
+                bottom = insets.getSystemWindowInsetBottom();
+            }
+            view.setPadding(0, top, 0, bottom);
+            return insets;
+        });
+        webView.requestApplyInsets();
     }
 
     @Override
@@ -106,9 +128,15 @@ public final class MainActivity extends Activity {
         }
 
         @JavascriptInterface
-        public String addResource(String name, String typeName, long ratePerHourMinor, int maxPlayers) {
+        public String addResource(
+                String name, String typeName, long ratePerHourMinor, int maxPlayers,
+                int billingIncrementMinutes, int minimumChargeMinutes
+        ) {
             try {
-                return ok(repository.addResource(name, ResourceType.valueOf(typeName), ratePerHourMinor, maxPlayers));
+                return ok(repository.addResource(
+                        name, ResourceType.valueOf(typeName), ratePerHourMinor, maxPlayers,
+                        billingIncrementMinutes, minimumChargeMinutes
+                ));
             } catch (Exception e) { return fail(e); }
         }
 
@@ -116,6 +144,13 @@ public final class MainActivity extends Activity {
         public String startSession(String resourceId, String customerName, int playerCount) {
             try {
                 return ok(repository.startSession(resourceId, customerName, playerCount, bootMarker()));
+            } catch (Exception e) { return fail(e); }
+        }
+
+        @JavascriptInterface
+        public String previewStopSession(String sessionId) {
+            try {
+                return ok(repository.previewStopSession(sessionId, bootMarker()));
             } catch (Exception e) { return fail(e); }
         }
 
@@ -130,6 +165,13 @@ public final class MainActivity extends Activity {
         public String setBillingPolicy(int incrementMinutes, int minimumMinutes) {
             try {
                 return ok(repository.setBillingPolicy(incrementMinutes, minimumMinutes));
+            } catch (Exception e) { return fail(e); }
+        }
+
+        @JavascriptInterface
+        public String setResourceBillingPolicy(String resourceId, int incrementMinutes, int minimumMinutes) {
+            try {
+                return ok(repository.setResourceBillingPolicy(resourceId, incrementMinutes, minimumMinutes));
             } catch (Exception e) { return fail(e); }
         }
 
