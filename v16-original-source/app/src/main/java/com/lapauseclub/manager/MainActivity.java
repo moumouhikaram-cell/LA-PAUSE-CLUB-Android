@@ -30,6 +30,7 @@ import android.graphics.Bitmap;
 import android.util.Base64;
 
 import com.google.zxing.BarcodeFormat;
+import com.lapauseclub.manager.core.CoreStore;
 import com.google.zxing.WriterException;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
@@ -58,6 +59,7 @@ public class MainActivity extends Activity {
     private String pendingSaveContent;
     private String pendingSaveMime;
     private final ExecutorService networkPool = Executors.newFixedThreadPool(2);
+    private CoreStore coreStore;
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
@@ -66,6 +68,10 @@ public class MainActivity extends Activity {
         createNotificationChannel();
         requestNotificationPermissionIfNeeded();
         requestExactAlarmPermissionIfNeeded();
+
+        coreStore = new CoreStore(getApplicationContext());
+        SharedPreferences legacyPrefs = getSharedPreferences("gaming_floor_store", MODE_PRIVATE);
+        coreStore.bootstrapFromLegacy(legacyPrefs.getString("state_json", ""));
 
         webView = new WebView(this);
         setContentView(webView);
@@ -175,6 +181,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         networkPool.shutdownNow();
+        if (coreStore != null) coreStore.close();
         if (webView != null) {
             webView.removeJavascriptInterface("Android");
             webView.destroy();
@@ -212,8 +219,25 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public String getStateJson() {
             String primary = prefs.getString("state_json", "");
-            try { if (!primary.isEmpty()) { new JSONObject(primary); return primary; } } catch (Exception ignored) {}
-            return prefs.getString("state_json_backup", "");
+            try {
+                if (!primary.isEmpty()) {
+                    new JSONObject(primary);
+                    if (coreStore != null) coreStore.bootstrapFromLegacy(primary);
+                    return primary;
+                }
+            } catch (Exception ignored) {}
+
+            String backup = prefs.getString("state_json_backup", "");
+            try {
+                if (!backup.isEmpty()) {
+                    new JSONObject(backup);
+                    if (coreStore != null) coreStore.bootstrapFromLegacy(backup);
+                    return backup;
+                }
+            } catch (Exception ignored) {}
+
+            // Third recovery layer added by v1.6. It never overwrites legacy storage silently.
+            return coreStore == null ? "" : coreStore.recoverLatestValidStateJson();
         }
 
         @JavascriptInterface
@@ -232,7 +256,29 @@ public class MainActivity extends Activity {
                 editor.putString("state_json", json);
                 if (incoming.has("clients")) editor.putString("critical_clients_json", incoming.optJSONArray("clients").toString());
                 editor.apply();
+                if (coreStore != null) coreStore.mirrorLegacyState(json);
             } catch (Exception ignored) {}
+        }
+
+        @JavascriptInterface
+        public String getCoreStatusJson() {
+            return coreStore == null ? "{}" : coreStore.getStatusJson().toString();
+        }
+
+        @JavascriptInterface
+        public String getOperatingMode() {
+            return coreStore == null ? "STANDALONE" : coreStore.getOperatingMode();
+        }
+
+        @JavascriptInterface
+        public boolean setOperatingMode(String mode) {
+            try {
+                if (coreStore == null) return false;
+                coreStore.setOperatingMode(mode);
+                return true;
+            } catch (Exception ignored) {
+                return false;
+            }
         }
 
         @JavascriptInterface
@@ -346,7 +392,7 @@ public class MainActivity extends Activity {
                 try {
                     URL target = new URL(url);
                     String scheme = target.getProtocol();
-                    if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) throw new IllegalArgumentException("URL non supportée");
+                    if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) throw new IllegalArgumentException("URL non supportÃ©e");
                     conn = (HttpURLConnection) target.openConnection();
                     conn.setRequestMethod(method == null ? "GET" : method.toUpperCase());
                     conn.setConnectTimeout(8000);
@@ -377,7 +423,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    private static final String APP_VERSION_SAFE = "1.5.0";
+    private static final String APP_VERSION_SAFE = "1.6.0";
 
     private static String readAll(InputStream input) throws Exception {
         if (input == null) return "";
