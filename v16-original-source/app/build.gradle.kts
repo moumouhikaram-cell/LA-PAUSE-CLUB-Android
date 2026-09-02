@@ -10,8 +10,8 @@ android {
         applicationId = "com.lapauseclub.manager"
         minSdk = 26
         targetSdk = 36
-        versionCode = 21
-        versionName = "1.7.1-alpha2"
+        versionCode = 22
+        versionName = "1.7.2-alpha3"
     }
 
     buildTypes {
@@ -20,7 +20,6 @@ android {
         }
     }
 }
-
 
 dependencies {
     implementation("com.google.zxing:core:3.5.3")
