@@ -16,7 +16,7 @@ import java.util.UUID;
 
 public final class CoreStore extends SQLiteOpenHelper {
     public static final String DB_NAME = "la_pause_core_v16.db";
-    private static final int DB_VERSION = 3;
+    private static final int DB_VERSION = 4;
     private static final int MAX_SNAPSHOTS = 20;
 
     public CoreStore(Context context) { super(context, DB_NAME, null, DB_VERSION); setWriteAheadLoggingEnabled(true); }
@@ -33,6 +33,7 @@ public final class CoreStore extends SQLiteOpenHelper {
         CoreDomainSchemaV2.create(db);
         CoreOperationalSchemaP1.create(db);
         CoreBusinessSchemaP1.create(db);
+        CoreDeviceSchemaP2.create(db);
         putMeta(db, "migration_mode", "DOMAIN_DUAL_WRITE");
         putMeta(db, "operating_mode", "STANDALONE");
         putMeta(db, "authority_state", "TABLET_PRIMARY");
@@ -46,6 +47,7 @@ public final class CoreStore extends SQLiteOpenHelper {
         try {
             if (oldVersion < 2) { CoreDomainSchemaV2.create(db); CoreDomainSchemaV2.migrateShadowResources(db, System.currentTimeMillis()); }
             if (oldVersion < 3) { CoreOperationalSchemaP1.create(db); CoreBusinessSchemaP1.create(db); }
+            if (oldVersion < 4) CoreDeviceSchemaP2.create(db);
             putMeta(db, "core_schema_version", String.valueOf(DB_VERSION)); putMeta(db, "migration_mode", "DOMAIN_DUAL_WRITE"); db.setTransactionSuccessful();
         } finally { db.endTransaction(); }
     }
@@ -69,6 +71,7 @@ public final class CoreStore extends SQLiteOpenHelper {
             CoreDomainSchemaV2.dualWrite(db, root, dataRevision, checksum, now);
             CoreOperationalSchemaP1.dualWrite(db, root, dataRevision, checksum, now);
             CoreBusinessSchemaP1.dualWrite(db, root, dataRevision, now);
+            CoreDeviceSchemaP2.dualWrite(db, root, dataRevision, now);
             putMeta(db, "migration_mode", "DOMAIN_DUAL_WRITE"); putMeta(db, "legacy_schema_version", String.valueOf(schemaVersion)); putMeta(db, "legacy_data_revision", String.valueOf(dataRevision)); putMeta(db, "last_mirror_checksum", checksum); putMeta(db, "last_mirror_at_ms", String.valueOf(now));
             db.setTransactionSuccessful();
         } finally { db.endTransaction(); }
@@ -93,10 +96,10 @@ public final class CoreStore extends SQLiteOpenHelper {
     public synchronized JSONObject getStatusJson() {
         SQLiteDatabase db = getReadableDatabase(); JSONObject out = new JSONObject();
         try {
-            JSONObject a2 = CoreDomainSchemaV2.status(db); JSONObject p1 = CoreOperationalSchemaP1.status(db); JSONObject business = CoreBusinessSchemaP1.status(db); JSONArray resourceRegistry = a2.optJSONArray("resourceRegistry");
-            out.put("coreVersion", "p1-dev.2"); out.put("dbSchemaVersion", DB_VERSION); out.put("migrationMode", getMeta(db, "migration_mode", "DOMAIN_DUAL_WRITE")); out.put("operatingMode", getMeta(db, "operating_mode", "STANDALONE")); out.put("authorityState", getMeta(db, "authority_state", "TABLET_PRIMARY")); out.put("legacySchemaVersion", parseLong(getMeta(db, "legacy_schema_version", "0"))); out.put("legacyDataRevision", parseLong(getMeta(db, "legacy_data_revision", "0"))); out.put("lastMirrorAtMs", parseLong(getMeta(db, "last_mirror_at_ms", "0")));
-            out.put("snapshotCount", scalarLong(db, "SELECT COUNT(*) FROM state_snapshots")); out.put("resourceCount", resourceRegistry == null ? 0 : resourceRegistry.length()); out.put("eventCount", scalarLong(db, "SELECT COUNT(*) FROM domain_events")); out.put("pendingSyncCount", scalarLong(db, "SELECT COUNT(*) FROM sync_outbox WHERE status='PENDING'")); out.put("checkpointCount", scalarLong(db, "SELECT COUNT(*) FROM migration_checkpoints")); out.put("venueProfile", a2.optJSONObject("venueProfile")); out.put("resourceRegistry", resourceRegistry); out.put("domainAuthority", a2.optJSONArray("domainAuthority")); out.put("normalizedDomains", a2.optJSONArray("normalizedDomains")); out.put("p1Operational", p1); out.put("p1Business", business);
-            out.put("authorityProgress", "P1_CORE_DUAL_WRITE_17_DOMAINS"); out.put("legacyStillAuthoritative", true); out.put("networkRequired", false);
+            JSONObject a2 = CoreDomainSchemaV2.status(db); JSONObject p1 = CoreOperationalSchemaP1.status(db); JSONObject business = CoreBusinessSchemaP1.status(db); JSONObject p2 = CoreDeviceSchemaP2.status(db); JSONArray resourceRegistry = a2.optJSONArray("resourceRegistry");
+            out.put("coreVersion", "p2-dev.1"); out.put("dbSchemaVersion", DB_VERSION); out.put("migrationMode", getMeta(db, "migration_mode", "DOMAIN_DUAL_WRITE")); out.put("operatingMode", getMeta(db, "operating_mode", "STANDALONE")); out.put("authorityState", getMeta(db, "authority_state", "TABLET_PRIMARY")); out.put("legacySchemaVersion", parseLong(getMeta(db, "legacy_schema_version", "0"))); out.put("legacyDataRevision", parseLong(getMeta(db, "legacy_data_revision", "0"))); out.put("lastMirrorAtMs", parseLong(getMeta(db, "last_mirror_at_ms", "0")));
+            out.put("snapshotCount", scalarLong(db, "SELECT COUNT(*) FROM state_snapshots")); out.put("resourceCount", resourceRegistry == null ? 0 : resourceRegistry.length()); out.put("eventCount", scalarLong(db, "SELECT COUNT(*) FROM domain_events")); out.put("pendingSyncCount", scalarLong(db, "SELECT COUNT(*) FROM sync_outbox WHERE status='PENDING'")); out.put("checkpointCount", scalarLong(db, "SELECT COUNT(*) FROM migration_checkpoints")); out.put("venueProfile", a2.optJSONObject("venueProfile")); out.put("resourceRegistry", resourceRegistry); out.put("domainAuthority", a2.optJSONArray("domainAuthority")); out.put("normalizedDomains", a2.optJSONArray("normalizedDomains")); out.put("p1Operational", p1); out.put("p1Business", business); out.put("p2Device",p2);
+            out.put("authorityProgress", "P1_COMPLETE_PLUS_P2_DEVICE_DUAL_WRITE"); out.put("legacyStillAuthoritative", true); out.put("networkRequired", false);
         } catch (Exception ignored) {}
         return out;
     }
