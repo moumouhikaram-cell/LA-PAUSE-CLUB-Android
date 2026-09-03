@@ -16,112 +16,27 @@ class LocalLoader extends ResourceLoader{
 }
 (async()=>{
   const jsErrors=[],consoleErrors=[]; let exitRequests=0;
-  const vc=new VirtualConsole();
-  vc.on('jsdomError',e=>jsErrors.push(String(e?.stack||e)));
-  vc.on('error',(...a)=>consoleErrors.push(a.map(String).join(' ')));
-  const dom=new JSDOM(html,{
-    url:'https://lapause.local/index.html',runScripts:'dangerously',resources:new LocalLoader(),pretendToBeVisual:true,virtualConsole:vc,
-    beforeParse(w){
-      w.__scroll=0; Object.defineProperty(w,'scrollY',{get:()=>w.__scroll,configurable:true});
-      w.scrollTo=(_x,y)=>{w.__scroll=Number(y)||0};
-      w.requestAnimationFrame=cb=>w.setTimeout(()=>cb(Date.now()),0);
-      w.cancelAnimationFrame=id=>w.clearTimeout(id);
-      w.matchMedia=()=>({matches:false,addListener(){},removeListener(){},addEventListener(){},removeEventListener(){}});
-      w.alert=()=>{}; w.confirm=()=>true; w.prompt=()=>'';
-      w.fetch=async()=>({ok:false,status:503,text:async()=>'',json:async()=>({})});
-      if(!w.crypto)w.crypto={}; if(!w.crypto.randomUUID)w.crypto.randomUUID=()=>`qa-${Math.random().toString(36).slice(2)}`;
-      const base={
-        getStateJson:()=>'', setStateJson:()=>{}, getCoreStatusJson:()=>'{"ok":true}', getOperatingMode:()=>'STANDALONE', setOperatingMode:()=>true,
-        commitCoreCommand:(cmd,next,evt)=>{const c=JSON.parse(cmd||'{}'),s=JSON.parse(next||'{}'),e=JSON.parse(evt||'{}');return JSON.stringify({ok:true,commandId:c.commandId||'qa',eventId:e.eventId||'qa',newRevision:(c.expectedRevision||0)+1,state:s})},
-        scheduleSessionAlarm:()=>{},cancelSessionAlarm:()=>{},vibrate:()=>{},setKeepScreenOn:()=>{},notify:()=>{},saveFile:()=>{},scanQr:()=>{},httpRequest:()=>'{"ok":false}'
-      };
-      w.Android=new Proxy(base,{get:(t,p)=>p in t?t[p]:(()=>null)});
-      w.ClientAndroid={getSafeInsetsJson:()=>'{"left":0,"top":24,"right":0,"bottom":48}',requestExitConfirmation:()=>{exitRequests++},exitApp:()=>{exitRequests++}};
-    }
-  });
-  await new Promise((resolve,reject)=>{const t=setTimeout(()=>reject(new Error('load timeout')),8000);dom.window.addEventListener('load',()=>{clearTimeout(t);resolve()},{once:true})});
-  await sleep(500);
-  const w=dom.window,LP=w.LPClient; assert(LP,'LPClient missing');
-  const evalx=s=>w.eval(s); const text=()=>w.document.getElementById('view')?.textContent?.replace(/\s+/g,' ').trim()||'';
-  const stations=[
-    ['ps5-1','PS5 1','PS5','CONSOLE',2],['sim-1','SIM 1','SIM','SIM_RACING',1],['pc-1','PC 1','PC','PC_GAMING',1],['bill-1','BILLARD 1','BILLIARD','BILLIARD_TABLE',2],
-    ['snook-1','SNOOKER 1','SNOOKER','SNOOKER_TABLE',2],['ping-1','PING-PONG 1','TABLE_TENNIS','TABLE_TENNIS',4],['room-1','SALLE PRIVÉE 1','PRIVATE_ROOM','PRIVATE_ROOM',8],['arc-1','ARCADE 1','CUSTOM','CUSTOM',4]
-  ].map((x,i)=>({id:x[0],name:x[1],type:x[2],osResourceType:x[3],maxPlayers:x[4],enabled:true,sort:i+1,mediaUrl:`media/premium/${['ps5','sim','pc','billiard','snooker','table-tennis','lounge','arcade'][i]}.jpg`}));
-  const rates={CONSOLE:22,SIM_RACING:45,PC_GAMING:30,BILLIARD_TABLE:35,SNOOKER_TABLE:40,TABLE_TENNIS:25,PRIVATE_ROOM:60,CUSTOM:20};
-  const ratePlans=Object.entries(rates).map(([t,r])=>({id:`rate-${t}`,scope:'TYPE',resourceType:t,name:t,pricingModel:t==='CONSOLE'?'PER_HOUR_PLAYERS':'FLAT_HOURLY',hourlyRate:r,playerRates:t==='CONSOLE'?{'1':22,'2':28}:{'1':r,'2':r,'3':r,'4':r,'8':r},enabled:true,revision:1}));
-  const fixture={
-    stations,ratePlans,
-    clients:[{id:'c1',name:'Yassine B.',status:'ACTIVE',points:120,phone:'0600000000'}],
-    sessions:[{id:'s1',stationId:'ps5-1',resourceId:'ps5-1',resourceType:'CONSOLE',status:'active',mode:'fixed',startAt:Date.now()-900000,endAt:Date.now()+2700000,players:2,plannedMinutes:60,totalAmount:28,customerId:'c1',gameTitle:'EA SPORTS FC',revision:1}],
-    payments:[{id:'p1',sessionId:'s1',amount:28,method:'cash',at:Date.now()-800000,status:'CAPTURED'}],
-    shifts:[{id:'sh1',status:'open',openedAt:Date.now()-3600000,openingCash:0}],
-    reservations:[{id:'r1',customerName:'Sara',status:'CONFIRMED',startAt:Date.now()+3600000,resourceType:'CONSOLE'}],bookings:[],
-    queue:[{id:'q1',customerName:'Hamza',status:'WAITING',preference:'PS5',estimatedMinutes:10}],
-    products:[{id:'prod1',name:'Coca-Cola',price:10,cost:5,stock:12,enabled:true}],orders:[],sales:[],offers:[],campaigns:[],tournaments:[],kingChallenges:[],challenges:[],
-    equipment:[{id:'eq1',name:'Manette PS5-01',status:'ACTIVE'}],equipmentAssets:[],incidents:[],inventory:[],maintenance:[],maintenanceTasks:[],purchases:[],purchaseOrders:[],deviceCommands:[],team:[{id:'u1',name:'Boss',role:'OWNER',status:'ACTIVE'}]
-  };
-  evalx(`Object.assign(state,${JSON.stringify(fixture)}); state.business={...(state.business||{}),name:'LA PAUSE CLUB',branchName:'Salle QA'}; state.rates={...(state.rates||{}),ps5Solo:22,ps5Duo:28,sim:45}; currentView='csHome'; state.ui.currentView='csHome'; renderView();`);
-  await sleep(80);
-  assert.strictEqual(w.document.querySelectorAll('#csTop').length,1,'duplicate top chrome');
-  assert.strictEqual(w.document.querySelectorAll('#csDock').length,1,'duplicate bottom dock');
-  assert.strictEqual(w.document.querySelectorAll('#csRail').length,1,'duplicate rail');
-  assert(w.document.getElementById('legacyBridge'),'legacy bridge absent');
-  assert(w.document.getElementById('legacyBridge').getAttribute('aria-hidden')==='true','legacy bridge should never be customer-visible');
-  console.log('CHROME_SINGLETON_OK');
-
-  // Menu: every customer-visible route must render without JS exception or developer vocabulary.
-  const forbidden=/MASTER V2|SYSTEM STATUS|BLOCKED_EXTERNAL|COMMANDENVELOPE|DOMAIN EVENT|SQLITE|CDC OUTPUT|EDGE \+ CLOUD|P1-dev|PHASE [0-9]/i;
-  const routes=[...new Set(LP.menuGroups.flatMap(g=>g.items.map(i=>i[0])))];
-  assert(routes.length>=30,`route coverage unexpectedly low: ${routes.length}`);
-  const routeFailures=[];
-  for(const route of routes){
-    const e0=jsErrors.length,c0=consoleErrors.length;
-    try{LP.go(route);await sleep(35);const t=text();if(t.length<3)throw new Error('empty screen');if(forbidden.test(t))throw new Error(`developer text leaked: ${t.match(forbidden)[0]}`);if(w.document.querySelectorAll('#csTop').length!==1)throw new Error('top duplicated');if(w.document.querySelectorAll('#csDock').length!==1)throw new Error('dock duplicated');}
-    catch(e){routeFailures.push(`${route}: ${e.message}`)}
-    if(jsErrors.length>e0)routeFailures.push(`${route}: jsdom ${jsErrors.slice(e0).join(' | ')}`);
-    if(consoleErrors.length>c0)routeFailures.push(`${route}: console ${consoleErrors.slice(c0).join(' | ')}`);
-  }
-  assert.deepStrictEqual(routeFailures,[],`route failures:\n${routeFailures.join('\n')}`);
-  console.log(`ALL_VISIBLE_ROUTES_RENDER_OK ${routes.length}`);
-
-  // Searchable grouped menu.
-  LP.openMenu();const panel=w.document.getElementById('csMenuPanel');assert(panel.classList.contains('show'),'menu did not open');
-  const groups=w.document.querySelectorAll('#csMenuGroups [data-menu-group]');assert.strictEqual(groups.length,7,'menu must have exactly 7 business families');
-  const search=w.document.getElementById('csMenuSearch');search.value='caisse';search.dispatchEvent(new w.Event('input',{bubbles:true}));assert(/Caisse/i.test(w.document.getElementById('csMenuItems').textContent),'menu search does not find caisse');
-  w.nativeBack();assert(!panel.classList.contains('show'),'back should close menu before leaving screen');
-  console.log('MENU_SEARCH_AND_TRANSIENT_BACK_OK');
-
-  // Unified back stack: explicit navigation, legacy direct navigation and UI arrow.
-  LP.nav.length=0;evalx(`currentView='csHome';state.ui.currentView='csHome';renderView()`);LP.go('clients');LP.go('settings');assert.strictEqual(evalx('currentView'),'settings');
-  w.nativeBack();await sleep(20);assert.strictEqual(evalx('currentView'),'clients','Android back did not return to previous screen');
-  w.document.getElementById('csBack').click();await sleep(20);assert.strictEqual(evalx('currentView'),'csHome','UI arrow did not return through same stack');
-  LP.nav.length=0;LP.go('clients');evalx(`currentView='cash';renderView()`);await sleep(20);assert.strictEqual(evalx('currentView'),'cash');w.nativeBack();await sleep(20);assert.strictEqual(evalx('currentView'),'clients','legacy direct route was not captured in history');
-  console.log('UNIFIED_BACK_STACK_OK');
-
-  // Root back must only request confirmation, never silently close.
-  LP.nav.length=0;evalx(`currentView='csHome';state.ui.currentView='csHome';renderView()`);const beforeExit=exitRequests;w.nativeBack();await sleep(20);assert.strictEqual(exitRequests,beforeExit+1,'root back must request exit confirmation');
-  console.log('EXIT_CONFIRMATION_OK');
-
-  // Draft + scroll preservation when leaving a multi-step configuration screen.
-  LP.nav.length=0;LP.setup=null;LP.go('csSetup');await sleep(20);const name=w.document.getElementById('csSetupName');assert(name,'setup name field missing');name.value='Salle temporaire QA';w.scrollTo(0,333);LP.go('clients');await sleep(20);LP.back(false);await sleep(30);assert.strictEqual(evalx('currentView'),'csSetup');assert.strictEqual(w.document.getElementById('csSetupName')?.value,'Salle temporaire QA','form progress lost after back');assert.strictEqual(w.scrollY,333,'scroll position lost after back');
-  console.log('FORM_AND_SCROLL_PROGRESS_OK');
-
-  // Rotation must preserve route/history and set responsive classes/insets.
-  const routeBefore=evalx('currentView'),stackBefore=JSON.stringify(LP.nav);Object.defineProperty(w,'innerWidth',{value:900,writable:true,configurable:true});Object.defineProperty(w,'innerHeight',{value:430,writable:true,configurable:true});w.onLaPauseViewportChanged();await sleep(20);assert(w.document.body.classList.contains('cs-landscape'),'landscape class missing');assert(w.document.body.classList.contains('cs-tablet'),'tablet/wide class missing');assert.strictEqual(evalx('currentView'),routeBefore,'rotation changed route');assert.strictEqual(JSON.stringify(LP.nav),stackBefore,'rotation changed history');w.onNativeInsetsChanged({left:12,top:28,right:8,bottom:54});assert.strictEqual(w.document.documentElement.style.getPropertyValue('--cs-native-bottom'),'54px');
-  console.log('ROTATION_AND_SAFE_AREA_STATE_OK');
-
-  // Every configured timed resource must open its session sheet instead of redirecting to setup.
-  LP.go('csStations');await sleep(20);const openFailures=[];
-  for(const st of stations.filter(s=>s.id!=='ps5-1')){try{const before=evalx('currentView');LP.openResource(st.id);await sleep(15);if(evalx('currentView')==='csSetup')throw new Error('redirected to setup despite configured rate');const ov=w.document.getElementById('overlay');if(!ov.classList.contains('show'))throw new Error('session sheet did not open');evalx('closeSheet()');if(evalx('currentView')!==before)throw new Error('opening sheet changed route')}catch(e){openFailures.push(`${st.osResourceType}: ${e.message}`)}}
-  assert.deepStrictEqual(openFailures,[],`resource UI failures:\n${openFailures.join('\n')}`);
-  console.log('ALL_RESOURCE_TYPES_OPEN_SESSION_UI_OK');
-
-  // One dashboard only, real live KPIs and no duplicate revenue card wording.
-  evalx(`currentView='csHome';renderView()`);await sleep(20);const home=text();assert(/CONTROL CENTER/i.test(home),'SaaS control-center dashboard missing');assert(/TAUX D.OCCUPATION|OCCUPATION/i.test(home),'occupancy KPI missing');assert(/STATIONS|SESSIONS/i.test(home),'live operations KPI missing');
-  const caCount=(home.match(/CA DU JOUR|CA AUJOURD.HUI/g)||[]).length;assert(caCount<=1,'revenue KPI duplicated on dashboard');
-  console.log('SAAS_DASHBOARD_LOGIC_OK');
-
-  if(jsErrors.length)throw new Error(`Unhandled jsdom errors:\n${jsErrors.join('\n')}`);
-  dom.window.close();
-  console.log('CLIENT_V230_BROWSER_QA_OK');
+  const vc=new VirtualConsole(); vc.on('jsdomError',e=>jsErrors.push(String(e?.stack||e))); vc.on('error',(...a)=>consoleErrors.push(a.map(String).join(' ')));
+  const dom=new JSDOM(html,{url:'https://lapause.local/index.html',runScripts:'dangerously',resources:new LocalLoader(),pretendToBeVisual:true,virtualConsole:vc,beforeParse(w){
+    w.__scroll=0;Object.defineProperty(w,'scrollY',{get:()=>w.__scroll,configurable:true});w.scrollTo=(_x,y)=>{w.__scroll=Number(y)||0};w.requestAnimationFrame=cb=>w.setTimeout(()=>cb(Date.now()),0);w.cancelAnimationFrame=id=>w.clearTimeout(id);w.matchMedia=()=>({matches:false,addListener(){},removeListener(){},addEventListener(){},removeEventListener(){}});w.alert=()=>{};w.confirm=()=>true;w.prompt=()=>'';w.fetch=async()=>({ok:false,status:503,text:async()=>'',json:async()=>({})});if(!w.crypto)w.crypto={};if(!w.crypto.randomUUID)w.crypto.randomUUID=()=>`qa-${Math.random().toString(36).slice(2)}`;
+    const base={getStateJson:()=>'',setStateJson:()=>{},getCoreStatusJson:()=>'{"ok":true}',getOperatingMode:()=>'STANDALONE',setOperatingMode:()=>true,commitCoreCommand:(cmd,next,evt)=>{const c=JSON.parse(cmd||'{}'),s=JSON.parse(next||'{}'),e=JSON.parse(evt||'{}');return JSON.stringify({ok:true,commandId:c.commandId||'qa',eventId:e.eventId||'qa',newRevision:(c.expectedRevision||0)+1,state:s})},scheduleSessionAlarm:()=>{},cancelSessionAlarm:()=>{},vibrate:()=>{},setKeepScreenOn:()=>{},notify:()=>{},saveFile:()=>{},scanQr:()=>{},httpRequest:()=>'{"ok":false}'};w.Android=new Proxy(base,{get:(t,p)=>p in t?t[p]:(()=>null)});w.ClientAndroid={getSafeInsetsJson:()=>'{"left":0,"top":24,"right":0,"bottom":48}',requestExitConfirmation:()=>{exitRequests++},exitApp:()=>{exitRequests++}};
+  }});
+  await new Promise((resolve,reject)=>{const t=setTimeout(()=>reject(new Error('load timeout')),8000);dom.window.addEventListener('load',()=>{clearTimeout(t);resolve()},{once:true})});await sleep(500);
+  const w=dom.window,LP=w.LPClient;assert(LP,'LPClient missing');const evalx=s=>w.eval(s);const text=()=>w.document.getElementById('view')?.textContent?.replace(/\s+/g,' ').trim()||'';const transientOpen=()=>!!(w.document.getElementById('csMenuPanel')?.classList.contains('show')||w.document.getElementById('modalBackdrop')?.classList.contains('show')||w.document.getElementById('overlay')?.classList.contains('show'));
+  const stations=[['ps5-1','PS5 1','PS5','CONSOLE',2],['sim-1','SIM 1','SIM','SIM_RACING',1],['pc-1','PC 1','PC','PC_GAMING',1],['bill-1','BILLARD 1','BILLIARD','BILLIARD_TABLE',2],['snook-1','SNOOKER 1','SNOOKER','SNOOKER_TABLE',2],['ping-1','PING-PONG 1','TABLE_TENNIS','TABLE_TENNIS',4],['room-1','SALLE PRIVÉE 1','PRIVATE_ROOM','PRIVATE_ROOM',8],['arc-1','ARCADE 1','CUSTOM','CUSTOM',4]].map((x,i)=>({id:x[0],name:x[1],type:x[2],osResourceType:x[3],maxPlayers:x[4],enabled:true,sort:i+1,mediaUrl:`media/premium/${['ps5','sim','pc','billiard','snooker','table-tennis','lounge','arcade'][i]}.jpg`}));
+  const rates={CONSOLE:22,SIM_RACING:45,PC_GAMING:30,BILLIARD_TABLE:35,SNOOKER_TABLE:40,TABLE_TENNIS:25,PRIVATE_ROOM:60,CUSTOM:20};const ratePlans=Object.entries(rates).map(([t,r])=>({id:`rate-${t}`,scope:'TYPE',resourceType:t,name:t,pricingModel:t==='CONSOLE'?'PER_HOUR_PLAYERS':'FLAT_HOURLY',hourlyRate:r,playerRates:t==='CONSOLE'?{'1':22,'2':28}:{'1':r,'2':r,'3':r,'4':r,'8':r},enabled:true,revision:1}));
+  const fixture={stations,ratePlans,clients:[{id:'c1',name:'Yassine B.',status:'ACTIVE',points:120,phone:'0600000000'}],sessions:[{id:'s1',stationId:'ps5-1',resourceId:'ps5-1',resourceType:'CONSOLE',status:'active',mode:'fixed',startAt:Date.now()-900000,endAt:Date.now()+2700000,players:2,plannedMinutes:60,totalAmount:28,customerId:'c1',gameTitle:'EA SPORTS FC',revision:1}],payments:[{id:'p1',sessionId:'s1',amount:28,method:'cash',at:Date.now()-800000,status:'CAPTURED'}],shifts:[{id:'sh1',status:'open',openedAt:Date.now()-3600000,openingCash:0}],reservations:[{id:'r1',customerName:'Sara',status:'CONFIRMED',startAt:Date.now()+3600000,resourceType:'CONSOLE'}],bookings:[],queue:[{id:'q1',customerName:'Hamza',status:'WAITING',preference:'PS5',estimatedMinutes:10}],products:[{id:'prod1',name:'Coca-Cola',price:10,cost:5,stock:12,enabled:true}],orders:[],sales:[],offers:[],campaigns:[],tournaments:[],kingChallenges:[],challenges:[],equipment:[{id:'eq1',name:'Manette PS5-01',status:'ACTIVE'}],equipmentAssets:[],incidents:[],inventory:[],maintenance:[],maintenanceTasks:[],purchases:[],purchaseOrders:[],deviceCommands:[],team:[{id:'u1',name:'Boss',role:'OWNER',status:'ACTIVE'}]};
+  evalx(`Object.assign(state,${JSON.stringify(fixture)});state.business={...(state.business||{}),name:'LA PAUSE CLUB',branchName:'Salle QA'};state.rates={...(state.rates||{}),ps5Solo:22,ps5Duo:28,sim:45};currentView='csHome';state.ui.currentView='csHome';renderView();`);await sleep(80);
+  assert.strictEqual(w.document.querySelectorAll('#csTop').length,1,'duplicate top chrome');assert.strictEqual(w.document.querySelectorAll('#csDock').length,1,'duplicate bottom dock');assert.strictEqual(w.document.querySelectorAll('#csRail').length,1,'duplicate rail');assert(w.document.getElementById('legacyBridge'),'legacy bridge absent');assert(w.document.getElementById('legacyBridge').getAttribute('aria-hidden')==='true','legacy bridge should never be customer-visible');console.log('CHROME_SINGLETON_OK');
+  const forbidden=/MASTER V2|SYSTEM STATUS|BLOCKED_EXTERNAL|COMMANDENVELOPE|DOMAIN EVENT|SQLITE|CDC OUTPUT|EDGE \+ CLOUD|P1-dev|PHASE [0-9]/i;const routes=[...new Set(LP.menuGroups.flatMap(g=>g.items.map(i=>i[0])))];assert(routes.length>=30,`route coverage unexpectedly low: ${routes.length}`);const routeFailures=[];
+  for(const route of routes){const e0=jsErrors.length,c0=consoleErrors.length;try{while(LP.closeTransient()){}LP.go(route);await sleep(35);const t=text();if(t.length<3)throw new Error('empty screen');if(forbidden.test(t))throw new Error(`developer text leaked: ${t.match(forbidden)[0]}`);if(w.document.querySelectorAll('#csTop').length!==1)throw new Error('top duplicated');if(w.document.querySelectorAll('#csDock').length!==1)throw new Error('dock duplicated');if(transientOpen())throw new Error('route opened a modal/sheet without user action')}catch(e){routeFailures.push(`${route}: ${e.message}`)}if(jsErrors.length>e0)routeFailures.push(`${route}: jsdom ${jsErrors.slice(e0).join(' | ')}`);if(consoleErrors.length>c0)routeFailures.push(`${route}: console ${consoleErrors.slice(c0).join(' | ')}`)}
+  assert.deepStrictEqual(routeFailures,[],`route failures:\n${routeFailures.join('\n')}`);console.log(`ALL_VISIBLE_ROUTES_RENDER_OK ${routes.length}`);
+  LP.openMenu();const panel=w.document.getElementById('csMenuPanel');assert(panel.classList.contains('show'),'menu did not open');const groups=w.document.querySelectorAll('#csMenuGroups [data-menu-group]');assert.strictEqual(groups.length,7,'menu must have exactly 7 business families');const search=w.document.getElementById('csMenuSearch');search.value='caisse';search.dispatchEvent(new w.Event('input',{bubbles:true}));assert(/Caisse/i.test(w.document.getElementById('csMenuItems').textContent),'menu search does not find caisse');w.nativeBack();assert(!panel.classList.contains('show'),'back should close menu before leaving screen');console.log('MENU_SEARCH_AND_TRANSIENT_BACK_OK');
+  LP.nav.length=0;evalx(`currentView='csHome';state.ui.currentView='csHome';renderView()`);LP.go('clients');LP.go('settings');assert.strictEqual(evalx('currentView'),'settings');w.nativeBack();await sleep(20);assert.strictEqual(evalx('currentView'),'clients','Android back did not return to previous screen');w.document.getElementById('csBack').click();await sleep(20);assert.strictEqual(evalx('currentView'),'csHome','UI arrow did not return through same stack');LP.nav.length=0;LP.go('clients');evalx(`currentView='cash';renderView()`);await sleep(20);assert.strictEqual(evalx('currentView'),'cash');w.nativeBack();await sleep(20);assert.strictEqual(evalx('currentView'),'clients','legacy direct route was not captured in history');console.log('UNIFIED_BACK_STACK_OK');
+  while(LP.closeTransient()){}LP.nav.length=0;evalx(`currentView='csHome';state.ui.currentView='csHome';state.ui.clientPreviousView='csHome';renderView()`);assert(!transientOpen(),'root test must start without transient UI');const beforeExit=exitRequests;w.nativeBack();await sleep(20);assert.strictEqual(exitRequests,beforeExit+1,'root back must request exit confirmation');console.log('EXIT_CONFIRMATION_OK');
+  LP.nav.length=0;LP.setup=null;LP.go('csSetup');await sleep(20);const name=w.document.getElementById('csSetupName');assert(name,'setup name field missing');name.value='Salle temporaire QA';w.scrollTo(0,333);LP.go('clients');await sleep(20);LP.back(false);await sleep(30);assert.strictEqual(evalx('currentView'),'csSetup');assert.strictEqual(w.document.getElementById('csSetupName')?.value,'Salle temporaire QA','form progress lost after back');assert.strictEqual(w.scrollY,333,'scroll position lost after back');console.log('FORM_AND_SCROLL_PROGRESS_OK');
+  const routeBefore=evalx('currentView'),stackBefore=JSON.stringify(LP.nav);Object.defineProperty(w,'innerWidth',{value:900,writable:true,configurable:true});Object.defineProperty(w,'innerHeight',{value:430,writable:true,configurable:true});w.onLaPauseViewportChanged();await sleep(20);assert(w.document.body.classList.contains('cs-landscape'),'landscape class missing');assert(w.document.body.classList.contains('cs-tablet'),'tablet/wide class missing');assert.strictEqual(evalx('currentView'),routeBefore,'rotation changed route');assert.strictEqual(JSON.stringify(LP.nav),stackBefore,'rotation changed history');w.onNativeInsetsChanged({left:12,top:28,right:8,bottom:54});assert.strictEqual(w.document.documentElement.style.getPropertyValue('--cs-native-bottom'),'54px');console.log('ROTATION_AND_SAFE_AREA_STATE_OK');
+  LP.go('csStations');await sleep(20);const openFailures=[];for(const st of stations.filter(s=>s.id!=='ps5-1')){try{const before=evalx('currentView');LP.openResource(st.id);await sleep(15);if(evalx('currentView')==='csSetup')throw new Error('redirected to setup despite configured rate');const ov=w.document.getElementById('overlay');if(!ov.classList.contains('show'))throw new Error('session sheet did not open');evalx('closeSheet()');if(evalx('currentView')!==before)throw new Error('opening sheet changed route')}catch(e){openFailures.push(`${st.osResourceType}: ${e.message}`)}}assert.deepStrictEqual(openFailures,[],`resource UI failures:\n${openFailures.join('\n')}`);console.log('ALL_RESOURCE_TYPES_OPEN_SESSION_UI_OK');
+  evalx(`currentView='csHome';renderView()`);await sleep(20);const home=text();assert(/CONTROL CENTER/i.test(home),'SaaS control-center dashboard missing');assert(/TAUX D.OCCUPATION|OCCUPATION/i.test(home),'occupancy KPI missing');assert(/STATIONS|SESSIONS/i.test(home),'live operations KPI missing');const caCount=(home.match(/CA DU JOUR|CA AUJOURD.HUI/g)||[]).length;assert(caCount<=1,'revenue KPI duplicated on dashboard');console.log('SAAS_DASHBOARD_LOGIC_OK');
+  if(jsErrors.length)throw new Error(`Unhandled jsdom errors:\n${jsErrors.join('\n')}`);dom.window.close();console.log('CLIENT_V230_BROWSER_QA_OK');
 })().catch(e=>{console.error(e.stack||e);process.exit(1)});
