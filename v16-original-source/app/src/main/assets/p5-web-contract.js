@@ -77,13 +77,13 @@ window.p5SyncNow=async function(){
   try{
     const r=await nativeRequest('POST',`${base}/v1/sync`,p5Token(),req),body=r.body||{};
     if(body.protocolVersion&&body.protocolVersion!==WEB_PARITY_PROTOCOL)throw new Error(`Protocol incompatible: ${body.protocolVersion}`);
-    const ac=new Set((body.acceptedCommands||body.accepted||[]).map(x=>typeof x==='string'?x:(x.commandId||x.id)).filter(Boolean));
-    const ae=new Set((body.acceptedEvents||[]).map(x=>typeof x==='string'?x:(x.eventId||x.id)).filter(Boolean));
+    const ac=new Set((body.acceptedCommands||[]).map(x=>typeof x==='string'?x:(x.commandId||x.id)).filter(Boolean));
+    const ae=new Set((body.acceptedEvents||body.accepted||[]).map(x=>typeof x==='string'?x:(x.eventId||x.id)).filter(Boolean));
+    const acceptedIdem=new Set(state.commandOutbox.filter(c=>ac.has(c.commandId)).map(c=>c.idempotencyKey));
     for(const c of state.commandOutbox){if(ac.has(c.commandId)){c.status='ACK';c.ackedAt=now();c.lastError=''}}
     for(const rej of body.rejectedCommands||[]){const id=rej.commandId||rej.id;const c=state.commandOutbox.find(x=>x.commandId===id);if(c){c.status='REJECTED';c.lastError=rej.reason||'REJECTED';c.rejectedAt=now()}state.syncConflicts.push({id:uid('conflict'),entityType:c?.entityType||'COMMAND',entityId:c?.entityId||id,status:'OPEN',reason:rej.reason||'COMMAND_REJECTED',createdAt:now(),remoteSnapshot:rej});}
     state.commandOutbox=state.commandOutbox.filter(c=>c.status!=='ACK');
-    if(ae.size)state.outbox=(state.outbox||[]).filter(e=>!ae.has(e.id));
-    else if(ac.size){const acceptedIdem=new Set([...ac].map(id=>state.commandOutbox.find(c=>c.commandId===id)?.idempotencyKey).filter(Boolean));state.outbox=(state.outbox||[]).filter(e=>!acceptedIdem.has(`event:${e.id}`));}
+    state.outbox=(state.outbox||[]).filter(e=>!ae.has(e.id)&&!acceptedIdem.has(`event:${e.id}`));
     for(const rej of body.rejectedEvents||body.rejected||[])state.syncConflicts.push({id:uid('conflict'),entityType:'DOMAIN_EVENT',entityId:rej.eventId||rej.id,status:'OPEN',reason:rej.reason||'EVENT_REJECTED',createdAt:now(),remoteSnapshot:rej});
     for(const ch of body.changes||[]){const m=wpInbox('CHANGE',ch,body.cursor);try{p5ApplyChanges([ch]);m.status='APPLIED';m.appliedAt=now()}catch(e){m.status='ERROR';m.error=String(e.message||e)}}
     for(const t of body.tombstones||[]){const m=wpInbox('TOMBSTONE',t,body.cursor);try{wpApplyRemoteTombstones([t]);m.status='APPLIED';m.appliedAt=now()}catch(e){m.status='ERROR';m.error=String(e.message||e)}}
@@ -92,6 +92,6 @@ window.p5SyncNow=async function(){
     state.saas.serverCursor=body.cursor??state.saas.serverCursor;state.saas.serverTime=body.serverTime||null;state.saas.lastSyncAt=now();state.saas.cloudStatus='CONNECTED';state.saas.lastError='';state.sync.status='online';state.meta.lastSyncAt=now();state.meta.lastServerCursor=state.saas.serverCursor;if(body.authorityLease)p5ApplyLease(body.authorityLease);if(body.entitlement)p5ApplyEntitlement(body.entitlement);
     wpCheckpoint(body,ac.size,(body.rejectedCommands||[]).length,ae.size,(body.rejectedEvents||body.rejected||[]).length);
     saveState({eventType:'sync.completed',payload:{acceptedCommands:ac.size,rejectedCommands:(body.rejectedCommands||[]).length,acceptedEvents:ae.size,rejectedEvents:(body.rejectedEvents||body.rejected||[]).length,changes:(body.changes||[]).length,conflicts:(body.conflicts||[]).length,cursor:state.saas.serverCursor}});return body;
-  }catch(e){state.saas.cloudStatus='ERROR';state.saas.lastError=String(e.message||e);state.sync.status='error';p5CheckEmergencyTakeover();for(const c of state.commandOutbox.filter(x=>x.status==='PENDING')){c.attempts=num(c.attempts,0)+1;c.status='RETRY';c.lastError=state.saas.lastError;c.nextAttemptAt=now()+Math.min(3600000,Math.pow(2,Math.min(c.attempts,8))*5000)}saveState({eventType:'sync.failed',payload:{error:state.saas.lastError}});throw e;
+  }catch(e){state.saas.cloudStatus='ERROR';state.saas.lastError=String(e.message||e);state.sync.status='error';p5CheckEmergencyTakeover();for(const c of state.commandOutbox.filter(x=>x.status==='PENDING'||x.status==='RETRY')){c.attempts=num(c.attempts,0)+1;c.status='RETRY';c.lastError=state.saas.lastError;c.nextAttemptAt=now()+Math.min(3600000,Math.pow(2,Math.min(c.attempts,8))*5000)}saveState({eventType:'sync.failed',payload:{error:state.saas.lastError}});throw e;
   }finally{renderView()}
 };
