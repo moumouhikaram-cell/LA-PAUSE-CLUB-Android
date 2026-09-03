@@ -81,13 +81,33 @@ jobs:
           grep -q 'SESSION.START' "$ASSET/master-v2-runtime.js"
           grep -q 'QUEUE.CALL' "$ASSET/master-v2-runtime.js"
           grep -q 'REFUND.PARTIAL' "$ASSET/master-v2-runtime.js"
+          test -f "$ASSET/monster-os.css"
+          test -f "$ASSET/monster-os.js"
+          grep -q 'monster-os.css' "$ASSET/index.html"
+          grep -q 'monster-os.js' "$ASSET/index.html"
+          grep -q 'OS Home' "$ASSET/monster-os.js"
+          grep -q 'SaaS Cloud' "$ASSET/monster-os.js"
+          grep -q 'Multi-site / HQ' "$ASSET/monster-os.js"
+          grep -q 'Owner Command' "$ASSET/monster-os.js"
+          grep -q 'Plans & Entitlements' "$ASSET/monster-os.js"
+          grep -q 'Zero-to-Live' "$ASSET/monster-os.js"
+          grep -q 'LA PAUSE Network' "$ASSET/monster-os.js"
+          grep -q 'AI OPERATOR' "$ASSET/monster-os.js"
+          grep -q 'MEDIA NETWORK' "$ASSET/monster-os.js"
+          grep -q 'TRUST SHIELD' "$ASSET/monster-os.js"
+          grep -q 'DEVICE MESH' "$ASSET/monster-os.js"
+          grep -q 'PROFIT AUTOPILOT' "$ASSET/monster-os.js"
+          grep -q '3 420 lignes' "$ASSET/monster-os.js"
+          grep -q 'ACTIVE_LOCAL' "$ASSET/monster-os.js"
+          grep -q 'BLOCKED_EXTERNAL' "$ASSET/monster-os.js"
+          grep -q 'FUTURE_DISABLED' "$ASSET/monster-os.js"
           grep -q 'master-v2-runtime.js' "$ASSET/index.html"
           grep -q 'master-v2-welcome.js' "$ASSET/index.html"
           grep -q 'p5-web-contract.js' "$ASSET/index.html"
           grep -q 'p4-experience-v2.js' "$ASSET/index.html"
           ! grep -q 'src="p4-experience.js"' "$ASSET/index.html"
           grep -q 'CommandEnvelope' docs/android/WEB_ANDROID_PARITY_CONTRACT_V1.md
-          for f in "$ASSET"/app.js "$ASSET"/v13.js "$ASSET"/v14.js "$ASSET"/v15.js "$ASSET"/v17.js "$ASSET"/v171.js "$ASSET"/v172.js "$ASSET"/p1-core.js "$ASSET"/p1-floor.js "$ASSET"/p1-ops.js "$ASSET"/p1-finance.js "$ASSET"/p1-commerce.js "$ASSET"/p2-device.js "$ASSET"/p2-fleet.js "$ASSET"/p3-owner.js "$ASSET"/p3-intelligence.js "$ASSET"/p4-player.js "$ASSET"/p4-experience-v2.js "$ASSET"/p5-saas.js "$ASSET"/p5-web-contract.js "$ASSET"/p5-platform.js "$ASSET"/monster-release.js "$ASSET"/master-v2-runtime.js "$ASSET"/master-v2-welcome.js; do node --check "$f"; done
+          for f in "$ASSET"/app.js "$ASSET"/v13.js "$ASSET"/v14.js "$ASSET"/v15.js "$ASSET"/v17.js "$ASSET"/v171.js "$ASSET"/v172.js "$ASSET"/p1-core.js "$ASSET"/p1-floor.js "$ASSET"/p1-ops.js "$ASSET"/p1-finance.js "$ASSET"/p1-commerce.js "$ASSET"/p2-device.js "$ASSET"/p2-fleet.js "$ASSET"/p3-owner.js "$ASSET"/p3-intelligence.js "$ASSET"/p4-player.js "$ASSET"/p4-experience-v2.js "$ASSET"/p5-saas.js "$ASSET"/p5-web-contract.js "$ASSET"/p5-platform.js "$ASSET"/monster-release.js "$ASSET"/master-v2-runtime.js "$ASSET"/master-v2-safety.js "$ASSET"/monster-os.js "$ASSET"/master-v2-welcome.js; do node --check "$f"; done
       - name: Master V2 domain regression tests
         working-directory: v16-original-source
         shell: bash
@@ -105,4 +125,4 @@ jobs:
         run: |
           set -euxo pipefail
           test ! -f LA-PAUSE-OS-Android-SIGNED.apk
-          echo "Master V2 dev CI complete — no APK published."
+          echo "Master V2 dev CI complete — visible OS/SaaS universe validated; no APK published."
