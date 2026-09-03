@@ -4,9 +4,10 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - android-v17-la-pause-os
+      - android-p1-monster-dev
     paths:
       - "v16-original-source/**"
+      - "docs/android/**"
       - ".github/workflows/build-v17-signed.yml"
 
 permissions:
@@ -81,9 +82,12 @@ jobs:
             node --check "$A/$f"
           done
           grep -q 'p5-web-contract.js' "$A/index.html"
+          grep -q 'p4-experience-v2.js' "$A/index.html"
+          ! grep -q 'src="p4-experience.js"' "$A/index.html"
           grep -q 'CommandEnvelope' docs/android/WEB_ANDROID_PARITY_CONTRACT_V1.md
           grep -q 'command_outbox_v8' "$C/CoreSyncSchemaV8.java"
           grep -q 'BILLIARD_TABLE' "$A/p1-core.js"
+          grep -q 'window.startDraftSession=function' "$A/p1-core.js"
           grep -q 'p1PartialRefund' "$A/p1-finance.js"
           grep -q 'p1CompleteStockCount' "$A/p1-commerce.js"
           grep -q 'p2QueueCommand' "$A/p2-device.js"
