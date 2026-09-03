@@ -1,0 +1,114 @@
+name: LA PAUSE OS 2.3.0 Deep Client QA
+
+on:
+  push:
+    branches:
+      - qa-v230-temp
+    paths:
+      - "v16-original-source/**"
+      - ".github/workflows/qa-v230-deep.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deep-client-qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.4.1"
+      - name: Configure Android SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/cmdline-tools/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/36.0.0:$PATH"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/cmdline-tools/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/build-tools/36.0.0" >> "$GITHUB_PATH"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+      - name: Install QA runtime
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          npm install --no-save --no-package-lock jsdom@24
+          python3 -m venv .qa-venv
+          .qa-venv/bin/pip install --quiet pillow
+      - name: Prepare contextual HD media
+        working-directory: v16-original-source
+        shell: bash
+        run: bash tools/prepare-client-media-v230.sh | tee ../qa-media-prepare.txt
+      - name: Static product contract audits
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          node tools/client-v230-audit.js | tee ../qa-static.txt
+          node tools/client-route-audit.js | tee -a ../qa-static.txt
+          node tools/client-shell-audit.js | tee -a ../qa-static.txt
+      - name: Cash session and domain behavior
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          node tools/client-v230-policy-tests.js | tee ../qa-domain.txt
+          node tools/master-v2-domain-tests.js | tee -a ../qa-domain.txt
+          node tools/universal-resource-client-tests.js | tee -a ../qa-domain.txt
+      - name: Real customer navigation and route journey
+        working-directory: v16-original-source
+        shell: bash
+        run: node tools/client-v230-browser-qa.js | tee ../qa-browser.txt
+      - name: Image dimensions sharpness uniqueness
+        working-directory: v16-original-source
+        shell: bash
+        run: .qa-venv/bin/python tools/client-v230-media-qa.py | tee ../qa-media.txt
+      - name: Compile release candidate
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          gradle --no-daemon --stacktrace :app:assembleRelease
+          test -f app/build/outputs/apk/release/app-release-unsigned.apk
+      - name: Binary content audit
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          APK=app/build/outputs/apk/release/app-release-unsigned.apk
+          unzip -l "$APK" > ../qa-apk-assets.txt
+          for f in ps5.jpg sim.jpg pc.jpg billiard.jpg snooker.jpg table-tennis.jpg arcade.jpg lounge.jpg; do grep -q "assets/media/premium/$f" ../qa-apk-assets.txt; done
+          unzip -p "$APK" assets/index.html > ../qa-index.html
+          grep -q 'client-product-session-policy.js' ../qa-index.html
+          ! grep -q 'src="client-shell.js"' ../qa-index.html
+          ! grep -q 'src="venue-experience.js"' ../qa-index.html
+          sha256sum "$APK" > ../qa-unsigned-sha256.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: LA-PAUSE-OS-v2.3.0-DEEP-QA-EVIDENCE
+          path: |
+            qa-static.txt
+            qa-domain.txt
+            qa-browser.txt
+            qa-media.txt
+            qa-media-prepare.txt
+            qa-apk-assets.txt
+            qa-index.html
+            qa-unsigned-sha256.txt
+            v16-original-source/v230-media-contact-sheet.jpg
+          if-no-files-found: warn
+          retention-days: 14
