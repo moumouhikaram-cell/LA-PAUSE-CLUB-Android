@@ -1,6 +1,7 @@
 package com.lapauseclub.manager;
 
 import android.app.AlertDialog;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
@@ -13,6 +14,11 @@ import java.lang.reflect.Field;
 
 public class PremiumActivity extends MainActivity {
     private WebView clientWebView;
+    private int insetLeft = 0;
+    private int insetTop = 0;
+    private int insetRight = 0;
+    private int insetBottom = 0;
+    private boolean exitDialogVisible = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -41,26 +47,59 @@ public class PremiumActivity extends MainActivity {
 
     private void installSystemInsets(View target) {
         target.setOnApplyWindowInsetsListener((view, insets) -> {
-            int left;
-            int top;
-            int right;
-            int bottom;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars());
-                left = bars.left;
-                top = bars.top;
-                right = bars.right;
-                bottom = bars.bottom;
+                android.graphics.Insets bars = insets.getInsets(
+                        WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout()
+                );
+                insetLeft = bars.left;
+                insetTop = bars.top;
+                insetRight = bars.right;
+                insetBottom = bars.bottom;
             } else {
-                left = insets.getSystemWindowInsetLeft();
-                top = insets.getSystemWindowInsetTop();
-                right = insets.getSystemWindowInsetRight();
-                bottom = insets.getSystemWindowInsetBottom();
+                insetLeft = insets.getSystemWindowInsetLeft();
+                insetTop = insets.getSystemWindowInsetTop();
+                insetRight = insets.getSystemWindowInsetRight();
+                insetBottom = insets.getSystemWindowInsetBottom();
             }
-            view.setPadding(left, top, right, bottom);
+            // The web shell applies the insets exactly once through CSS variables.
+            view.setPadding(0, 0, 0, 0);
+            notifyInsetsChanged();
             return insets;
         });
         target.requestApplyInsets();
+    }
+
+    private String safeInsetsJson() {
+        return "{\"left\":" + insetLeft
+                + ",\"top\":" + insetTop
+                + ",\"right\":" + insetRight
+                + ",\"bottom\":" + insetBottom + "}";
+    }
+
+    private void notifyInsetsChanged() {
+        if (clientWebView == null) return;
+        final String json = safeInsetsJson();
+        clientWebView.post(() -> clientWebView.evaluateJavascript(
+                "window.onNativeInsetsChanged&&window.onNativeInsetsChanged(" + json + ")",
+                null
+        ));
+    }
+
+    private void notifyViewportChanged() {
+        if (clientWebView == null) return;
+        clientWebView.postDelayed(() -> {
+            clientWebView.requestApplyInsets();
+            clientWebView.evaluateJavascript(
+                    "window.onLaPauseViewportChanged&&window.onLaPauseViewportChanged()",
+                    null
+            );
+        }, 90L);
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        notifyViewportChanged();
     }
 
     @Override
@@ -78,18 +117,35 @@ public class PremiumActivity extends MainActivity {
     }
 
     private void confirmExitNative() {
-        runOnUiThread(() -> new AlertDialog.Builder(this)
-                .setTitle("Quitter LA PAUSE OS ?")
-                .setMessage("Voulez-vous vraiment fermer l’application ?")
-                .setNegativeButton("Rester", null)
-                .setPositiveButton("Quitter", (dialog, which) -> finishAndRemoveTask())
-                .show());
+        if (exitDialogVisible || isFinishing() || isDestroyed()) return;
+        exitDialogVisible = true;
+        runOnUiThread(() -> {
+            AlertDialog dialog = new AlertDialog.Builder(this)
+                    .setTitle("Quitter LA PAUSE OS ?")
+                    .setMessage("Voulez-vous vraiment fermer l’application ?")
+                    .setNegativeButton("Rester", null)
+                    .setPositiveButton("Quitter", (d, which) -> finishAndRemoveTask())
+                    .create();
+            dialog.setOnDismissListener(d -> exitDialogVisible = false);
+            dialog.show();
+        });
     }
 
     public class ClientBridge {
         @JavascriptInterface
+        public void requestExitConfirmation() {
+            confirmExitNative();
+        }
+
+        @JavascriptInterface
         public void exitApp() {
-            runOnUiThread(PremiumActivity.this::finishAndRemoveTask);
+            // Backward-compatible entry point: never bypass confirmation.
+            confirmExitNative();
+        }
+
+        @JavascriptInterface
+        public String getSafeInsetsJson() {
+            return safeInsetsJson();
         }
     }
 }
