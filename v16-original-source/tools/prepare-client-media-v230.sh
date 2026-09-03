@@ -3,13 +3,13 @@ set -euo pipefail
 A="app/src/main/assets/media/premium"
 mkdir -p "$A"
 get(){ local id="$1" out="$2"; curl -fL --retry 4 --retry-delay 2 "https://images.pexels.com/photos/${id}/pexels-photo-${id}.jpeg?auto=compress&cs=tinysrgb&w=2400&h=1350&fit=crop" -o "$A/$out"; }
-# Curated free-to-use Pexels scenes selected for real gaming-venue context.
+# Curated free-to-use Pexels photographs selected specifically for gaming venue context.
 # Every file is embedded in the APK: no runtime network dependency.
-get 34625037 ps5.jpg
-get 18966450 sim.jpg
-get 7915213 pc.jpg
-get 6032656 billiard.jpg
-get 31512997 snooker.jpg
+get 9072386 ps5.jpg
+get 13251232 sim.jpg
+get 9072202 pc.jpg
+get 16255996 billiard.jpg
+get 6032656 snooker.jpg
 get 709134 table-tennis.jpg
 get 25798269 arcade.jpg
 get 9072208 lounge.jpg
