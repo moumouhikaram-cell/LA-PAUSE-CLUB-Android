@@ -39,6 +39,12 @@ jobs:
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+      - name: Prepare premium HD offline media
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          bash tools/prepare-client-media.sh
       - name: Customer-facing UI gates
         shell: bash
         run: |
@@ -58,6 +64,15 @@ jobs:
           grep -q "PC_GAMING" "$A/client-hardening.js"
           grep -q "#bottomNav" "$A/client-hardening.css"
           grep -q "safe-area-inset-bottom" "$A/client-hardening.css"
+          grep -q 'GESTION DE SALLE' "$A/index.html"
+          grep -q 'Caisse &amp; paiements' "$A/index.html"
+          ! grep -q 'MASTER V2' "$A/index.html"
+          ! grep -q 'EDGE + CLOUD' "$A/index.html"
+          ! grep -q 'monster-os.js' "$A/index.html"
+          ! grep -q 'monster-release.js' "$A/index.html"
+          test $(stat -c%s "$A/media/premium/billiard.jpg") -gt 100000
+          test $(stat -c%s "$A/media/premium/snooker.jpg") -gt 100000
+          test $(stat -c%s "$A/media/premium/lounge.jpg") -gt 100000
           grep -q 'android:name=".PremiumActivity"' v16-original-source/app/src/main/AndroidManifest.xml
           grep -q 'android:label="LA PAUSE OS"' v16-original-source/app/src/main/AndroidManifest.xml
           grep -q 'versionCode = 26' v16-original-source/app/build.gradle.kts
