@@ -70,7 +70,7 @@ public class PremiumActivity extends MainActivity {
             return;
         }
         clientWebView.evaluateJavascript(
-                "window.clientNativeBack ? window.clientNativeBack() : false",
+                "window.nativeBack ? window.nativeBack() : false",
                 value -> {
                     if (!"true".equals(value)) confirmExitNative();
                 }
