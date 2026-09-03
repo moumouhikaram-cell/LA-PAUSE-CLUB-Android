@@ -1,0 +1,18 @@
+name: LA PAUSE OS 2.3.0 Feature Flag Contract Audit
+on:
+  push:
+    branches: [qa-v230-temp]
+    paths:
+      - "v16-original-source/tools/feature-flag-contract-audit.js"
+      - "v16-original-source/app/src/main/assets/*.js"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inventory feature flag contracts
+        working-directory: v16-original-source
+        run: node tools/feature-flag-contract-audit.js
