@@ -28,6 +28,12 @@ public class PremiumActivity extends MainActivity {
             clientWebView.addJavascriptInterface(new ClientBridge(), "ClientAndroid");
             installSystemInsets(clientWebView);
         }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                    android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                    this::handleBackRequest
+            );
+        }
         try {
             getWindow().setNavigationBarColor(Color.BLACK);
             getWindow().setStatusBarColor(Color.rgb(5, 9, 20));
@@ -61,7 +67,6 @@ public class PremiumActivity extends MainActivity {
                 insetRight = insets.getSystemWindowInsetRight();
                 insetBottom = insets.getSystemWindowInsetBottom();
             }
-            // The web shell applies the insets exactly once through CSS variables.
             view.setPadding(0, 0, 0, 0);
             notifyInsetsChanged();
             return insets;
@@ -102,8 +107,7 @@ public class PremiumActivity extends MainActivity {
         notifyViewportChanged();
     }
 
-    @Override
-    public void onBackPressed() {
+    private void handleBackRequest() {
         if (clientWebView == null) {
             confirmExitNative();
             return;
@@ -114,6 +118,11 @@ public class PremiumActivity extends MainActivity {
                     if (!"true".equals(value)) confirmExitNative();
                 }
         );
+    }
+
+    @Override
+    public void onBackPressed() {
+        handleBackRequest();
     }
 
     private void confirmExitNative() {
@@ -139,7 +148,6 @@ public class PremiumActivity extends MainActivity {
 
         @JavascriptInterface
         public void exitApp() {
-            // Backward-compatible entry point: never bypass confirmation.
             confirmExitNative();
         }
 
