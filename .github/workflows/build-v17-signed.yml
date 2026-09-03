@@ -75,15 +75,16 @@ jobs:
           grep -q 'ps5Duo:28' "$A/app.js"
           grep -q 'sim:45' "$A/app.js"
           grep -q "defaultPaymentTiming:'start'" "$A/app.js"
-          for f in app.js v13.js v14.js v15.js v17.js v171.js v172.js p1-core.js p1-floor.js p1-ops.js p1-finance.js p1-commerce.js p2-device.js p2-fleet.js p3-owner.js p3-intelligence.js p4-player.js p4-experience.js p5-saas.js p5-platform.js monster-release.js; do
+          for f in app.js v13.js v14.js v15.js v17.js v171.js v172.js p1-core.js p1-floor.js p1-ops.js p1-finance.js p1-commerce.js p2-device.js p2-fleet.js p3-owner.js p3-intelligence.js p4-player.js p4-experience-v2.js p5-saas.js p5-platform.js monster-release.js; do
             test -f "$A/$f"
-            grep -q "$f" "$A/index.html" || true
             node --check "$A/$f"
           done
           grep -q 'p1-core.js' "$A/index.html"
           grep -q 'p2-device.js' "$A/index.html"
           grep -q 'p3-owner.js' "$A/index.html"
           grep -q 'p4-player.js' "$A/index.html"
+          grep -q 'p4-experience-v2.js' "$A/index.html"
+          ! grep -q 'src="p4-experience.js"' "$A/index.html"
           grep -q 'p5-saas.js' "$A/index.html"
           grep -q 'monster-release.js' "$A/index.html"
           grep -q 'BILLIARD_TABLE' "$A/p1-core.js"
@@ -93,7 +94,7 @@ jobs:
           grep -q 'p3VenueHealth' "$A/p3-owner.js"
           grep -q 'p3InventoryBrain' "$A/p3-intelligence.js"
           grep -q 'p4PlayerDna' "$A/p4-player.js"
-          grep -q 'p4CreateCampaign' "$A/p4-experience.js"
+          grep -q 'p4CreateCampaign' "$A/p4-experience-v2.js"
           grep -q 'p5Handshake' "$A/p5-saas.js"
           grep -q 'p5SupportBundle' "$A/p5-platform.js"
       - name: Build release
