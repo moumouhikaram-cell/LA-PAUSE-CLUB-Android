@@ -1,0 +1,31 @@
+/* Tablet and landscape: one rail, no bottom-nav collision */
+@media (min-width:820px), (orientation:landscape) and (min-width:680px){
+  body.cs-ready #view{padding:calc(var(--cs-top-h) + var(--cs-safe-top) + 10px) max(12px,var(--cs-safe-right)) max(14px,var(--cs-safe-bottom)) calc(var(--cs-rail-w) + var(--cs-safe-left) + 10px)}
+  .cs-top{left:calc(var(--cs-rail-w) + var(--cs-safe-left));padding-left:12px}
+  .cs-top .cs-menu{display:none}.cs-top{grid-template-columns:minmax(0,1fr) auto}
+  .cs-dock{display:none}
+  .cs-rail{position:fixed;z-index:130;display:flex;flex-direction:column;align-items:stretch;gap:5px;left:var(--cs-safe-left);top:var(--cs-safe-top);bottom:var(--cs-safe-bottom);width:var(--cs-rail-w);padding:8px 6px;background:rgba(5,9,18,.98);border-right:1px solid #1c2c44;box-sizing:border-box}
+  .cs-rail-mark{height:45px;display:grid;place-items:center;border-radius:13px;background:linear-gradient(135deg,#6e1be0,#a02fff);font-size:11px;font-weight:1000;margin-bottom:3px}
+  .cs-rail button{border:0;border-radius:12px;background:transparent;color:#7d8da3;padding:8px 3px;font-size:7px;font-weight:900;min-height:53px}.cs-rail button b{display:block;font-size:18px;margin-bottom:3px}.cs-rail button span{display:block}.cs-rail button.active{background:linear-gradient(180deg,#7322e8,#32105e);color:#fff}.cs-rail #csRailMore{margin-top:auto}
+  .cs-menu-sheet{left:calc(var(--cs-rail-w) + var(--cs-safe-left) + 12px);right:max(12px,var(--cs-safe-right));bottom:max(12px,var(--cs-safe-bottom));top:calc(var(--cs-safe-top) + 12px);max-height:none}
+}
+@media (max-width:679px) and (orientation:portrait){
+  .cs-page-head{align-items:flex-start}.cs-page-head h1{font-size:22px}.cs-page-head p{font-size:8px}.cs-actions{max-width:45%}
+  .cs-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.cs-kpi b{font-size:16px}
+  .cs-dashboard{display:block}.cs-hero{height:245px}.cs-right{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.cs-right>.cs-section{margin-top:0}
+  .cs-station-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cs-full-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cs-station{min-height:190px}
+  .cs-quick{grid-template-columns:repeat(5,1fr)}.cs-quick button{padding:10px 2px;font-size:7px}.cs-quick button b{font-size:17px}
+  .cs-overview-grid,.cs-billiard-hero,.cs-panels{grid-template-columns:1fr}.cs-product-photo{min-height:250px}.cs-chart{height:190px}
+  .cs-equipment{grid-template-columns:repeat(2,minmax(0,1fr))}.cs-equip-photo{height:105px}.cs-rate-list{grid-template-columns:1fr}.cs-summary{grid-template-columns:1fr}.cs-form{grid-template-columns:1fr}
+  .cs-menu-layout{grid-template-columns:1fr}.cs-menu-groups{display:flex;overflow-x:auto;gap:6px;padding-bottom:5px}.cs-menu-groups button{flex:0 0 145px;grid-template-columns:28px 1fr}.cs-menu-items{grid-template-columns:1fr}.cs-menu-sheet{border-radius:22px 22px 16px 16px;max-height:calc(100dvh - var(--cs-safe-top) - var(--cs-safe-bottom) - 12px);padding:12px}
+}
+@media (max-width:380px){
+  :root{--cs-top-h:54px;--cs-dock-h:62px}.cs-mode{display:none}.cs-page-head h1{font-size:20px}.cs-kpi{padding:8px}.cs-kpi b{font-size:14px}.cs-station{min-height:176px}.cs-station-grid,.cs-full-grid{gap:6px}.cs-timer{font-size:13px}.cs-card-actions button{font-size:6px}.cs-hero{height:220px}.cs-right{grid-template-columns:1fr}.cs-quick button span{display:none}.cs-quick button b{margin:0;font-size:18px}
+}
+body.cs-compact-landscape{--cs-top-h:48px;--cs-rail-w:64px}
+body.cs-compact-landscape .cs-rail button{min-height:43px;padding:4px 2px}body.cs-compact-landscape .cs-rail button b{font-size:16px;margin-bottom:1px}body.cs-compact-landscape .cs-rail button span{font-size:6px}
+body.cs-compact-landscape .cs-page-head{margin-bottom:8px}body.cs-compact-landscape .cs-page-head h1{font-size:19px}body.cs-compact-landscape .cs-page-head p{display:none}
+body.cs-compact-landscape .cs-kpis{grid-template-columns:repeat(4,1fr);margin-bottom:7px}body.cs-compact-landscape .cs-kpi{padding:7px}body.cs-compact-landscape .cs-kpi b{font-size:13px}
+body.cs-compact-landscape .cs-dashboard{grid-template-columns:1.25fr .75fr}body.cs-compact-landscape .cs-hero{height:205px}body.cs-compact-landscape .cs-station{min-height:170px}body.cs-compact-landscape .cs-full-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+body.cs-compact-landscape .cs-menu-sheet{padding:10px}body.cs-compact-landscape .cs-menu-head h2{font-size:18px}body.cs-compact-landscape .cs-menu-search{margin:7px 0}body.cs-compact-landscape .cs-menu-layout{grid-template-columns:190px 1fr}body.cs-compact-landscape .cs-menu-items{grid-template-columns:repeat(3,minmax(0,1fr))}
+body.cs-ready #view>.page-head:first-child,body.cs-ready #view>.v17-os-page:first-child{margin-top:0}body.cs-ready .view{max-width:none}
