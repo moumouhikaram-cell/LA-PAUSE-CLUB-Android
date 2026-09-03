@@ -1,0 +1,1 @@
+Binary JPEG assets are committed through Git blob/tree operations so the Android WebView can load them as ordinary `file:///android_asset/media/premium/*.jpg` resources.
