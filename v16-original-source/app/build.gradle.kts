@@ -10,8 +10,8 @@ android {
         applicationId = "com.lapauseclub.manager"
         minSdk = 26
         targetSdk = 36
-        versionCode = 25
-        versionName = "2.1.0-beta1"
+        versionCode = 26
+        versionName = "2.1.1-beta1"
     }
 
     buildTypes {
