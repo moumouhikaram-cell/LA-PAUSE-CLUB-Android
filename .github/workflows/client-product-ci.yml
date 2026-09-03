@@ -1,0 +1,72 @@
+name: LA PAUSE OS Client Product CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - android-p1-monster-dev
+    paths:
+      - "v16-original-source/**"
+      - ".github/workflows/client-product-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  client-product:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.4.1"
+      - name: Configure Android SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+      - name: Customer-facing UI gates
+        shell: bash
+        run: |
+          set -euxo pipefail
+          A=v16-original-source/app/src/main/assets
+          node --check "$A/client-hardening.js"
+          test -f "$A/client-hardening.css"
+          grep -q "client-hardening.js" "$A/master-v2-welcome.js"
+          grep -q "client-hardening.css" "$A/master-v2-welcome.js"
+          grep -q "clientNativeBack" "$A/client-hardening.js"
+          grep -q "Quitter LA PAUSE OS" "$A/client-hardening.js"
+          grep -q "Business & Cloud" "$A/client-hardening.js"
+          grep -q "BILLIARD_TABLE" "$A/client-hardening.js"
+          grep -q "SNOOKER_TABLE" "$A/client-hardening.js"
+          grep -q "PC_GAMING" "$A/client-hardening.js"
+          grep -q "#bottomNav" "$A/client-hardening.css"
+          grep -q "safe-area-inset-bottom" "$A/client-hardening.css"
+          grep -q 'android:name=".PremiumActivity"' v16-original-source/app/src/main/AndroidManifest.xml
+          grep -q 'android:label="LA PAUSE OS"' v16-original-source/app/src/main/AndroidManifest.xml
+          grep -q 'versionCode = 26' v16-original-source/app/build.gradle.kts
+          grep -q 'versionName = "2.1.1-beta1"' v16-original-source/app/build.gradle.kts
+      - name: Universal business regression tests
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          node tools/master-v2-domain-tests.js | tee ../client-domain-tests.txt
+          grep -q 'MASTER_V2_DOMAIN_TESTS_OK' ../client-domain-tests.txt
+          grep -q 'UNIVERSAL_RESOURCE_SESSIONS_OK' ../client-domain-tests.txt
+      - name: Compile Android customer shell
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          gradle --no-daemon --stacktrace :app:compileReleaseJavaWithJavac
