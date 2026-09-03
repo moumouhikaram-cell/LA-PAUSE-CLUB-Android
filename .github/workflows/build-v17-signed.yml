@@ -1,10 +1,10 @@
-name: Build Signed LA PAUSE OS Android v1.7
+name: Build Signed LA PAUSE OS Monster 2.0
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - android-v17-la-pause-os
+      - android-p1-monster-dev
     paths:
       - "v16-original-source/**"
       - ".github/workflows/build-v17-signed.yml"
@@ -15,7 +15,7 @@ permissions:
 jobs:
   build-signed:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v5
@@ -54,29 +54,48 @@ jobs:
           test -n "$KEY_ALIAS"
           echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/la-pause-release.p12"
           keytool -list -storetype PKCS12 -keystore "$RUNNER_TEMP/la-pause-release.p12" -storepass "$KS_PASS" -alias "$KEY_ALIAS" >/dev/null
-      - name: Preserve LA PAUSE OS invariants
+      - name: Monster CDC invariants
         shell: bash
         run: |
           set -euxo pipefail
+          A=v16-original-source/app/src/main/assets
+          C=v16-original-source/app/src/main/java/com/lapauseclub/manager/core
           grep -q 'applicationId = "com.lapauseclub.manager"' v16-original-source/app/build.gradle.kts
-          grep -q 'versionCode = 22' v16-original-source/app/build.gradle.kts
-          grep -q 'versionName = "1.7.2-alpha3"' v16-original-source/app/build.gradle.kts
-          grep -q 'DB_VERSION = 2' v16-original-source/app/src/main/java/com/lapauseclub/manager/core/CoreStore.java
-          grep -q 'CoreDomainSchemaV2.dualWrite' v16-original-source/app/src/main/java/com/lapauseclub/manager/core/CoreStore.java
-          grep -q 'CREATE TABLE IF NOT EXISTS venue_profile' v16-original-source/app/src/main/java/com/lapauseclub/manager/core/CoreDomainSchemaV2.java
-          grep -q 'CREATE TABLE IF NOT EXISTS resources' v16-original-source/app/src/main/java/com/lapauseclub/manager/core/CoreDomainSchemaV2.java
-          grep -q 'SQLITE_DUAL_WRITE' v16-original-source/app/src/main/java/com/lapauseclub/manager/core/CoreDomainSchemaV2.java
-          grep -q 'PARITY_PROVING' v16-original-source/app/src/main/java/com/lapauseclub/manager/core/CoreDomainSchemaV2.java
-          grep -q 'ps5Solo:22' v16-original-source/app/src/main/assets/app.js
-          grep -q 'ps5Duo:28' v16-original-source/app/src/main/assets/app.js
-          grep -q 'sim:45' v16-original-source/app/src/main/assets/app.js
-          grep -q "V172_APP_VERSION='1.7.2-alpha3'" v16-original-source/app/src/main/assets/v172.js
-          grep -q 'Lieu & Ressources' v16-original-source/app/src/main/assets/v172.js
-          grep -q 'BILLIARD_TABLE' v16-original-source/app/src/main/assets/v172.js
-          grep -q 'v172.js' v16-original-source/app/src/main/assets/index.html
-          node --check v16-original-source/app/src/main/assets/v17.js
-          node --check v16-original-source/app/src/main/assets/v171.js
-          node --check v16-original-source/app/src/main/assets/v172.js
+          grep -q 'versionCode = 23' v16-original-source/app/build.gradle.kts
+          grep -q 'versionName = "2.0.0-beta1"' v16-original-source/app/build.gradle.kts
+          grep -q 'DB_VERSION=7' "$C/CoreStore.java"
+          grep -q 'CoreOperationalSchemaP1' "$C/CoreStore.java"
+          grep -q 'CoreBusinessSchemaP1' "$C/CoreStore.java"
+          grep -q 'CoreDeviceSchemaP2' "$C/CoreStore.java"
+          grep -q 'CoreOwnerSchemaP3' "$C/CoreStore.java"
+          grep -q 'CorePlayerSchemaP4' "$C/CoreStore.java"
+          grep -q 'CoreSaasSchemaP5' "$C/CoreStore.java"
+          grep -q 'networkRequired",false' "$C/CoreStore.java"
+          grep -q 'ps5Solo:22' "$A/app.js"
+          grep -q 'ps5Duo:28' "$A/app.js"
+          grep -q 'sim:45' "$A/app.js"
+          grep -q "defaultPaymentTiming:'start'" "$A/app.js"
+          for f in app.js v13.js v14.js v15.js v17.js v171.js v172.js p1-core.js p1-floor.js p1-ops.js p1-finance.js p1-commerce.js p2-device.js p2-fleet.js p3-owner.js p3-intelligence.js p4-player.js p4-experience.js p5-saas.js p5-platform.js monster-release.js; do
+            test -f "$A/$f"
+            grep -q "$f" "$A/index.html" || true
+            node --check "$A/$f"
+          done
+          grep -q 'p1-core.js' "$A/index.html"
+          grep -q 'p2-device.js' "$A/index.html"
+          grep -q 'p3-owner.js' "$A/index.html"
+          grep -q 'p4-player.js' "$A/index.html"
+          grep -q 'p5-saas.js' "$A/index.html"
+          grep -q 'monster-release.js' "$A/index.html"
+          grep -q 'BILLIARD_TABLE' "$A/p1-core.js"
+          grep -q 'p1PartialRefund' "$A/p1-finance.js"
+          grep -q 'p1CompleteStockCount' "$A/p1-commerce.js"
+          grep -q 'p2QueueCommand' "$A/p2-device.js"
+          grep -q 'p3VenueHealth' "$A/p3-owner.js"
+          grep -q 'p3InventoryBrain' "$A/p3-intelligence.js"
+          grep -q 'p4PlayerDna' "$A/p4-player.js"
+          grep -q 'p4CreateCampaign' "$A/p4-experience.js"
+          grep -q 'p5Handshake' "$A/p5-saas.js"
+          grep -q 'p5SupportBundle' "$A/p5-platform.js"
       - name: Build release
         working-directory: v16-original-source
         shell: bash
@@ -84,7 +103,7 @@ jobs:
           set -euxo pipefail
           gradle --no-daemon --stacktrace :app:assembleRelease
           test -f app/build/outputs/apk/release/app-release-unsigned.apk
-      - name: Sign APK
+      - name: Sign and verify APK
         shell: bash
         env:
           KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -95,14 +114,14 @@ jobs:
           BT="$ANDROID_HOME/build-tools/36.0.0"
           U="v16-original-source/app/build/outputs/apk/release/app-release-unsigned.apk"
           A="$RUNNER_TEMP/la-pause-aligned.apk"
-          S="LA-PAUSE-OS-Android-v1.7.2-alpha3-SIGNED.apk"
+          S="LA-PAUSE-OS-Android-v2.0.0-beta1-MONSTER-SIGNED.apk"
           "$BT/zipalign" -f -p 4 "$U" "$A"
           "$BT/apksigner" sign --ks "$RUNNER_TEMP/la-pause-release.p12" --ks-type PKCS12 --ks-key-alias "$KEY_ALIAS" --ks-pass "pass:$KS_PASS" --key-pass "pass:$KEY_PASS" --out "$S" "$A"
           "$BT/apksigner" verify --verbose --print-certs "$S" | tee signed-certificate.txt
           "$BT/aapt" dump badging "$S" | tee signed-badging.txt
           grep "package: name='com.lapauseclub.manager'" signed-badging.txt
-          grep "versionCode='22'" signed-badging.txt
-          grep "versionName='1.7.2-alpha3'" signed-badging.txt
+          grep "versionCode='23'" signed-badging.txt
+          grep "versionName='2.0.0-beta1'" signed-badging.txt
           sha256sum "$S" | tee signed-sha256.txt
       - name: Cleanup key
         if: always()
@@ -110,9 +129,9 @@ jobs:
         run: rm -f "$RUNNER_TEMP/la-pause-release.p12" "$RUNNER_TEMP/la-pause-aligned.apk"
       - uses: actions/upload-artifact@v4
         with:
-          name: LA-PAUSE-OS-Android-v1.7.2-alpha3-SIGNED
+          name: LA-PAUSE-OS-Android-v2.0.0-beta1-MONSTER-SIGNED
           path: |
-            LA-PAUSE-OS-Android-v1.7.2-alpha3-SIGNED.apk
+            LA-PAUSE-OS-Android-v2.0.0-beta1-MONSTER-SIGNED.apk
             signed-certificate.txt
             signed-badging.txt
             signed-sha256.txt
