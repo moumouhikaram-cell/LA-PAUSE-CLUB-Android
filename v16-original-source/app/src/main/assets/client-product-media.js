@@ -1,0 +1,2 @@
+'use strict';
+(function(){const LP=window.LPClient;if(!LP)return;Object.assign(LP.media,{CONSOLE:'media/premium/ps5.jpg',SIM_RACING:'media/premium/sim.jpg',PC_GAMING:'media/premium/pc.jpg',BILLIARD_TABLE:'media/premium/billiard.jpg',SNOOKER_TABLE:'media/premium/snooker.jpg',TABLE_TENNIS:'media/premium/table-tennis.jpg',PRIVATE_ROOM:'media/premium/lounge.jpg',CUSTOM:'media/premium/arcade.jpg'});})();
