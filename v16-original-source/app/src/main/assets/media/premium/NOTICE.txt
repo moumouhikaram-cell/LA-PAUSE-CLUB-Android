@@ -1,0 +1,1 @@
+Binary premium JPEG assets are committed in this directory and used directly by `venue-experience.js`. They are required for the frozen offline-first UI.
