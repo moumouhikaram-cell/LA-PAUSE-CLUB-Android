@@ -1,0 +1,1 @@
+Do not replace premium JPEG defaults with placeholders. The frozen UI depends on offline photos for every supported resource type.
