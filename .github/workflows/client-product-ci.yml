@@ -85,6 +85,14 @@ jobs:
           node tools/master-v2-domain-tests.js | tee ../client-domain-tests.txt
           grep -q 'MASTER_V2_DOMAIN_TESTS_OK' ../client-domain-tests.txt
           grep -q 'UNIVERSAL_RESOURCE_SESSIONS_OK' ../client-domain-tests.txt
+      - name: Sellable feature operability audit
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          node tools/client-operability-audit.js | tee ../client-operability-audit.txt
+          grep -q 'CLIENT_OPERABILITY_AUDIT_OK' ../client-operability-audit.txt
+          grep -q 'MENU_TARGETS_OK' ../client-operability-audit.txt
       - name: Compile Android customer shell
         working-directory: v16-original-source
         shell: bash
