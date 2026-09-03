@@ -1,0 +1,2 @@
+/* Never expose the legacy chrome to a customer, even before JS boot. */
+#appShell>.topbar,#appShell>.subbar,body>.drawer,body>.drawer-backdrop,#bottomNav{display:none!important}
