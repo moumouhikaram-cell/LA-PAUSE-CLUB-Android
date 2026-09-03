@@ -3,14 +3,22 @@ set -euo pipefail
 A="app/src/main/assets/media/premium"
 mkdir -p "$A"
 get(){ local id="$1" out="$2"; curl -fL --retry 4 --retry-delay 2 "https://images.pexels.com/photos/${id}/pexels-photo-${id}.jpeg?auto=compress&cs=tinysrgb&w=2400&h=1350&fit=crop" -o "$A/$out"; }
-# Curated free-to-use Pexels photographs selected specifically for gaming venue context.
-get 9072386 ps5.jpg
-get 13251232 sim.jpg
-get 9072202 pc.jpg
-get 16255996 billiard.jpg
-get 6032656 snooker.jpg
-get 709134 table-tennis.jpg
+# Context-first images: every asset must visually match the resource it represents.
+# Console / controller neon gaming lounge
+get 7862230 ps5.jpg
+# Dedicated racing cockpit
+get 18966450 sim.jpg
+# Multi-station RGB PC gaming room
+get 9072216 pc.jpg
+# Dark premium billiard room
+get 16256067 billiard.jpg
+# Dedicated snooker room
+get 7587471 snooker.jpg
+# Indoor table-tennis / recreation venue
+get 33438350 table-tennis.jpg
+# Neon arcade room
 get 25798269 arcade.jpg
+# Wide gaming lounge / cyber venue atmosphere
 get 9072208 lounge.jpg
 python3 - <<'PY'
 from pathlib import Path
