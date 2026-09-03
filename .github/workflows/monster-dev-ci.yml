@@ -7,6 +7,7 @@ on:
       - android-p1-monster-dev
     paths:
       - "v16-original-source/**"
+      - "docs/android/**"
       - ".github/workflows/monster-dev-ci.yml"
 
 permissions:
@@ -42,12 +43,17 @@ jobs:
           set -euxo pipefail
           ASSET=v16-original-source/app/src/main/assets
           JAVA=v16-original-source/app/src/main/java
+          CORE="$JAVA/com/lapauseclub/manager/core"
           grep -q 'applicationId = "com.lapauseclub.manager"' v16-original-source/app/build.gradle.kts
           grep -q 'ps5Solo:22' "$ASSET/app.js"
           grep -q 'ps5Duo:28' "$ASSET/app.js"
           grep -q 'sim:45' "$ASSET/app.js"
-          grep -q 'DB_VERSION=7' "$JAVA/com/lapauseclub/manager/core/CoreStore.java"
-          grep -q 'CoreAdvancedSchema' "$JAVA/com/lapauseclub/manager/core/CoreSaasSchemaP5.java"
+          grep -q 'DB_VERSION=8' "$CORE/CoreStore.java"
+          grep -q 'CoreSyncSchemaV8' "$CORE/CoreStore.java"
+          grep -q 'command_outbox_v8' "$CORE/CoreSyncSchemaV8.java"
+          grep -q 'sync_inbox_v8' "$CORE/CoreSyncSchemaV8.java"
+          grep -q 'tombstones_v8' "$CORE/CoreSyncSchemaV8.java"
+          grep -q 'consent_evidence_v8' "$CORE/CoreSyncSchemaV8.java"
           grep -q 'AndroidKeyStore' "$JAVA/com/lapauseclub/manager/security/SecureStore.java"
           grep -q 'getSecureValue' "$JAVA/com/lapauseclub/manager/MainActivity.java"
           grep -q 'getCoreTimelineJson' "$JAVA/com/lapauseclub/manager/MainActivity.java"
@@ -57,10 +63,16 @@ jobs:
           grep -q 'Venue Health' "$ASSET/p3-owner.js"
           grep -q 'Menu Engineering' "$ASSET/p3-intelligence.js"
           grep -q 'Player Growth Center' "$ASSET/p4-player.js"
-          grep -q 'No Dark Station' "$ASSET/p4-experience.js"
+          grep -q 'No Dark Station' "$ASSET/p4-experience-v2.js"
           grep -q 'la-pause-sync/1' "$ASSET/p5-saas.js"
+          grep -q 'wpQueueCommand' "$ASSET/p5-web-contract.js"
+          grep -q 'acceptedCommands' "$ASSET/p5-web-contract.js"
+          grep -q 'tombstones' "$ASSET/p5-web-contract.js"
           grep -q 'DATA GOVERNANCE' "$ASSET/p5-platform.js"
-          for f in "$ASSET"/app.js "$ASSET"/v13.js "$ASSET"/v14.js "$ASSET"/v15.js "$ASSET"/v17.js "$ASSET"/v171.js "$ASSET"/v172.js "$ASSET"/p1-core.js "$ASSET"/p1-floor.js "$ASSET"/p1-ops.js "$ASSET"/p1-finance.js "$ASSET"/p1-commerce.js "$ASSET"/p2-device.js "$ASSET"/p2-fleet.js "$ASSET"/p3-owner.js "$ASSET"/p3-intelligence.js "$ASSET"/p4-player.js "$ASSET"/p4-experience.js "$ASSET"/p5-saas.js "$ASSET"/p5-platform.js; do node --check "$f"; done
+          grep -q 'p5-web-contract.js' "$ASSET/index.html"
+          grep -q 'CommandEnvelope' docs/android/WEB_ANDROID_PARITY_CONTRACT_V1.md
+          grep -q 'WAITING → CALLED → SEATED' docs/android/WEB_ANDROID_PARITY_CONTRACT_V1.md
+          for f in "$ASSET"/app.js "$ASSET"/v13.js "$ASSET"/v14.js "$ASSET"/v15.js "$ASSET"/v17.js "$ASSET"/v171.js "$ASSET"/v172.js "$ASSET"/p1-core.js "$ASSET"/p1-floor.js "$ASSET"/p1-ops.js "$ASSET"/p1-finance.js "$ASSET"/p1-commerce.js "$ASSET"/p2-device.js "$ASSET"/p2-fleet.js "$ASSET"/p3-owner.js "$ASSET"/p3-intelligence.js "$ASSET"/p4-player.js "$ASSET"/p4-experience-v2.js "$ASSET"/p5-saas.js "$ASSET"/p5-web-contract.js "$ASSET"/p5-platform.js "$ASSET"/monster-release.js; do node --check "$f"; done
       - name: Compile Android Java only
         working-directory: v16-original-source
         shell: bash
