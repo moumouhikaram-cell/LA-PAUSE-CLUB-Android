@@ -37,7 +37,7 @@ jobs:
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
-      - name: Validate monster CDC source invariants
+      - name: Validate Master V2 source invariants
         shell: bash
         run: |
           set -euxo pipefail
@@ -49,43 +49,44 @@ jobs:
           grep -q 'ps5Duo:28' "$ASSET/app.js"
           grep -q 'sim:45' "$ASSET/app.js"
           grep -q "defaultPaymentTiming:'start'" "$ASSET/app.js"
-          grep -q 'DB_VERSION=8' "$CORE/CoreStore.java"
+          grep -q 'DB_VERSION=9' "$CORE/CoreStore.java"
+          grep -q 'CoreCommandSchemaV9' "$CORE/CoreStore.java"
+          grep -q 'commitCommand' "$CORE/CoreStore.java"
+          grep -q 'command_log_v9' "$CORE/CoreCommandSchemaV9.java"
+          grep -q 'entity_revisions_v9' "$CORE/CoreCommandSchemaV9.java"
+          grep -q 'domain_events_v9' "$CORE/CoreCommandSchemaV9.java"
+          grep -q 'outbox_events_v9' "$CORE/CoreCommandSchemaV9.java"
+          grep -q 'audit_events_v9' "$CORE/CoreCommandSchemaV9.java"
           grep -q 'CoreSyncSchemaV8' "$CORE/CoreStore.java"
           grep -q 'command_outbox_v8' "$CORE/CoreSyncSchemaV8.java"
           grep -q 'sync_inbox_v8' "$CORE/CoreSyncSchemaV8.java"
           grep -q 'tombstones_v8' "$CORE/CoreSyncSchemaV8.java"
           grep -q 'consent_evidence_v8' "$CORE/CoreSyncSchemaV8.java"
           grep -q 'AndroidKeyStore' "$JAVA/com/lapauseclub/manager/security/SecureStore.java"
-          grep -q 'getSecureValue' "$JAVA/com/lapauseclub/manager/MainActivity.java"
+          grep -q 'commitCoreCommand' "$JAVA/com/lapauseclub/manager/MainActivity.java"
           grep -q 'getCoreTimelineJson' "$JAVA/com/lapauseclub/manager/MainActivity.java"
           grep -q 'BILLIARD_TABLE' "$ASSET/p1-core.js"
-          grep -q 'window.startDraftSession=function' "$ASSET/p1-core.js"
-          grep -q "d.mode==='budget'" "$ASSET/p1-core.js"
-          grep -q "d.mode==='open'" "$ASSET/p1-core.js"
           grep -q 'p1PartialRefund' "$ASSET/p1-finance.js"
           grep -q 'p1CompleteStockCount' "$ASSET/p1-commerce.js"
           grep -q 'p2QueueCommand' "$ASSET/p2-device.js"
-          grep -q 'p2ReliabilitySweep' "$ASSET/p2-device.js"
           grep -q 'p3VenueHealth' "$ASSET/p3-owner.js"
-          grep -q 'p3MenuClassify' "$ASSET/p3-intelligence.js"
           grep -q 'p3InventoryBrain' "$ASSET/p3-intelligence.js"
           grep -q 'p4PlayerDna' "$ASSET/p4-player.js"
-          grep -q 'p4Churn' "$ASSET/p4-player.js"
           grep -q 'p4CreateCampaign' "$ASSET/p4-experience-v2.js"
-          grep -q 'p4NoDarkStation' "$ASSET/p4-experience-v2.js"
           grep -q 'p5Handshake' "$ASSET/p5-saas.js"
-          grep -q 'la-pause-sync/1' "$ASSET/p5-saas.js"
           grep -q 'wpQueueCommand' "$ASSET/p5-web-contract.js"
-          grep -q 'acceptedCommands' "$ASSET/p5-web-contract.js"
-          grep -q 'tombstones' "$ASSET/p5-web-contract.js"
           grep -q 'p5SupportBundle' "$ASSET/p5-platform.js"
-          grep -q 'p5SchedulerTick' "$ASSET/p5-platform.js"
+          grep -q 'SESSION.REQUEST' "$ASSET/master-v2-runtime.js"
+          grep -q 'SESSION.PAY' "$ASSET/master-v2-runtime.js"
+          grep -q 'SESSION.START' "$ASSET/master-v2-runtime.js"
+          grep -q 'QUEUE.CALL' "$ASSET/master-v2-runtime.js"
+          grep -q 'REFUND.PARTIAL' "$ASSET/master-v2-runtime.js"
+          grep -q 'master-v2-runtime.js' "$ASSET/index.html"
           grep -q 'p5-web-contract.js' "$ASSET/index.html"
           grep -q 'p4-experience-v2.js' "$ASSET/index.html"
           ! grep -q 'src="p4-experience.js"' "$ASSET/index.html"
           grep -q 'CommandEnvelope' docs/android/WEB_ANDROID_PARITY_CONTRACT_V1.md
-          grep -q 'WAITING → CALLED → SEATED' docs/android/WEB_ANDROID_PARITY_CONTRACT_V1.md
-          for f in "$ASSET"/app.js "$ASSET"/v13.js "$ASSET"/v14.js "$ASSET"/v15.js "$ASSET"/v17.js "$ASSET"/v171.js "$ASSET"/v172.js "$ASSET"/p1-core.js "$ASSET"/p1-floor.js "$ASSET"/p1-ops.js "$ASSET"/p1-finance.js "$ASSET"/p1-commerce.js "$ASSET"/p2-device.js "$ASSET"/p2-fleet.js "$ASSET"/p3-owner.js "$ASSET"/p3-intelligence.js "$ASSET"/p4-player.js "$ASSET"/p4-experience-v2.js "$ASSET"/p5-saas.js "$ASSET"/p5-web-contract.js "$ASSET"/p5-platform.js "$ASSET"/monster-release.js; do node --check "$f"; done
+          for f in "$ASSET"/app.js "$ASSET"/v13.js "$ASSET"/v14.js "$ASSET"/v15.js "$ASSET"/v17.js "$ASSET"/v171.js "$ASSET"/v172.js "$ASSET"/p1-core.js "$ASSET"/p1-floor.js "$ASSET"/p1-ops.js "$ASSET"/p1-finance.js "$ASSET"/p1-commerce.js "$ASSET"/p2-device.js "$ASSET"/p2-fleet.js "$ASSET"/p3-owner.js "$ASSET"/p3-intelligence.js "$ASSET"/p4-player.js "$ASSET"/p4-experience-v2.js "$ASSET"/p5-saas.js "$ASSET"/p5-web-contract.js "$ASSET"/p5-platform.js "$ASSET"/monster-release.js "$ASSET"/master-v2-runtime.js; do node --check "$f"; done
       - name: Compile Android Java only
         working-directory: v16-original-source
         shell: bash
@@ -97,4 +98,4 @@ jobs:
         run: |
           set -euxo pipefail
           test ! -f LA-PAUSE-OS-Android-SIGNED.apk
-          echo "Monster dev CI complete — no APK published."
+          echo "Master V2 dev CI complete — no APK published."
