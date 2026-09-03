@@ -8,6 +8,7 @@ on:
       - "v16-original-source/app/src/main/assets/client-shell.*"
       - "v16-original-source/app/src/main/assets/index.html"
       - "v16-original-source/tools/client-shell-audit.js"
+      - "v16-original-source/tools/client-route-audit.js"
       - "v16-original-source/tools/master-v2-domain-tests.js"
       - "v16-original-source/app/src/main/assets/p1-core.js"
       - ".github/workflows/client-final-ci.yml"
@@ -49,6 +50,7 @@ jobs:
           set -euxo pipefail
           node --check app/src/main/assets/client-shell.js
           node tools/client-shell-audit.js
+          node tools/client-route-audit.js
       - name: Universal resource domain tests
         working-directory: v16-original-source
         shell: bash
