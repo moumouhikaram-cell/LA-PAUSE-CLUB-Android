@@ -1,128 +1,17 @@
-name: LA PAUSE OS Monster Dev CI
+name: LA PAUSE OS Legacy Core Audit
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - android-p1-monster-dev
-    paths:
-      - "v16-original-source/**"
-      - "docs/android/**"
-      - ".github/workflows/monster-dev-ci.yml"
 
 permissions:
   contents: read
 
 jobs:
-  validate-monster:
+  legacy-core-audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "21"
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "9.4.1"
-      - name: Configure Android SDK
-        shell: bash
+      - name: Archived internal audit
         run: |
-          set -euxo pipefail
-          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
-          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
-          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
-          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
-      - name: Validate Master V2 source invariants
-        shell: bash
-        run: |
-          set -euxo pipefail
-          ASSET=v16-original-source/app/src/main/assets
-          JAVA=v16-original-source/app/src/main/java
-          CORE="$JAVA/com/lapauseclub/manager/core"
-          grep -q 'applicationId = "com.lapauseclub.manager"' v16-original-source/app/build.gradle.kts
-          grep -q 'ps5Solo:22' "$ASSET/app.js"
-          grep -q 'ps5Duo:28' "$ASSET/app.js"
-          grep -q 'sim:45' "$ASSET/app.js"
-          grep -q "defaultPaymentTiming:'start'" "$ASSET/app.js"
-          grep -q 'DB_VERSION=9' "$CORE/CoreStore.java"
-          grep -q 'CoreCommandSchemaV9' "$CORE/CoreStore.java"
-          grep -q 'commitCommand' "$CORE/CoreStore.java"
-          grep -q 'command_log_v9' "$CORE/CoreCommandSchemaV9.java"
-          grep -q 'entity_revisions_v9' "$CORE/CoreCommandSchemaV9.java"
-          grep -q 'domain_events_v9' "$CORE/CoreCommandSchemaV9.java"
-          grep -q 'outbox_events_v9' "$CORE/CoreCommandSchemaV9.java"
-          grep -q 'audit_events_v9' "$CORE/CoreCommandSchemaV9.java"
-          grep -q 'CoreSyncSchemaV8' "$CORE/CoreStore.java"
-          grep -q 'command_outbox_v8' "$CORE/CoreSyncSchemaV8.java"
-          grep -q 'sync_inbox_v8' "$CORE/CoreSyncSchemaV8.java"
-          grep -q 'tombstones_v8' "$CORE/CoreSyncSchemaV8.java"
-          grep -q 'consent_evidence_v8' "$CORE/CoreSyncSchemaV8.java"
-          grep -q 'AndroidKeyStore' "$JAVA/com/lapauseclub/manager/security/SecureStore.java"
-          grep -q 'commitCoreCommand' "$JAVA/com/lapauseclub/manager/MainActivity.java"
-          grep -q 'getCoreTimelineJson' "$JAVA/com/lapauseclub/manager/MainActivity.java"
-          grep -q 'BILLIARD_TABLE' "$ASSET/p1-core.js"
-          grep -q 'p1PartialRefund' "$ASSET/p1-finance.js"
-          grep -q 'p1CompleteStockCount' "$ASSET/p1-commerce.js"
-          grep -q 'p2QueueCommand' "$ASSET/p2-device.js"
-          grep -q 'p3VenueHealth' "$ASSET/p3-owner.js"
-          grep -q 'p3InventoryBrain' "$ASSET/p3-intelligence.js"
-          grep -q 'p4PlayerDna' "$ASSET/p4-player.js"
-          grep -q 'p4CreateCampaign' "$ASSET/p4-experience-v2.js"
-          grep -q 'p5Handshake' "$ASSET/p5-saas.js"
-          grep -q 'wpQueueCommand' "$ASSET/p5-web-contract.js"
-          grep -q 'p5SupportBundle' "$ASSET/p5-platform.js"
-          grep -q 'SESSION.REQUEST' "$ASSET/master-v2-runtime.js"
-          grep -q 'SESSION.PAY' "$ASSET/master-v2-runtime.js"
-          grep -q 'SESSION.START' "$ASSET/master-v2-runtime.js"
-          grep -q 'QUEUE.CALL' "$ASSET/master-v2-runtime.js"
-          grep -q 'REFUND.PARTIAL' "$ASSET/master-v2-runtime.js"
-          test -f "$ASSET/monster-os.css"
-          test -f "$ASSET/monster-os.js"
-          grep -q 'monster-os.css' "$ASSET/index.html"
-          grep -q 'monster-os.js' "$ASSET/index.html"
-          grep -q 'OS Home' "$ASSET/monster-os.js"
-          grep -q 'SaaS Cloud' "$ASSET/monster-os.js"
-          grep -q 'Multi-site / HQ' "$ASSET/monster-os.js"
-          grep -q 'Owner Command' "$ASSET/monster-os.js"
-          grep -q 'Plans & Entitlements' "$ASSET/monster-os.js"
-          grep -q 'Zero-to-Live' "$ASSET/monster-os.js"
-          grep -q 'LA PAUSE Network' "$ASSET/monster-os.js"
-          grep -q 'AI OPERATOR' "$ASSET/monster-os.js"
-          grep -q 'MEDIA NETWORK' "$ASSET/monster-os.js"
-          grep -q 'TRUST SHIELD' "$ASSET/monster-os.js"
-          grep -q 'DEVICE MESH' "$ASSET/monster-os.js"
-          grep -q 'PROFIT AUTOPILOT' "$ASSET/monster-os.js"
-          grep -q '3 420 lignes' "$ASSET/monster-os.js"
-          grep -q 'ACTIVE_LOCAL' "$ASSET/monster-os.js"
-          grep -q 'BLOCKED_EXTERNAL' "$ASSET/monster-os.js"
-          grep -q 'FUTURE_DISABLED' "$ASSET/monster-os.js"
-          grep -q 'master-v2-runtime.js' "$ASSET/index.html"
-          grep -q 'master-v2-welcome.js' "$ASSET/index.html"
-          grep -q 'p5-web-contract.js' "$ASSET/index.html"
-          grep -q 'p4-experience-v2.js' "$ASSET/index.html"
-          ! grep -q 'src="p4-experience.js"' "$ASSET/index.html"
-          grep -q 'CommandEnvelope' docs/android/WEB_ANDROID_PARITY_CONTRACT_V1.md
-          for f in "$ASSET"/app.js "$ASSET"/v13.js "$ASSET"/v14.js "$ASSET"/v15.js "$ASSET"/v17.js "$ASSET"/v171.js "$ASSET"/v172.js "$ASSET"/p1-core.js "$ASSET"/p1-floor.js "$ASSET"/p1-ops.js "$ASSET"/p1-finance.js "$ASSET"/p1-commerce.js "$ASSET"/p2-device.js "$ASSET"/p2-fleet.js "$ASSET"/p3-owner.js "$ASSET"/p3-intelligence.js "$ASSET"/p4-player.js "$ASSET"/p4-experience-v2.js "$ASSET"/p5-saas.js "$ASSET"/p5-web-contract.js "$ASSET"/p5-platform.js "$ASSET"/monster-release.js "$ASSET"/master-v2-runtime.js "$ASSET"/master-v2-safety.js "$ASSET"/monster-os.js "$ASSET"/master-v2-welcome.js; do node --check "$f"; done
-      - name: Master V2 domain regression tests
-        working-directory: v16-original-source
-        shell: bash
-        run: |
-          set -euxo pipefail
-          node tools/master-v2-domain-tests.js
-      - name: Compile Android Java only
-        working-directory: v16-original-source
-        shell: bash
-        run: |
-          set -euxo pipefail
-          gradle --no-daemon --stacktrace :app:compileReleaseJavaWithJavac
-      - name: Verify no signed artifact publishing
-        shell: bash
-        run: |
-          set -euxo pipefail
-          test ! -f LA-PAUSE-OS-Android-SIGNED.apk
-          echo "Master V2 dev CI complete — visible OS/SaaS universe validated; no APK published."
+          echo "The former visible-development UI gate is retired."
+          echo "Customer releases are validated by client-product-ci.yml."
