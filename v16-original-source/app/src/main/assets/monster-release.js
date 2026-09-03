@@ -1,8 +1,21 @@
 'use strict';
-const MONSTER_RELEASE='2.1.0-beta1';
-const MONSTER_CODE=25;
-function monsterReleaseEnsure(){state.meta=state.meta||{};state.meta.appVersion=MONSTER_RELEASE;state.meta.monsterRelease=MONSTER_RELEASE;}
-function monsterChecks(){const core=typeof v17CoreStatus==='function'?v17CoreStatus():{};const cmd=core.commandCore||{};const checks=[['Package Core',!!native,'Android bridge'],['DB schema',num(core.dbSchemaVersion)>=9,`DB v${core.dbSchemaVersion||'?'}`],['Master V2 Command Core',typeof native?.commitCoreCommand==='function'&&num(cmd.commandCount)>=0,'idempotency/revision/audit/event'],['Canonical Outbox',num(cmd.canonicalOutboxPending)>=0,'at-least-once + dedupe'],['Autonomie',core.networkRequired===false,'networkRequired=false'],['Resource Engine',typeof p1ResourceType==='function'&&typeof p1RateFor==='function','generic resources'],['Session Engine',typeof p1StartUniversalSession==='function'||typeof window.startDraftSession==='function','REQUEST/PAY/START + duration/budget/open'],['Finance',typeof p1PartialRefund==='function'&&typeof p1SplitPay==='function','refund/split/receipt'],['Commerce',typeof p1CompleteStockCount==='function'&&typeof p1CreateMembership==='function','stock/membership'],['Device Mesh',typeof p2QueueCommand==='function'&&typeof p2ReliabilitySweep==='function','devices/leases'],['Trust',typeof p3AppendAudit==='function'&&typeof p3VenueHealth==='function','audit/sentinel'],['Revenue',typeof p3InventoryBrain==='function'&&typeof p3MonthlyValueReport==='function','profit intelligence'],['Player',typeof p4PlayerDna==='function'&&typeof p4Churn==='function','DNA/churn/missions'],['Experience',typeof p4CreateCampaign==='function'&&typeof p4SmartBookingOptions==='function','media/booking'],['Sync Contract',typeof p5Handshake==='function'&&typeof p5SyncNow==='function','contract prepared; cloud flag OFF'],['Platform',typeof p5SupportBundle==='function'&&typeof p5SchedulerTick==='function','support/jobs/i18n'],['Rates frozen',num(state.rates?.ps5Solo)===22&&num(state.rates?.ps5Duo)===28&&num(state.rates?.sim)===45,'22/28/45'],['Payment upfront',state.sessionRules?.defaultPaymentTiming==='start','default=start']];return {checks,passed:checks.filter(x=>x[1]).length,total:checks.length,core,cmd};}
-function renderMonsterStatus(){const r=monsterChecks();$('view').innerHTML=`<section class="v17-os-page"><div class="v17-hero"><div><div class="v17-kicker">LA PAUSE OS · ${MONSTER_RELEASE}</div><h1>System Status</h1><p>Contrôle local des couches critiques alignées sur le Master V2 audité.</p></div><div class="v17-mode-badge ${r.passed===r.total?'online':'error'}">${r.passed}/${r.total} PASS</div></div><div class="v17-panel">${r.checks.map(c=>`<div class="row-card"><div class="row-main"><div class="row-title">${esc(c[0])}</div><div class="row-meta">${esc(c[2])}</div></div><span class="tag ${c[1]?'good':'bad'}">${c[1]?'PASS':'FAIL'}</span></div>`).join('')}</div><div class="v17-panel"><div class="v17-panel-title"><div><small>CORE</small><h2>SQLite / Authority</h2></div></div><div class="v17-connection-grid"><div><small>DB</small><b>v${esc(String(r.core.dbSchemaVersion||'?'))}</b></div><div><small>Authority</small><b>${esc(r.core.authorityState||'TABLET_PRIMARY')}</b></div><div><small>Migration</small><b>${esc(r.core.migrationMode||'—')}</b></div><div><small>Network required</small><b>${String(r.core.networkRequired)}</b></div><div><small>Commands</small><b>${num(r.cmd.commandCount)}</b></div><div><small>Canonical Outbox</small><b>${num(r.cmd.canonicalOutboxPending)}</b></div><div><small>Audit V9</small><b>${num(r.cmd.auditV9Count)}</b></div><div><small>Rejected</small><b>${num(r.cmd.rejectedCommandCount)}</b></div></div></div></section>`;}
-const MONSTER_RELEASE_PREV=window.renderView;window.renderView=function(){if(currentView==='systemStatus')return renderMonsterStatus();return MONSTER_RELEASE_PREV();};
-function monsterReleaseNav(){if(document.getElementById('monsterReleaseNav'))return;const a=document.getElementById('p5PlatformNav')||document.getElementById('v17OsControlNav');if(!a)return;const b=document.createElement('button');b.id='monsterReleaseNav';b.innerHTML='<span>✓</span>System Status';b.onclick=()=>{currentView='systemStatus';saveState();try{$('drawerClose')?.click()}catch(_e){}renderView()};a.insertAdjacentElement('afterend',b);}monsterReleaseEnsure();monsterReleaseNav();try{const f=document.querySelector('.drawer-foot .version');if(f)f.textContent=`LA PAUSE OS · Android ${MONSTER_RELEASE}`;}catch(_e){}saveState({eventType:'os.monster_release.boot',payload:{version:MONSTER_RELEASE,code:MONSTER_CODE}});
+/* LA PAUSE OS — commercial client bootstrap. Technical diagnostics stay internal. */
+(function(){
+  const RELEASE='2.1.0-beta1';
+  const CODE=25;
+  try{
+    state.meta=state.meta||{};
+    state.meta.appVersion=RELEASE;
+    state.meta.releaseCode=CODE;
+    const version=document.querySelector('.drawer-foot .version');
+    if(version)version.textContent='LA PAUSE OS · Android';
+  }catch(_e){}
+  setTimeout(()=>{
+    if(!document.querySelector('link[data-client-final]')){
+      const css=document.createElement('link');css.rel='stylesheet';css.href='client-final.css';css.dataset.clientFinal='1';document.head.appendChild(css);
+    }
+    if(!document.querySelector('script[data-client-final]')){
+      const js=document.createElement('script');js.src='client-final.js';js.dataset.clientFinal='1';document.body.appendChild(js);
+    }
+  },0);
+})();
