@@ -242,14 +242,32 @@ public class MainActivity extends Activity {
             if (json == null || json.isEmpty()) return;
             try {
                 JSONObject incoming = new JSONObject(json);
-                String previous = prefs.getString("state_json", "");
-                SharedPreferences.Editor editor = prefs.edit();
-                try { if (!previous.isEmpty()) new JSONObject(previous); editor.putString("state_json_backup", previous); } catch (Exception ignored) {}
-                editor.putString("state_json", json);
-                if (incoming.has("clients")) editor.putString("critical_clients_json", incoming.optJSONArray("clients").toString());
-                editor.apply();
+                persistLegacyCache(incoming, json);
                 if (coreStore != null) coreStore.mirrorLegacyState(json);
             } catch (Exception ignored) {}
+        }
+
+        @JavascriptInterface
+        public String commitCoreCommand(String commandJson, String nextStateJson, String eventJson) {
+            if (coreStore == null) return "{\"ok\":false,\"code\":\"NO_DURABLE_STORAGE\",\"message\":\"Core unavailable\"}";
+            String result = coreStore.commitCommand(commandJson, nextStateJson, eventJson);
+            try {
+                JSONObject r = new JSONObject(result);
+                if (r.optBoolean("ok", false) && r.optJSONObject("state") != null) {
+                    JSONObject authoritative = r.getJSONObject("state");
+                    persistLegacyCache(authoritative, authoritative.toString());
+                }
+            } catch (Exception ignored) {}
+            return result;
+        }
+
+        private void persistLegacyCache(JSONObject incoming, String json) {
+            String previous = prefs.getString("state_json", "");
+            SharedPreferences.Editor editor = prefs.edit();
+            try { if (!previous.isEmpty()) new JSONObject(previous); editor.putString("state_json_backup", previous); } catch (Exception ignored) {}
+            editor.putString("state_json", json);
+            if (incoming.has("clients") && incoming.optJSONArray("clients") != null) editor.putString("critical_clients_json", incoming.optJSONArray("clients").toString());
+            editor.apply();
         }
 
         @JavascriptInterface public String getCoreStatusJson() { return coreStore == null ? "{}" : coreStore.getStatusJson().toString(); }
