@@ -1,6 +1,11 @@
 'use strict';
 (function(){
   try{
+    const technicalViews=new Set(['systemStatus','osCoverage','osHome','osControl','osSaasHub','osCloud','osHQ','osNetwork','osAI','osBilling','saasWorld','platformGovernance']);
+    if(typeof currentView==='string'&&technicalViews.has(currentView)){
+      currentView='veDashboard';
+      if(window.state){state.ui=state.ui||{};state.ui.currentView=currentView;}
+    }
     const ensureCss=(id,href)=>{if(document.getElementById(id))return;const l=document.createElement('link');l.rel='stylesheet';l.href=href;l.id=id;document.head.appendChild(l)};
     ensureCss('clientHardeningCss','client-hardening.css');
     ensureCss('clientFinalCss','client-final.css');
