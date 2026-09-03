@@ -2,16 +2,16 @@
 set -euo pipefail
 A="app/src/main/assets/media/premium"
 mkdir -p "$A"
-get(){ local id="$1" out="$2"; curl -fL --retry 4 --retry-delay 2 "https://images.pexels.com/photos/${id}/pexels-photo-${id}.jpeg?auto=compress&cs=tinysrgb&w=1800&h=1100&fit=crop" -o "$A/$out"; }
-# Free-to-use Pexels photographs, embedded at build time for a fully offline app.
-get 13189272 ps5.jpg
-get 18966450 sim.jpg
-get 7858743 pc.jpg
-get 16256067 billiard.jpg
-get 15473887 snooker.jpg
-get 4080060 table-tennis.jpg
-get 9072202 arcade.jpg
-get 9072216 lounge.jpg
+get(){ local id="$1" out="$2"; curl -fL --retry 4 --retry-delay 2 "https://images.pexels.com/photos/${id}/pexels-photo-${id}.jpeg?auto=compress&cs=tinysrgb&w=2400&h=1350&fit=crop" -o "$A/$out"; }
+# Curated free-to-use Pexels photographs selected specifically for gaming venue context.
+get 9072386 ps5.jpg
+get 13251232 sim.jpg
+get 9072202 pc.jpg
+get 16255996 billiard.jpg
+get 6032656 snooker.jpg
+get 709134 table-tennis.jpg
+get 25798269 arcade.jpg
+get 9072208 lounge.jpg
 python3 - <<'PY'
 from pathlib import Path
 
@@ -32,8 +32,8 @@ def jpeg_size(path):
 base=Path('app/src/main/assets/media/premium')
 for name in ('ps5.jpg','sim.jpg','pc.jpg','billiard.jpg','snooker.jpg','table-tennis.jpg','arcade.jpg','lounge.jpg'):
     p=base/name
-    if p.stat().st_size < 90000: raise SystemExit(f'{name}: file too small {p.stat().st_size}')
+    if p.stat().st_size < 120000: raise SystemExit(f'{name}: file too small {p.stat().st_size}')
     w,h=jpeg_size(p)
-    if w < 1200 or h < 700: raise SystemExit(f'{name}: insufficient {w}x{h}')
+    if w < 1600 or h < 900: raise SystemExit(f'{name}: insufficient {w}x{h}')
     print(f'{name}: {w}x{h} {p.stat().st_size} bytes')
 PY
