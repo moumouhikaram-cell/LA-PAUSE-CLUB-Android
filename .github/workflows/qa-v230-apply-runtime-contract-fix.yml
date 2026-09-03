@@ -1,0 +1,62 @@
+name: Apply v2.3 Runtime Contract Repair
+
+on:
+  push:
+    branches: [qa-v230-temp]
+    paths:
+      - ".github/workflows/qa-v230-apply-runtime-contract-fix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: qa-v230-temp
+          fetch-depth: 0
+      - name: Repair hash fallback and feature flag contracts
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p3=Path('v16-original-source/app/src/main/assets/p3-owner.js')
+          s=p3.read_text()
+          old="function p3Hash(input){try{if(native?.sha256)return native.sha256(String(input))}catch(_e){}let h=2166136261;for(const ch of String(input)){h^=ch.charCodeAt(0);h=Math.imul(h,16777619)}return 'fnv-'+(h>>>0).toString(16)}"
+          new="function p3Hash(input){try{if(native?.sha256){const out=native.sha256(String(input));if(typeof out==='string'&&out.trim())return out.trim()}}catch(_e){}let h=2166136261;for(const ch of String(input)){h^=ch.charCodeAt(0);h=Math.imul(h,16777619)}return 'fnv-'+(h>>>0).toString(16)}"
+          if old not in s: raise SystemExit('p3Hash canonical pattern not found')
+          p3.write_text(s.replace(old,new,1))
+
+          p5=Path('v16-original-source/app/src/main/assets/p5-platform.js')
+          s=p5.read_text()
+          if "['featureFlags','eventSchemas'" not in s: raise SystemExit('P5 flag-list pattern not found')
+          s=s.replace("['featureFlags','eventSchemas'","['eventSchemas'",1)
+          needle=".forEach(k=>{if(!Array.isArray(state[k]))state[k]=[]});state.platform="
+          migration=".forEach(k=>{if(!Array.isArray(state[k]))state[k]=[]});if(!Array.isArray(state.platformFeatureFlags)){const legacy=state.featureFlags;state.platformFeatureFlags=Array.isArray(legacy)?legacy.filter(Boolean).map(f=>({...f})):legacy&&typeof legacy==='object'?Object.entries(legacy).filter(([,v])=>typeof v==='boolean').map(([key,enabled])=>({key,enabled,source:'MIGRATED_MASTER_FLAG',updatedAt:now()})):[];}state.platform="
+          if needle not in s: raise SystemExit('P5 ensure insertion point not found')
+          s=s.replace(needle,migration,1)
+          s=s.replace('state.featureFlags','state.platformFeatureFlags')
+          if 'p5PlatformEnsure();p5SeedJobs();' not in s:
+              if 'p5SeedJobs();p5SchedulerTick();' not in s: raise SystemExit('P5 boot sequence pattern not found')
+              s=s.replace('p5SeedJobs();p5SchedulerTick();','p5PlatformEnsure();p5SeedJobs();p5SchedulerTick();',1)
+          p5.write_text(s)
+          PY
+          node --check v16-original-source/app/src/main/assets/p3-owner.js
+          node --check v16-original-source/app/src/main/assets/p5-platform.js
+          grep -q 'platformFeatureFlags' v16-original-source/app/src/main/assets/p5-platform.js
+          grep -q 'p5PlatformEnsure();p5SeedJobs();' v16-original-source/app/src/main/assets/p5-platform.js
+          ! grep -q "if(native?.sha256)return native.sha256" v16-original-source/app/src/main/assets/p3-owner.js
+      - name: Commit repaired runtime
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git config user.name "LA PAUSE OS QA"
+          git config user.email "actions@users.noreply.github.com"
+          git add v16-original-source/app/src/main/assets/p3-owner.js v16-original-source/app/src/main/assets/p5-platform.js
+          git diff --cached --quiet && exit 0
+          git commit -m "fix(runtime): reconcile P5 state contracts and hash fallback"
+          git push origin HEAD:qa-v230-temp
