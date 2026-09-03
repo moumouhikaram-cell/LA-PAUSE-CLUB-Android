@@ -10,90 +10,17 @@ let navigatingBack=false;
 const byId=id=>document.getElementById(id);
 function safe(fn){try{return fn()}catch(_){return undefined}}
 function resourceType(st){return safe(()=>typeof v172OsType==='function'?v172OsType(st):typeof p1ResourceType==='function'?p1ResourceType(st):String(st?.osResourceType||st?.type||'CUSTOM').toUpperCase())||'CUSTOM'}
-function normalizeResources(){
-  state.ratePlans=Array.isArray(state.ratePlans)?state.ratePlans:[];
-  for(const st of (state.stations||[])){
-    const t=resourceType(st);st.osResourceType=t;st.enabled=st.enabled!==false;
-    st.capabilities={meteredTime:true,...(st.capabilities||{})};
-    const plan=state.ratePlans.find(p=>p&&p.enabled!==false&&p.scope==='TYPE'&&String(p.resourceType||'').toUpperCase()===t);
-    if(plan&&!st.ratePlanId)st.ratePlanId=plan.id;
-  }
-}
+function normalizeResources(){state.ratePlans=Array.isArray(state.ratePlans)?state.ratePlans:[];for(const st of (state.stations||[])){const t=resourceType(st);st.osResourceType=t;st.enabled=st.enabled!==false;st.capabilities={meteredTime:true,...(st.capabilities||{})};const plan=state.ratePlans.find(p=>p&&p.enabled!==false&&p.scope==='TYPE'&&String(p.resourceType||'').toUpperCase()===t);if(plan&&!st.ratePlanId)st.ratePlanId=plan.id}}
 function isShown(id){return !!byId(id)?.classList.contains('show')}
-function closeTransient(){
-  if(isShown('modalBackdrop')){safe(()=>closeModal());return true}
-  if(isShown('overlay')){safe(()=>closeSheet());return true}
-  if(isShown('drawer')||isShown('drawerBackdrop')){safe(()=>closeDrawer());return true}
-  return false;
-}
-function cleanClientUi(){
-  document.body.classList.toggle('client-premium',PREMIUM_VIEWS.has(currentView));
-  const sub=document.querySelector('.drawer-brand-sub');if(sub)sub.textContent='Gaming Venue Operating System';
-  const ver=document.querySelector('.drawer-foot .version');if(ver)ver.textContent='LA PAUSE OS · Android';
-  const mode=byId('drawerMode');if(mode&&!state.sync?.enabled)mode.textContent='Données locales protégées';
-  const forbidden=['CDC','MASTER V2','SYSTEM STATUS','BLOCKED_EXTERNAL','ACTIVE_LOCAL','FUTURE_DISABLED','EVENT OUTBOX','SQLITE','COMMANDENVELOPE','DOMAIN EVENT','ARCHITECTURE','CLOUD & AUTOMATION','OS HOME'];
-  document.querySelectorAll('.drawer-menu button,.drawer-menu .drawer-section').forEach(el=>{const t=(el.textContent||'').trim().toUpperCase();if(forbidden.some(x=>t.includes(x)))el.classList.add('client-hidden')});
-  ['masterCommandCenterNav','monsterReleaseNav','v17OsControlNav','p5PlatformNav'].forEach(id=>byId(id)?.classList.add('client-hidden'));
-  document.querySelectorAll('[data-os-go],[data-go="systemStatus"],[data-go="osHome"]').forEach(el=>el.classList.add('client-hidden'));
-}
-function goClient(view){
-  if(!view||DEV_VIEWS.has(view))view='veDashboard';
-  navigatingBack=true;currentView=view;state.ui=state.ui||{};state.ui.currentView=view;safe(()=>saveState());safe(()=>renderView());navigatingBack=false;window.scrollTo(0,0);
-}
-window.nativeBack=function(){
-  if(closeTransient())return true;
-  while(history.length){const prev=history.pop();if(prev&&!DEV_VIEWS.has(prev)&&prev!==currentView){goClient(prev);return true}}
-  if(!['veDashboard','dashboard','floor'].includes(currentView)){goClient('veDashboard');return true}
-  return !window.confirm('Voulez-vous vraiment quitter LA PAUSE OS ?');
-};
-function installSwipeBack(){
-  let sx=0,sy=0,started=0;
-  document.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;const t=e.touches[0];sx=t.clientX;sy=t.clientY;started=Date.now()},{passive:true});
-  document.addEventListener('touchend',e=>{if(!started||!e.changedTouches.length)return;const t=e.changedTouches[0],dx=t.clientX-sx,dy=Math.abs(t.clientY-sy),dt=Date.now()-started;started=0;if(sx<=42&&dx>=78&&dy<=60&&dt<700)window.nativeBack()},{passive:true});
-}
-function installRenderTracking(){
-  const base=window.renderView;if(typeof base!=='function')return;
-  window.renderView=function(){
-    const next=DEV_VIEWS.has(currentView)?'veDashboard':currentView;
-    if(next!==currentView)currentView=next;
-    if(!navigatingBack&&lastView&&currentView!==lastView&&!DEV_VIEWS.has(lastView)){
-      if(history[history.length-1]!==lastView)history.push(lastView);if(history.length>20)history.shift();
-    }
-    lastView=currentView;
-    const out=base.apply(this,arguments);setTimeout(cleanClientUi,0);return out;
-  };
-}
-function installUniversalSessionGuard(){
-  const originalOpen=window.openStation;if(typeof originalOpen==='function'){
-    window.openStation=function(stationId){
-      const st=safe(()=>stationById(stationId));if(!st)return;
-      normalizeResources();
-      const running=safe(()=>activeSessionFor(stationId));if(running)return originalOpen.apply(this,arguments);
-      const rate=safe(()=>typeof p1RateFor==='function'?p1RateFor(st,1):0)||0;
-      if(rate<=0){safe(()=>toast('Configure le tarif de cette station avant de démarrer.'));currentView='veSetup';safe(()=>renderView());return}
-      if(state.cashSettings?.shiftRequired&&typeof currentShift==='function'&&!currentShift()){
-        safe(()=>showModal(`<h3>Ouvrir la caisse</h3><p>Une caisse doit être ouverte avant la première session de la journée.</p><div class="modal-actions"><button class="ghost" id="clientShiftCancel">Annuler</button><button class="primary" id="clientShiftOpen">Ouvrir la caisse</button></div>`));
-        setTimeout(()=>{const c=byId('clientShiftCancel'),o=byId('clientShiftOpen');if(c)c.onclick=()=>safe(()=>closeModal());if(o)o.onclick=()=>{safe(()=>closeModal());safe(()=>setView('cash'))}},0);return;
-      }
-      return originalOpen.apply(this,arguments);
-    };
-  }
-  const originalStart=window.startDraftSession;if(typeof originalStart==='function'){
-    window.startDraftSession=function(){
-      const sid=typeof selectedStationId==='string'?selectedStationId:null;const before=(state.sessions||[]).length;
-      const out=originalStart.apply(this,arguments);
-      setTimeout(()=>{if(!sid)return;const s=(state.sessions||[]).find(x=>x.stationId===sid&&['active','paused'].includes(String(x.status||'').toLowerCase()));if(!s&&(state.sessions||[]).length===before&&!isShown('modalBackdrop')&&!isShown('overlay'))safe(()=>toast('La session n’a pas démarré. Vérifie le tarif et la caisse.'));cleanClientUi()},120);
-      return out;
-    };
-  }
-}
-function boot(){
-  normalizeResources();
-  state.meta=state.meta||{};state.meta.clientRuntimeVersion=CLIENT_VERSION;
-  if(DEV_VIEWS.has(currentView)||!currentView)currentView='veDashboard';
-  state.ui=state.ui||{};state.ui.currentView=currentView;
-  installRenderTracking();installUniversalSessionGuard();installSwipeBack();
-  cleanClientUi();safe(()=>saveState());safe(()=>renderView());
-}
+function closeTransient(){if(isShown('modalBackdrop')){safe(()=>closeModal());return true}if(isShown('overlay')){safe(()=>closeSheet());return true}if(isShown('drawer')||isShown('drawerBackdrop')){safe(()=>closeDrawer());return true}return false}
+function cleanClientUi(){document.body.classList.toggle('client-premium',PREMIUM_VIEWS.has(currentView));const sub=document.querySelector('.drawer-brand-sub');if(sub)sub.textContent='Gaming Venue Operating System';const ver=document.querySelector('.drawer-foot .version');if(ver)ver.textContent='LA PAUSE OS · Android';const mode=byId('drawerMode');if(mode&&!state.sync?.enabled)mode.textContent='Données locales protégées';const forbidden=['CDC','MASTER V2','SYSTEM STATUS','BLOCKED_EXTERNAL','ACTIVE_LOCAL','FUTURE_DISABLED','EVENT OUTBOX','SQLITE','COMMANDENVELOPE','DOMAIN EVENT','ARCHITECTURE','CLOUD & AUTOMATION','OS HOME'];document.querySelectorAll('.drawer-menu button,.drawer-menu .drawer-section').forEach(el=>{const t=(el.textContent||'').trim().toUpperCase();if(forbidden.some(x=>t.includes(x)))el.classList.add('client-hidden')});['masterCommandCenterNav','monsterReleaseNav','v17OsControlNav','p5PlatformNav'].forEach(id=>byId(id)?.classList.add('client-hidden'));document.querySelectorAll('[data-os-go],[data-go="systemStatus"],[data-go="osHome"]').forEach(el=>el.classList.add('client-hidden'))}
+function goClient(view){if(!view||DEV_VIEWS.has(view))view='veDashboard';navigatingBack=true;currentView=view;state.ui=state.ui||{};state.ui.currentView=view;safe(()=>saveState());safe(()=>renderView());navigatingBack=false;window.scrollTo(0,0)}
+function backInternal(){if(closeTransient())return true;while(history.length){const prev=history.pop();if(prev&&!DEV_VIEWS.has(prev)&&prev!==currentView){goClient(prev);return true}}if(!['veDashboard','dashboard','floor'].includes(currentView)){goClient('veDashboard');return true}return false}
+window.nativeBack=function(){if(backInternal())return true;return !window.confirm('Voulez-vous vraiment quitter LA PAUSE OS ?')};
+window.clientNativeBack=function(){if(backInternal())return true;safe(()=>toast('Vous êtes déjà sur l’accueil.'));return true};
+function installSwipeBack(){let sx=0,sy=0,started=0;document.addEventListener('touchstart',e=>{if(e.touches.length!==1||e.target?.closest?.('input,textarea,select,[contenteditable="true"],.drawer-menu,.ve-floor-toolbar,.chips'))return;const t=e.touches[0];sx=t.clientX;sy=t.clientY;started=Date.now()},{passive:true});document.addEventListener('touchend',e=>{if(!started||!e.changedTouches.length)return;const t=e.changedTouches[0],dx=t.clientX-sx,dy=Math.abs(t.clientY-sy),dt=Date.now()-started;started=0;if(sx<=42&&dx>=78&&dy<=60&&dt<700)window.clientNativeBack()},{passive:true})}
+function installRenderTracking(){const base=window.renderView;if(typeof base!=='function')return;window.renderView=function(){const next=DEV_VIEWS.has(currentView)?'veDashboard':currentView;if(next!==currentView)currentView=next;if(!navigatingBack&&lastView&&currentView!==lastView&&!DEV_VIEWS.has(lastView)){if(history[history.length-1]!==lastView)history.push(lastView);if(history.length>20)history.shift()}lastView=currentView;const out=base.apply(this,arguments);setTimeout(cleanClientUi,0);return out}}
+function installUniversalSessionGuard(){const originalOpen=window.openStation;if(typeof originalOpen==='function'){window.openStation=function(stationId){const st=safe(()=>stationById(stationId));if(!st)return;normalizeResources();const running=safe(()=>activeSessionFor(stationId));if(running)return originalOpen.apply(this,arguments);const rate=safe(()=>typeof p1RateFor==='function'?p1RateFor(st,1):0)||0;if(rate<=0){safe(()=>toast('Configure le tarif de cette station avant de démarrer.'));currentView='veSetup';safe(()=>renderView());return}if(state.cashSettings?.shiftRequired&&typeof currentShift==='function'&&!currentShift()){safe(()=>showModal(`<h3>Ouvrir la caisse</h3><p>Une caisse doit être ouverte avant la première session de la journée.</p><div class="modal-actions"><button class="ghost" id="clientShiftCancel">Annuler</button><button class="primary" id="clientShiftOpen">Ouvrir la caisse</button></div>`));setTimeout(()=>{const c=byId('clientShiftCancel'),o=byId('clientShiftOpen');if(c)c.onclick=()=>safe(()=>closeModal());if(o)o.onclick=()=>{safe(()=>closeModal());safe(()=>setView('cash'))}},0);return}return originalOpen.apply(this,arguments)}}const originalStart=window.startDraftSession;if(typeof originalStart==='function'){window.startDraftSession=function(){const sid=typeof selectedStationId==='string'?selectedStationId:null;const before=(state.sessions||[]).length;const out=originalStart.apply(this,arguments);setTimeout(()=>{if(!sid)return;const s=(state.sessions||[]).find(x=>x.stationId===sid&&['active','paused'].includes(String(x.status||'').toLowerCase()));if(!s&&(state.sessions||[]).length===before&&!isShown('modalBackdrop')&&!isShown('overlay'))safe(()=>toast('La session n’a pas démarré. Vérifie le tarif et la caisse.'));cleanClientUi()},120);return out}}}
+function boot(){normalizeResources();state.meta=state.meta||{};state.meta.clientRuntimeVersion=CLIENT_VERSION;if(DEV_VIEWS.has(currentView)||!currentView)currentView='veDashboard';state.ui=state.ui||{};state.ui.currentView=currentView;installRenderTracking();installUniversalSessionGuard();installSwipeBack();cleanClientUi();safe(()=>saveState());safe(()=>renderView())}
 setTimeout(boot,120);
 })();
