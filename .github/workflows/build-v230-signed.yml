@@ -50,6 +50,27 @@ jobs:
           set -euxo pipefail
           bash tools/prepare-client-media-v230.sh | tee ../media-v230.txt
 
+      - name: Full customer click E2E audit
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          npm install --no-save @playwright/test@1.55.0
+          npx playwright install --with-deps chromium
+          python3 -m http.server 4173 --directory app/src/main/assets >../e2e-server.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:4173/index.html >/dev/null && break; sleep 1; done
+          curl -fsS http://127.0.0.1:4173/index.html >/dev/null
+          LP_E2E_URL=http://127.0.0.1:4173/index.html npx playwright test tools/client-v230-e2e.spec.js --reporter=line --workers=1 | tee ../e2e-v230.txt
+          grep -q 'V230_SINGLE_RUNTIME_E2E_OK' ../e2e-v230.txt
+          grep -q 'V230_ALL_ROUTES_CLICK_OK' ../e2e-v230.txt
+          grep -q 'V230_BACK_HOME_EXIT_OK' ../e2e-v230.txt
+          grep -q 'V230_ROTATION_PROGRESS_OK' ../e2e-v230.txt
+          grep -q 'V230_SESSION_CLICK_FLOW_OK' ../e2e-v230.txt
+          grep -q 'V230_SIM_CLICK_FLOW_OK' ../e2e-v230.txt
+          grep -q 'V230_CLIENT_E2E_OK' ../e2e-v230.txt
+
       - name: Restore permanent LA PAUSE signing key
         shell: bash
         env:
@@ -162,6 +183,7 @@ jobs:
             signed-sha256.txt
             signed-size.txt
             media-v230.txt
+            e2e-v230.txt
             client-v230-audit.txt
             policy-v230.txt
             domain-v230.txt
