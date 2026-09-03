@@ -70,6 +70,7 @@ jobs:
           node tools/master-v2-domain-tests.js | tee -a ../qa-domain.txt
           node tools/universal-resource-client-tests.js | tee -a ../qa-domain.txt
       - name: Real customer navigation and route journey
+        continue-on-error: true
         working-directory: v16-original-source
         shell: bash
         run: |
@@ -80,34 +81,42 @@ jobs:
           s=p.read_text()
           old="LP.restoring=false;LP.lastRendered='csHome';LP.nav.length=0;state.ui.clientNavStack=[];assert.strictEqual(LP.nav.length,0"
           new="LP.restoring=false;LP.lastRendered='csHome';LP.nav.length=0;evalx(`state.ui.clientNavStack=[]`);assert.strictEqual(LP.nav.length,0"
-          if old not in s: raise SystemExit('QA root fixture pattern not found')
-          p.write_text(s.replace(old,new))
+          if old in s: s=s.replace(old,new)
+          s=s.replace("String(e?.stack||e)","String(e?.detail?.stack||e?.cause?.stack||e?.stack||e)")
+          p.write_text(s)
           PY
           node tools/client-v230-browser-qa.js | tee ../qa-browser.txt
       - name: Image dimensions sharpness uniqueness
+        continue-on-error: true
         working-directory: v16-original-source
         shell: bash
         run: .qa-venv/bin/python tools/client-v230-media-qa.py | tee ../qa-media.txt
       - name: Compile release candidate
+        continue-on-error: true
         working-directory: v16-original-source
         shell: bash
         run: |
           set -euxo pipefail
-          gradle --no-daemon --stacktrace :app:assembleRelease
+          gradle --no-daemon --stacktrace :app:assembleRelease | tee ../qa-build.txt
           test -f app/build/outputs/apk/release/app-release-unsigned.apk
       - name: Binary content audit
+        if: always()
+        continue-on-error: true
         working-directory: v16-original-source
         shell: bash
         run: |
           set -euxo pipefail
           APK=app/build/outputs/apk/release/app-release-unsigned.apk
+          test -f "$APK"
           unzip -l "$APK" > ../qa-apk-assets.txt
           for f in ps5.jpg sim.jpg pc.jpg billiard.jpg snooker.jpg table-tennis.jpg arcade.jpg lounge.jpg; do grep -q "assets/media/premium/$f" ../qa-apk-assets.txt; done
           unzip -p "$APK" assets/index.html > ../qa-index.html
           grep -q 'client-product-session-policy.js' ../qa-index.html
+          grep -q 'client-product-boot.js' ../qa-index.html
           ! grep -q 'src="client-shell.js"' ../qa-index.html
           ! grep -q 'src="venue-experience.js"' ../qa-index.html
           sha256sum "$APK" > ../qa-unsigned-sha256.txt
+          echo BINARY_CONTENT_AUDIT_OK | tee ../qa-binary-verdict.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -118,9 +127,31 @@ jobs:
             qa-browser.txt
             qa-media.txt
             qa-media-prepare.txt
+            qa-build.txt
             qa-apk-assets.txt
             qa-index.html
             qa-unsigned-sha256.txt
+            qa-binary-verdict.txt
             v16-original-source/v230-media-contact-sheet.jpg
           if-no-files-found: warn
           retention-days: 14
+      - name: Final release-candidate verdict
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          fail=0
+          check(){ local f="$1" p="$2"; if ! test -f "$f" || ! grep -q "$p" "$f"; then echo "MISSING: $p in $f"; fail=1; fi; }
+          check qa-static.txt 'V230_CLIENT_AUDIT_OK'
+          check qa-static.txt 'CLIENT_ROUTE_AUDIT_OK'
+          check qa-static.txt 'CLIENT_PRODUCT_SINGLE_SHELL_AUDIT_OK'
+          check qa-static.txt 'RESPONSIVE_ERGONOMICS_AUDIT_OK'
+          check qa-domain.txt 'V230_SESSION_POLICY_TESTS_OK'
+          check qa-domain.txt 'MASTER_V2_DOMAIN_TESTS_OK'
+          check qa-domain.txt 'UNIVERSAL_RESOURCE_CLIENT_TESTS_OK'
+          check qa-browser.txt 'CLIENT_V230_BROWSER_QA_OK'
+          check qa-media.txt 'CLIENT_V230_MEDIA_QA_OK'
+          check qa-binary-verdict.txt 'BINARY_CONTENT_AUDIT_OK'
+          test -f v16-original-source/v230-media-contact-sheet.jpg || { echo 'MISSING media contact sheet'; fail=1; }
+          if [ "$fail" -ne 0 ]; then echo 'CLIENT_V230_RELEASE_CANDIDATE_REJECTED'; exit 1; fi
+          echo 'CLIENT_V230_RELEASE_CANDIDATE_GREEN'
