@@ -1,0 +1,1 @@
+Do not release the frozen premium UI until the actual JPEG assets are present in the APK.
