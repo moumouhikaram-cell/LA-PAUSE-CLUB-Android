@@ -10,12 +10,12 @@
     <application
         android:allowBackup="true"
         android:icon="@drawable/ic_launcher"
-        android:label="LA PAUSE CLUB Manager"
+        android:label="LA PAUSE OS"
         android:supportsRtl="true"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="true">
         <activity
-            android:name=".MainActivity"
+            android:name=".PremiumActivity"
             android:exported="true"
             android:configChanges="orientation|screenSize|smallestScreenSize|keyboardHidden|uiMode">
             <intent-filter>
