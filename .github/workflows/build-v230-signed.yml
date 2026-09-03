@@ -58,28 +58,49 @@ jobs:
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
           set -euo pipefail
-          test -n "$KS_B64"; test -n "$KS_PASS"; test -n "$KEY_ALIAS"
+          test -n "$KS_B64"
+          test -n "$KS_PASS"
+          test -n "$KEY_ALIAS"
           echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/la-pause-release.p12"
           keytool -list -storetype PKCS12 -keystore "$RUNNER_TEMP/la-pause-release.p12" -storepass "$KS_PASS" -alias "$KEY_ALIAS" >/dev/null
 
-      - name: Client-final 2.3 product gates
+      - name: Final 2.3 product gates
         working-directory: v16-original-source
         shell: bash
         run: |
           set -euxo pipefail
           A=app/src/main/assets
+          J=app/src/main/java/com/lapauseclub/manager
           grep -q 'versionCode = 28' app/build.gradle.kts
           grep -q 'versionName = "2.3.0"' app/build.gradle.kts
           grep -q 'applicationId = "com.lapauseclub.manager"' app/build.gradle.kts
           grep -q 'android:name=".PremiumActivity"' app/src/main/AndroidManifest.xml
           grep -q 'android:enableOnBackInvokedCallback="true"' app/src/main/AndroidManifest.xml
-          for f in client-product-core.js client-product-media.js client-product-views.js client-product-setup.js client-product-v230.js client-product-boot.js master-v2-runtime.js master-v2-safety.js p1-core.js; do node --check "$A/$f"; done
+          grep -q 'registerOnBackInvokedCallback' "$J/PremiumActivity.java"
+          grep -q 'requestExitConfirmation' "$J/PremiumActivity.java"
+          grep -q 'getSafeInsetsJson' "$J/PremiumActivity.java"
+          for f in client-product-core.js client-product-media.js client-product-views.js client-product-setup.js client-product-session-policy.js client-product-boot.js master-v2-runtime.js master-v2-safety.js p1-core.js; do node --check "$A/$f"; done
+          grep -q 'src="client-product-session-policy.js"' "$A/index.html"
+          grep -q 'client-product-v230.css' "$A/index.html"
+          ! grep -q 'src="client-product-v230.js"' "$A/index.html"
+          ! grep -q 'src="client-shell.js"' "$A/index.html"
+          ! grep -q 'src="client-platform-guard.js"' "$A/index.html"
+          ! grep -q 'src="client-hardening.js"' "$A/index.html"
+          ! grep -q 'src="venue-experience.js"' "$A/index.html"
+          ! grep -q 'src="p1-floor.js"' "$A/index.html"
+          grep -q 'ps5Solo:22' "$A/app.js"
+          grep -q 'ps5Duo:28' "$A/app.js"
+          grep -q 'sim:45' "$A/app.js"
+          grep -q "defaultPaymentTiming:'start'" "$A/app.js"
           node tools/client-v230-audit.js | tee ../client-v230-audit.txt
-          grep -q 'V230_UNIFIED_BACK_OK' ../client-v230-audit.txt
-          grep -q 'V230_SMART_CASH_OK' ../client-v230-audit.txt
+          grep -q 'V230_SINGLE_DASHBOARD_OK' ../client-v230-audit.txt
+          grep -q 'V230_BACK_STACK_OK' ../client-v230-audit.txt
+          grep -q 'V230_CASH_POLICY_OK' ../client-v230-audit.txt
           grep -q 'V230_SAAS_DASHBOARD_OK' ../client-v230-audit.txt
           grep -q 'V230_CONTEXT_MEDIA_OK' ../client-v230-audit.txt
-          grep -q 'CLIENT_V230_AUDIT_OK' ../client-v230-audit.txt
+          grep -q 'V230_CLIENT_AUDIT_OK' ../client-v230-audit.txt
+          node tools/client-v230-policy-tests.js | tee ../policy-v230.txt
+          grep -q 'V230_SESSION_POLICY_TESTS_OK' ../policy-v230.txt
           node tools/master-v2-domain-tests.js | tee ../domain-v230.txt
           grep -q 'MASTER_V2_DOMAIN_TESTS_OK' ../domain-v230.txt
           grep -q 'UNIVERSAL_RESOURCE_SESSIONS_OK' ../domain-v230.txt
@@ -114,10 +135,11 @@ jobs:
           grep "versionName='2.3.0'" signed-badging.txt
           grep -qi 'Signer #1 certificate DN: CN=LA PAUSE OS' signed-certificate.txt
           unzip -l "$SIGNED" | tee signed-assets.txt
-          for f in client-product-core.js client-product-media.js client-product-views.js client-product-setup.js client-product-v230.js client-product-boot.js client-product-core.css client-product-responsive.css client-product-v230.css; do grep -q "assets/$f" signed-assets.txt; done
+          for f in client-product-core.js client-product-media.js client-product-views.js client-product-setup.js client-product-session-policy.js client-product-boot.js client-product-core.css client-product-responsive.css client-product-v230.css; do grep -q "assets/$f" signed-assets.txt; done
           for f in ps5.jpg sim.jpg pc.jpg billiard.jpg snooker.jpg table-tennis.jpg arcade.jpg lounge.jpg; do grep -q "assets/media/premium/$f" signed-assets.txt; unzip -p "$SIGNED" "assets/media/premium/$f" | wc -c | awk '$1 > 120000'; done
           unzip -p "$SIGNED" assets/index.html > signed-index.html
-          grep -q 'client-product-v230.js' signed-index.html
+          grep -q 'client-product-session-policy.js' signed-index.html
+          ! grep -q 'src="client-product-v230.js"' signed-index.html
           ! grep -q 'src="client-shell.js"' signed-index.html
           ! grep -q 'src="client-platform-guard.js"' signed-index.html
           sha256sum "$SIGNED" | tee signed-sha256.txt
@@ -141,6 +163,7 @@ jobs:
             signed-size.txt
             media-v230.txt
             client-v230-audit.txt
+            policy-v230.txt
             domain-v230.txt
           if-no-files-found: error
           retention-days: 30
