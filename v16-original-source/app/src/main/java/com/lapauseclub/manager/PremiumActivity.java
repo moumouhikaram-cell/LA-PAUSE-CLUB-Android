@@ -102,7 +102,7 @@ public class PremiumActivity extends MainActivity {
             return;
         }
         clientWebView.evaluateJavascript(
-                "window.nativeBack ? window.nativeBack() : false",
+                "window.nativeBackContract ? window.nativeBackContract() : (window.nativeBack ? window.nativeBack() : false)",
                 value -> { if (!"true".equals(value)) confirmExitNative(); }
         );
     }
