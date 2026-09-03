@@ -5,12 +5,11 @@ on:
   push:
     branches: [android-p1-monster-dev]
     paths:
-      - "v16-original-source/app/src/main/assets/client-*.js"
-      - "v16-original-source/app/src/main/assets/client-*.css"
-      - "v16-original-source/app/src/main/assets/master-v2-welcome.js"
-      - "v16-original-source/app/src/main/assets/monster-release.js"
+      - "v16-original-source/app/src/main/assets/client-shell.*"
+      - "v16-original-source/app/src/main/assets/index.html"
+      - "v16-original-source/tools/client-shell-audit.js"
+      - "v16-original-source/tools/master-v2-domain-tests.js"
       - "v16-original-source/app/src/main/assets/p1-core.js"
-      - "v16-original-source/tools/**"
       - ".github/workflows/client-final-ci.yml"
 
 permissions:
@@ -35,46 +34,29 @@ jobs:
           set -euxo pipefail
           export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
-          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/cmdline-tools/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/36.0.0:$PATH"
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/36.0.0:$PATH"
           echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
-          echo "$ANDROID_HOME/cmdline-tools/bin" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/build-tools/36.0.0" >> "$GITHUB_PATH"
           echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
-          command -v sdkmanager
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
-      - name: Client product gates
+      - name: Single-shell client audit
+        working-directory: v16-original-source
         shell: bash
         run: |
           set -euxo pipefail
-          A=v16-original-source/app/src/main/assets
-          test -f "$A/client-hardening.js"
-          test -f "$A/client-hardening.css"
-          test -f "$A/client-persistent-dock.js"
-          test -f "$A/client-final.js"
-          test -f "$A/client-final.css"
-          node --check "$A/client-hardening.js"
-          node --check "$A/client-persistent-dock.js"
-          node --check "$A/client-final.js"
-          node --check "$A/master-v2-welcome.js"
-          grep -q "BILLIARD_TABLE" "$A/p1-core.js"
-          grep -q "SNOOKER_TABLE" "$A/p1-core.js"
-          grep -q "PC_GAMING" "$A/p1-core.js"
-          grep -q "window.openStation" "$A/p1-core.js"
-          grep -q "window.startDraftSession" "$A/master-v2-runtime.js"
-          grep -q "window.nativeBack" "$A/client-final.js"
-          grep -q "clientNativeBack" "$A/client-final.js"
-          grep -q "safe-area-inset-bottom" "$A/client-final.css"
-          ! grep -q "System Status" "$A/monster-release.js"
-          ! grep -q "CDC MASTER" "$A/monster-release.js"
-      - name: Domain regression tests
+          node --check app/src/main/assets/client-shell.js
+          node tools/client-shell-audit.js
+      - name: Universal resource domain tests
         working-directory: v16-original-source
-        run: node tools/master-v2-domain-tests.js
-      - name: Universal resource client tests
-        working-directory: v16-original-source
-        run: node tools/universal-resource-client-tests.js
+        shell: bash
+        run: |
+          set -euxo pipefail
+          node tools/master-v2-domain-tests.js | tee ../domain-tests.txt
+          grep -q 'MASTER_V2_DOMAIN_TESTS_OK' ../domain-tests.txt
+          grep -q 'UNIVERSAL_RESOURCE_SESSIONS_OK' ../domain-tests.txt
       - name: Compile Android
         working-directory: v16-original-source
         run: gradle --no-daemon --stacktrace :app:compileReleaseJavaWithJavac
