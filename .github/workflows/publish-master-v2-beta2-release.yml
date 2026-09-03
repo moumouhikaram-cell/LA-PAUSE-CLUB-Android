@@ -1,0 +1,62 @@
+name: Publish Master V2 beta2 APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - android-p1-monster-dev
+    paths:
+      - ".github/workflows/publish-master-v2-beta2-release.yml"
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ARTIFACT_ID: "9873482430"
+      BUILD_SHA: "77623f6df8e6e75691cab0013b781263b6139b29"
+      TAG: "android-v2.0.0-beta2-master-v2"
+      APK: "LA-PAUSE-OS-Android-v2.0.0-beta2-MASTER-V2-SIGNED.apk"
+      EXPECTED_APK_SHA256: "501c0b034d4ae4e67c86f3b6d988d1fa0b777badd23ac4afb21871b5e5c64b9d"
+      EXPECTED_CERT_SHA256: "f154909d8c631131975553c41481b67c282f514beb0ed9ab228d7275fa8e321f"
+    steps:
+      - name: Download exact verified signed artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euxo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" > artifact.zip
+          unzip -q artifact.zip -d artifact
+          test -f "artifact/$APK"
+      - name: Re-verify artifact identity
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ACTUAL="$(sha256sum "artifact/$APK" | awk '{print $1}')"
+          test "$ACTUAL" = "$EXPECTED_APK_SHA256"
+          grep -q "versionCode='24'" artifact/signed-badging.txt
+          grep -q "versionName='2.0.0-beta2'" artifact/signed-badging.txt
+          grep -q 'MASTER_V2_DOMAIN_TESTS_OK' artifact/master-v2-domain-tests.txt
+          grep -qi "$EXPECTED_CERT_SHA256" artifact/signed-certificate.txt
+      - name: Publish prerelease APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "artifact/$APK#LA PAUSE OS Android v2.0.0-beta2 APK" --clobber
+          else
+            gh release create "$TAG" "artifact/$APK#LA PAUSE OS Android v2.0.0-beta2 APK" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$BUILD_SHA" \
+              --title "LA PAUSE OS Android v2.0.0-beta2 · Master V2" \
+              --prerelease \
+              --notes "Master V2 Android beta2. Package com.lapauseclub.manager, versionCode 24. Signed with the permanent LA PAUSE OS certificate. SHA-256: $EXPECTED_APK_SHA256. Install directly over the existing signed LA PAUSE OS APK; do not uninstall first."
+          fi
+          gh release view "$TAG" --json url,tagName,isPrerelease,assets
