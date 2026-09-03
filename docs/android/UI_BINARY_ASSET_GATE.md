@@ -1,0 +1,1 @@
+Release gate: premium binary media must be present and referenced by the frozen venue experience before signing.
