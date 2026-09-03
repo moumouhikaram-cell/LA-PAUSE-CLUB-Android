@@ -1,0 +1,75 @@
+name: LA PAUSE OS Monster Dev CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - android-p1-monster-dev
+    paths:
+      - "v16-original-source/**"
+      - ".github/workflows/monster-dev-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate-monster:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.4.1"
+      - name: Configure Android SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+      - name: Validate monster CDC source invariants
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ASSET=v16-original-source/app/src/main/assets
+          JAVA=v16-original-source/app/src/main/java
+          grep -q 'applicationId = "com.lapauseclub.manager"' v16-original-source/app/build.gradle.kts
+          grep -q 'ps5Solo:22' "$ASSET/app.js"
+          grep -q 'ps5Duo:28' "$ASSET/app.js"
+          grep -q 'sim:45' "$ASSET/app.js"
+          grep -q 'DB_VERSION=7' "$JAVA/com/lapauseclub/manager/core/CoreStore.java"
+          grep -q 'CoreAdvancedSchema' "$JAVA/com/lapauseclub/manager/core/CoreSaasSchemaP5.java"
+          grep -q 'AndroidKeyStore' "$JAVA/com/lapauseclub/manager/security/SecureStore.java"
+          grep -q 'getSecureValue' "$JAVA/com/lapauseclub/manager/MainActivity.java"
+          grep -q 'getCoreTimelineJson' "$JAVA/com/lapauseclub/manager/MainActivity.java"
+          grep -q 'BILLIARD_TABLE' "$ASSET/p1-core.js"
+          grep -q 'budget' "$ASSET/p1-core.js"
+          grep -q 'deviceLeases' "$ASSET/p2-device.js"
+          grep -q 'Venue Health' "$ASSET/p3-owner.js"
+          grep -q 'Menu Engineering' "$ASSET/p3-intelligence.js"
+          grep -q 'Player Growth Center' "$ASSET/p4-player.js"
+          grep -q 'No Dark Station' "$ASSET/p4-experience.js"
+          grep -q 'la-pause-sync/1' "$ASSET/p5-saas.js"
+          grep -q 'DATA GOVERNANCE' "$ASSET/p5-platform.js"
+          for f in "$ASSET"/app.js "$ASSET"/v13.js "$ASSET"/v14.js "$ASSET"/v15.js "$ASSET"/v17.js "$ASSET"/v171.js "$ASSET"/v172.js "$ASSET"/p1-core.js "$ASSET"/p1-floor.js "$ASSET"/p1-ops.js "$ASSET"/p1-finance.js "$ASSET"/p1-commerce.js "$ASSET"/p2-device.js "$ASSET"/p2-fleet.js "$ASSET"/p3-owner.js "$ASSET"/p3-intelligence.js "$ASSET"/p4-player.js "$ASSET"/p4-experience.js "$ASSET"/p5-saas.js "$ASSET"/p5-platform.js; do node --check "$f"; done
+      - name: Compile Android Java only
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          gradle --no-daemon --stacktrace :app:compileReleaseJavaWithJavac
+      - name: Verify no signed artifact publishing
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test ! -f LA-PAUSE-OS-Android-SIGNED.apk
+          echo "Monster dev CI complete — no APK published."
