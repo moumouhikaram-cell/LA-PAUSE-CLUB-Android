@@ -60,6 +60,7 @@ jobs:
           node tools/client-v230-audit.js | tee ../qa-static.txt
           node tools/client-route-audit.js | tee -a ../qa-static.txt
           node tools/client-shell-audit.js | tee -a ../qa-static.txt
+          node tools/client-v230-responsive-qa.js | tee -a ../qa-static.txt
       - name: Cash session and domain behavior
         working-directory: v16-original-source
         shell: bash
