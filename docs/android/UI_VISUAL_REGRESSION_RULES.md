@@ -1,0 +1,1 @@
+Visual regression rule: the frozen five-screen hierarchy, premium offline media, French labels, high-contrast timers, queue chips, aligned equipment actions, large onboarding counts, and responsive mobile/tablet navigation are release invariants.
