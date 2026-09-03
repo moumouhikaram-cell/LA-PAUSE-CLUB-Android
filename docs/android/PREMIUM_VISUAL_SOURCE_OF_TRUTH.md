@@ -1,0 +1,1 @@
+The five validated templates plus UI_FROZEN_REFERENCE_V1.md are the visual source of truth for Android.
