@@ -1,0 +1,1 @@
+Temporary integration marker. Do not release until media assets, venue-experience runtime, index load order, CI gates and signed APK all pass.
