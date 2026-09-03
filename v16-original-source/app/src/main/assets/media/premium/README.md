@@ -1,0 +1,1 @@
+Bundled offline premium UI media for the frozen LA PAUSE OS Android experience. Binary equipment photos are committed as sibling files in this folder and must remain available without network access.
