@@ -2,18 +2,17 @@
 :root{--client-safe-bottom:max(env(safe-area-inset-bottom,0px),18px);--client-safe-left:max(env(safe-area-inset-left,0px),8px);--client-safe-right:max(env(safe-area-inset-right,0px),8px)}
 html,body{overscroll-behavior:none;background:#050914}
 .bottomnav{left:var(--client-safe-left)!important;right:var(--client-safe-right)!important;bottom:var(--client-safe-bottom)!important;width:auto!important;border-radius:18px!important;margin:0!important;padding-bottom:6px!important;box-shadow:0 18px 44px rgba(0,0,0,.5)!important}
+.client-dock{left:var(--client-safe-left)!important;right:var(--client-safe-right)!important;bottom:var(--client-safe-bottom)!important;border:1px solid #1d2c44!important;border-radius:18px!important;padding:7px!important;min-height:58px!important;box-shadow:0 18px 48px rgba(0,0,0,.52)!important}
+.client-dock button{min-height:48px!important}
 .view{padding-bottom:calc(88px + var(--client-safe-bottom))!important}
 body.client-premium .topbar,body.client-premium .subbar,body.client-premium .bottomnav{display:none!important}
 body.client-premium .view{padding-top:0!important;padding-bottom:0!important;min-height:100dvh}
-body.client-premium .ve-page{padding-bottom:calc(92px + var(--client-safe-bottom))!important;min-height:100dvh}
+body.client-premium .ve-page,body.client-premium .client-page{padding-bottom:calc(92px + var(--client-safe-bottom))!important;min-height:100dvh}
 body.client-premium .ve-setup{padding-bottom:calc(104px + var(--client-safe-bottom))!important;min-height:100dvh}
 body.client-premium .ve-dock{left:var(--client-safe-left)!important;right:var(--client-safe-right)!important;bottom:var(--client-safe-bottom)!important;border:1px solid #1d2c44!important;border-radius:18px!important;padding:7px 6px!important;box-shadow:0 18px 48px rgba(0,0,0,.52)!important;background:rgba(5,9,18,.96)!important}
 body.client-premium .ve-dock button{min-height:52px;touch-action:manipulation}
 body.client-premium .ve-dock button b{font-size:18px}
-.drawer{padding-bottom:var(--client-safe-bottom)!important}
-.drawer-foot{padding-bottom:calc(12px + var(--client-safe-bottom))!important}
-.toast{bottom:calc(88px + var(--client-safe-bottom))!important}
-.modal,.sheet{max-height:calc(100dvh - var(--client-safe-bottom) - 20px)}
-button,[role="button"]{touch-action:manipulation}
-.client-hidden{display:none!important}
-@media(max-width:759px){body.client-premium .ve-head{padding-top:max(12px,env(safe-area-inset-top,0px))}.ve-station{min-height:225px}.ve-hero{min-height:230px}}
+.drawer{padding-bottom:var(--client-safe-bottom)!important}.drawer-foot{padding-bottom:calc(12px + var(--client-safe-bottom))!important}
+.toast{bottom:calc(88px + var(--client-safe-bottom))!important}.modal,.sheet{max-height:calc(100dvh - var(--client-safe-bottom) - 20px)}
+button,[role="button"]{touch-action:manipulation}.client-hidden{display:none!important}
+@media(max-width:759px){body.client-premium .ve-head,body.client-premium .client-head{padding-top:max(12px,env(safe-area-inset-top,0px))}.ve-station,.client-station{min-height:225px}.ve-hero,.client-hero{min-height:230px}}
