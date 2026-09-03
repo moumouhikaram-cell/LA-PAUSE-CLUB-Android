@@ -54,9 +54,7 @@ public class PremiumActivity extends MainActivity {
     private void installSystemInsets(View target) {
         target.setOnApplyWindowInsetsListener((view, insets) -> {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                android.graphics.Insets bars = insets.getInsets(
-                        WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout()
-                );
+                android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
                 insetLeft = bars.left;
                 insetTop = bars.top;
                 insetRight = bars.right;
@@ -75,29 +73,20 @@ public class PremiumActivity extends MainActivity {
     }
 
     private String safeInsetsJson() {
-        return "{\"left\":" + insetLeft
-                + ",\"top\":" + insetTop
-                + ",\"right\":" + insetRight
-                + ",\"bottom\":" + insetBottom + "}";
+        return "{\"left\":" + insetLeft + ",\"top\":" + insetTop + ",\"right\":" + insetRight + ",\"bottom\":" + insetBottom + "}";
     }
 
     private void notifyInsetsChanged() {
         if (clientWebView == null) return;
         final String json = safeInsetsJson();
-        clientWebView.post(() -> clientWebView.evaluateJavascript(
-                "window.onNativeInsetsChanged&&window.onNativeInsetsChanged(" + json + ")",
-                null
-        ));
+        clientWebView.post(() -> clientWebView.evaluateJavascript("window.onNativeInsetsChanged&&window.onNativeInsetsChanged(" + json + ")", null));
     }
 
     private void notifyViewportChanged() {
         if (clientWebView == null) return;
         clientWebView.postDelayed(() -> {
             clientWebView.requestApplyInsets();
-            clientWebView.evaluateJavascript(
-                    "window.onLaPauseViewportChanged&&window.onLaPauseViewportChanged()",
-                    null
-            );
+            clientWebView.evaluateJavascript("window.onLaPauseViewportChanged&&window.onLaPauseViewportChanged()", null);
         }, 90L);
     }
 
@@ -114,9 +103,7 @@ public class PremiumActivity extends MainActivity {
         }
         clientWebView.evaluateJavascript(
                 "window.nativeBack ? window.nativeBack() : false",
-                value -> {
-                    if (!"true".equals(value)) confirmExitNative();
-                }
+                value -> { if (!"true".equals(value)) confirmExitNative(); }
         );
     }
 
@@ -141,19 +128,8 @@ public class PremiumActivity extends MainActivity {
     }
 
     public class ClientBridge {
-        @JavascriptInterface
-        public void requestExitConfirmation() {
-            confirmExitNative();
-        }
-
-        @JavascriptInterface
-        public void exitApp() {
-            confirmExitNative();
-        }
-
-        @JavascriptInterface
-        public String getSafeInsetsJson() {
-            return safeInsetsJson();
-        }
+        @JavascriptInterface public void requestExitConfirmation() { confirmExitNative(); }
+        @JavascriptInterface public void exitApp() { confirmExitNative(); }
+        @JavascriptInterface public String getSafeInsetsJson() { return safeInsetsJson(); }
     }
 }
