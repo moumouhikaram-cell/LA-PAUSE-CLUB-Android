@@ -7,7 +7,7 @@ const files={
   core:read('p1-core.js'),ops:read('p1-ops.js'),fin:read('p1-finance.js'),commerce:read('p1-commerce.js'),
   device:read('p2-device.js'),fleet:read('p2-fleet.js'),owner:read('p3-owner.js'),intel:read('p3-intelligence.js'),
   player:read('p4-player.js'),experience:read('p4-experience-v2.js'),saas:read('p5-saas.js'),platform:read('p5-platform.js'),
-  client:read('client-hardening.js'),final:read('client-final.js'),dock:read('client-persistent-dock.js'),index:read('index.html'),venue:read('venue-experience.js')
+  client:read('client-hardening.js'),final:read('client-final.js'),dock:read('client-persistent-dock.js'),clientCss:read('client-final.css'),hardeningCss:read('client-hardening.css'),index:read('index.html'),venue:read('venue-experience.js')
 };
 const all=Object.values(files).join('\n');
 function requires(label,names){for(const name of names)assert(all.includes(name),`${label}: missing ${name}`);console.log(`OK ${label}: ${names.length}`)}
@@ -23,7 +23,7 @@ requires('profit intelligence',['p3InventoryBrain','p3MonthlyValueReport']);
 requires('player crm',['p4PlayerDna','p4Churn']);
 requires('experience',['p4CreateCampaign','p4SmartBookingOptions']);
 requires('platform',['p5SupportBundle','p5SchedulerTick']);
-requires('client mobile',['clientNativeBack','safe-area-inset-bottom','clientPersistentDock','Voulez-vous vraiment quitter LA PAUSE OS ?']);
+requires('client mobile',['clientNativeBack','safe-area-inset-bottom','clientPersistentDock','Quitter LA PAUSE OS ?']);
 
 const forbidden=[/MASTER V2/i,/EDGE \+ CLOUD/i,/CDC Coverage/i,/System Status/i,/BLOCKED_EXTERNAL/i,/FUTURE_DISABLED/i,/EVENT OUTBOX/i,/CommandEnvelope/i,/3 420 lignes/i];
 for(const re of forbidden)assert(!re.test(files.index),`customer index contains developer text: ${re}`);
