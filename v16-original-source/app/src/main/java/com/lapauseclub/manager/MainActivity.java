@@ -31,6 +31,7 @@ import android.util.Base64;
 
 import com.google.zxing.BarcodeFormat;
 import com.lapauseclub.manager.core.CoreStore;
+import com.lapauseclub.manager.security.SecureStore;
 import com.google.zxing.WriterException;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
@@ -60,6 +61,7 @@ public class MainActivity extends Activity {
     private String pendingSaveMime;
     private final ExecutorService networkPool = Executors.newFixedThreadPool(2);
     private CoreStore coreStore;
+    private SecureStore secureStore;
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
@@ -70,6 +72,7 @@ public class MainActivity extends Activity {
         requestExactAlarmPermissionIfNeeded();
 
         coreStore = new CoreStore(getApplicationContext());
+        secureStore = new SecureStore(getApplicationContext());
         SharedPreferences legacyPrefs = getSharedPreferences("gaming_floor_store", MODE_PRIVATE);
         coreStore.bootstrapFromLegacy(legacyPrefs.getString("state_json", ""));
 
@@ -119,11 +122,7 @@ public class MainActivity extends Activity {
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
-                    CHANNEL_ID,
-                    "Fin des sessions",
-                    NotificationManager.IMPORTANCE_HIGH
-            );
+            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Fin des sessions", NotificationManager.IMPORTANCE_HIGH);
             channel.setDescription("Alertes de fin de session LA PAUSE CLUB");
             channel.enableVibration(true);
             NotificationManager manager = getSystemService(NotificationManager.class);
@@ -212,7 +211,6 @@ public class MainActivity extends Activity {
         } catch (SecurityException ex) { am.set(AlarmManager.RTC_WAKEUP, at, pi); }
     }
 
-
     public class AndroidBridge {
         private final SharedPreferences prefs = getSharedPreferences("gaming_floor_store", MODE_PRIVATE);
 
@@ -226,7 +224,6 @@ public class MainActivity extends Activity {
                     return primary;
                 }
             } catch (Exception ignored) {}
-
             String backup = prefs.getString("state_json_backup", "");
             try {
                 if (!backup.isEmpty()) {
@@ -235,15 +232,10 @@ public class MainActivity extends Activity {
                     return backup;
                 }
             } catch (Exception ignored) {}
-
-            // Third recovery layer added by v1.6. It never overwrites legacy storage silently.
             return coreStore == null ? "" : coreStore.recoverLatestValidStateJson();
         }
 
-        @JavascriptInterface
-        public String getClientsBackupJson() {
-            return prefs.getString("critical_clients_json", "");
-        }
+        @JavascriptInterface public String getClientsBackupJson() { return prefs.getString("critical_clients_json", ""); }
 
         @JavascriptInterface
         public void setStateJson(String json) {
@@ -260,26 +252,16 @@ public class MainActivity extends Activity {
             } catch (Exception ignored) {}
         }
 
-        @JavascriptInterface
-        public String getCoreStatusJson() {
-            return coreStore == null ? "{}" : coreStore.getStatusJson().toString();
-        }
+        @JavascriptInterface public String getCoreStatusJson() { return coreStore == null ? "{}" : coreStore.getStatusJson().toString(); }
+        @JavascriptInterface public String getCoreTimelineJson() { return coreStore == null ? "{}" : coreStore.getTimelineJson().toString(); }
+        @JavascriptInterface public String sha256(String value) { return CoreStore.sha256(value == null ? "" : value); }
+        @JavascriptInterface public String getSecureValue(String key) { return secureStore == null ? "" : secureStore.get(key); }
+        @JavascriptInterface public boolean setSecureValue(String key, String value) { return secureStore != null && secureStore.put(key, value); }
+        @JavascriptInterface public boolean deleteSecureValue(String key) { return secureStore != null && secureStore.delete(key); }
+        @JavascriptInterface public boolean hasSecureValue(String key) { return secureStore != null && secureStore.contains(key); }
 
-        @JavascriptInterface
-        public String getOperatingMode() {
-            return coreStore == null ? "STANDALONE" : coreStore.getOperatingMode();
-        }
-
-        @JavascriptInterface
-        public boolean setOperatingMode(String mode) {
-            try {
-                if (coreStore == null) return false;
-                coreStore.setOperatingMode(mode);
-                return true;
-            } catch (Exception ignored) {
-                return false;
-            }
-        }
+        @JavascriptInterface public String getOperatingMode() { return coreStore == null ? "STANDALONE" : coreStore.getOperatingMode(); }
+        @JavascriptInterface public boolean setOperatingMode(String mode) { try { if (coreStore == null) return false; coreStore.setOperatingMode(mode); return true; } catch (Exception ignored) { return false; } }
 
         @JavascriptInterface
         public void keepScreenOn(boolean enabled) {
@@ -307,15 +289,8 @@ public class MainActivity extends Activity {
             });
         }
 
-        @JavascriptInterface
-        public void scheduleSessionAlerts(String sessionId, long endAt, long warningAt, String stationName) {
-            MainActivity.scheduleNativeAlerts(MainActivity.this, sessionId, endAt, warningAt, stationName == null ? "Poste" : stationName);
-        }
-
-        @JavascriptInterface
-        public void scheduleSessionEnd(String sessionId, long atMillis, String stationName) {
-            MainActivity.scheduleNativeAlerts(MainActivity.this, sessionId, atMillis, atMillis - 5 * 60000L, stationName == null ? "Poste" : stationName);
-        }
+        @JavascriptInterface public void scheduleSessionAlerts(String sessionId, long endAt, long warningAt, String stationName) { MainActivity.scheduleNativeAlerts(MainActivity.this, sessionId, endAt, warningAt, stationName == null ? "Poste" : stationName); }
+        @JavascriptInterface public void scheduleSessionEnd(String sessionId, long atMillis, String stationName) { MainActivity.scheduleNativeAlerts(MainActivity.this, sessionId, atMillis, atMillis - 5 * 60000L, stationName == null ? "Poste" : stationName); }
 
         @JavascriptInterface
         public void cancelSessionEnd(String sessionId) {
@@ -336,25 +311,17 @@ public class MainActivity extends Activity {
             try {
                 BitMatrix matrix = new QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, size, size);
                 Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
-                for (int y = 0; y < size; y++) {
-                    for (int x = 0; x < size; x++) {
-                        bitmap.setPixel(x, y, matrix.get(x, y) ? 0xFF000000 : 0xFFFFFFFF);
-                    }
-                }
+                for (int y = 0; y < size; y++) for (int x = 0; x < size; x++) bitmap.setPixel(x, y, matrix.get(x, y) ? 0xFF000000 : 0xFFFFFFFF);
                 ByteArrayOutputStream out = new ByteArrayOutputStream();
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, out);
                 bitmap.recycle();
                 return "data:image/png;base64," + Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP);
-            } catch (WriterException ex) {
-                return "";
-            }
+            } catch (WriterException ex) { return ""; }
         }
 
         @JavascriptInterface
         public void showTestNotification(String title, String text) {
-            SessionAlarmReceiver.showNotification(MainActivity.this, 999991,
-                    title == null ? "LA PAUSE CLUB" : title,
-                    text == null ? "Alerte de test" : text);
+            SessionAlarmReceiver.showNotification(MainActivity.this, 999991, title == null ? "LA PAUSE CLUB" : title, text == null ? "Alerte de test" : text);
         }
 
         @JavascriptInterface
@@ -380,9 +347,7 @@ public class MainActivity extends Activity {
                 o.put("release", Build.VERSION.RELEASE);
                 o.put("androidId", Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID));
                 return o.toString();
-            } catch (Exception e) {
-                return "{}";
-            }
+            } catch (Exception e) { return "{}"; }
         }
 
         @JavascriptInterface
@@ -392,7 +357,7 @@ public class MainActivity extends Activity {
                 try {
                     URL target = new URL(url);
                     String scheme = target.getProtocol();
-                    if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) throw new IllegalArgumentException("URL non supportÃ©e");
+                    if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) throw new IllegalArgumentException("URL non supportée");
                     conn = (HttpURLConnection) target.openConnection();
                     conn.setRequestMethod(method == null ? "GET" : method.toUpperCase());
                     conn.setConnectTimeout(8000);
@@ -410,27 +375,22 @@ public class MainActivity extends Activity {
                     String response = readAll(stream);
                     final int finalStatus = status;
                     final String finalResponse = response == null ? "" : response;
-                    webView.post(() -> webView.evaluateJavascript(
-                            "window.NativeHttp&&window.NativeHttp.resolve(" + JSONObject.quote(requestId) + "," + finalStatus + "," + JSONObject.quote(finalResponse) + ")", null));
+                    webView.post(() -> webView.evaluateJavascript("window.NativeHttp&&window.NativeHttp.resolve(" + JSONObject.quote(requestId) + "," + finalStatus + "," + JSONObject.quote(finalResponse) + ")", null));
                 } catch (Exception ex) {
                     String message = ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage();
-                    webView.post(() -> webView.evaluateJavascript(
-                            "window.NativeHttp&&window.NativeHttp.reject(" + JSONObject.quote(requestId) + "," + JSONObject.quote(message) + ")", null));
-                } finally {
-                    if (conn != null) conn.disconnect();
-                }
+                    webView.post(() -> webView.evaluateJavascript("window.NativeHttp&&window.NativeHttp.reject(" + JSONObject.quote(requestId) + "," + JSONObject.quote(message) + ")", null));
+                } finally { if (conn != null) conn.disconnect(); }
             });
         }
     }
 
-    private static final String APP_VERSION_SAFE = "1.6.0";
+    private static final String APP_VERSION_SAFE = "2.0.0-beta1";
 
     private static String readAll(InputStream input) throws Exception {
         if (input == null) return "";
         StringBuilder sb = new StringBuilder();
         try (BufferedReader br = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = br.readLine()) != null) sb.append(line).append('\n');
+            String line; while ((line = br.readLine()) != null) sb.append(line).append('\n');
         }
         return sb.toString();
     }
