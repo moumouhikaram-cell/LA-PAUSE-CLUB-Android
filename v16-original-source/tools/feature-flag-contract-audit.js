@@ -1,4 +1,5 @@
 'use strict';
+// Canonical contract inventory for the 2.3 release candidate.
 const fs=require('fs'),path=require('path');
 const A='app/src/main/assets';
 for(const f of fs.readdirSync(A).filter(x=>x.endsWith('.js')).sort()){
