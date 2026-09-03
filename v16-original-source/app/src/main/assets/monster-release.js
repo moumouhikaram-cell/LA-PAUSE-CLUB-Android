@@ -1,21 +1,11 @@
 'use strict';
-/* LA PAUSE OS — commercial client bootstrap. Technical diagnostics stay internal. */
+/* LA PAUSE OS — release metadata only. Customer UI is loaded by master-v2-welcome.js in a deterministic order. */
 (function(){
-  const RELEASE='2.1.0-beta1';
-  const CODE=25;
   try{
     state.meta=state.meta||{};
-    state.meta.appVersion=RELEASE;
-    state.meta.releaseCode=CODE;
+    state.meta.appVersion='2.1.0-beta1';
+    state.meta.releaseCode=25;
     const version=document.querySelector('.drawer-foot .version');
     if(version)version.textContent='LA PAUSE OS · Android';
   }catch(_e){}
-  setTimeout(()=>{
-    if(!document.querySelector('link[data-client-final]')){
-      const css=document.createElement('link');css.rel='stylesheet';css.href='client-final.css';css.dataset.clientFinal='1';document.head.appendChild(css);
-    }
-    if(!document.querySelector('script[data-client-final]')){
-      const js=document.createElement('script');js.src='client-final.js';js.dataset.clientFinal='1';document.body.appendChild(js);
-    }
-  },0);
 })();
