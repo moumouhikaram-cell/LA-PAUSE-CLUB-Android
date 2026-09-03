@@ -1,6 +1,8 @@
 /* LA PAUSE OS — Client Final polish */
 :root{--client-safe-bottom:max(env(safe-area-inset-bottom,0px),18px);--client-safe-left:max(env(safe-area-inset-left,0px),8px);--client-safe-right:max(env(safe-area-inset-right,0px),8px)}
 html,body{overscroll-behavior:none;background:#050914}
+.bottomnav{left:var(--client-safe-left)!important;right:var(--client-safe-right)!important;bottom:var(--client-safe-bottom)!important;width:auto!important;border-radius:18px!important;margin:0!important;padding-bottom:6px!important;box-shadow:0 18px 44px rgba(0,0,0,.5)!important}
+.view{padding-bottom:calc(88px + var(--client-safe-bottom))!important}
 body.client-premium .topbar,body.client-premium .subbar,body.client-premium .bottomnav{display:none!important}
 body.client-premium .view{padding-top:0!important;padding-bottom:0!important;min-height:100dvh}
 body.client-premium .ve-page{padding-bottom:calc(92px + var(--client-safe-bottom))!important;min-height:100dvh}
@@ -8,11 +10,10 @@ body.client-premium .ve-setup{padding-bottom:calc(104px + var(--client-safe-bott
 body.client-premium .ve-dock{left:var(--client-safe-left)!important;right:var(--client-safe-right)!important;bottom:var(--client-safe-bottom)!important;border:1px solid #1d2c44!important;border-radius:18px!important;padding:7px 6px!important;box-shadow:0 18px 48px rgba(0,0,0,.52)!important;background:rgba(5,9,18,.96)!important}
 body.client-premium .ve-dock button{min-height:52px;touch-action:manipulation}
 body.client-premium .ve-dock button b{font-size:18px}
-body.client-premium .drawer{padding-bottom:var(--client-safe-bottom)}
-body.client-premium .drawer-foot{padding-bottom:calc(12px + var(--client-safe-bottom))}
-body.client-premium .toast{bottom:calc(88px + var(--client-safe-bottom))!important}
-body.client-premium .modal,body.client-premium .sheet{max-height:calc(100dvh - var(--client-safe-bottom) - 20px)}
-body.client-premium button,body.client-premium [role="button"]{min-touch-target-size:44px}
+.drawer{padding-bottom:var(--client-safe-bottom)!important}
+.drawer-foot{padding-bottom:calc(12px + var(--client-safe-bottom))!important}
+.toast{bottom:calc(88px + var(--client-safe-bottom))!important}
+.modal,.sheet{max-height:calc(100dvh - var(--client-safe-bottom) - 20px)}
+button,[role="button"]{touch-action:manipulation}
 .client-hidden{display:none!important}
-.client-exit-card{padding:18px}.client-exit-card h3{margin:0 0 7px;font-size:18px}.client-exit-card p{color:#9ba8b8;font-size:12px;line-height:1.5}.client-exit-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px}.client-exit-actions button{min-height:46px;border-radius:12px;font-weight:900}.client-exit-actions .stay{background:#111b29;color:#fff;border:1px solid #2b3b53}.client-exit-actions .quit{background:#8e1822;color:#fff;border:1px solid #c53442}
 @media(max-width:759px){body.client-premium .ve-head{padding-top:max(12px,env(safe-area-inset-top,0px))}.ve-station{min-height:225px}.ve-hero{min-height:230px}}
