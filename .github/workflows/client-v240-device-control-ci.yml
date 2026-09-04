@@ -56,16 +56,20 @@ jobs:
           set -euxo pipefail
           A=app/src/main/assets
           node --check "$A/p2-device-control-v240.js"
+          node --check "$A/client-operator-ux-v240.js"
           node --check tools/client-v240-device-control.spec.js
+          node --check tools/client-v240-operator-ux.spec.js
           grep -q 'versionCode = 29' app/build.gradle.kts
           grep -q 'versionName = "2.4.0"' app/build.gradle.kts
           grep -q 'include(":app", ":tvagent")' settings.gradle.kts
           grep -q 'p2-device-control-v240.css' "$A/index.html"
           grep -q 'p2-device-control-v240.js' "$A/index.html"
+          grep -q 'client-operator-ux-v240.css' "$A/index.html"
+          grep -q 'client-operator-ux-v240.js' "$A/index.html"
           python3 - <<'PY'
           from pathlib import Path
           s=Path('app/src/main/assets/index.html').read_text()
-          assert s.index('client-product-render-dispatch.js') < s.index('p2-device-control-v240.js') < s.index('client-product-boot.js')
+          assert s.index('client-product-render-dispatch.js') < s.index('p2-device-control-v240.js') < s.index('client-operator-ux-v240.js') < s.index('client-product-boot.js')
           print('V240_RENDER_ORDER_OK')
           PY
           grep -q 'LA_PAUSE_DEVICE_AGENT_V1' "$A/p2-device-control-v240.js"
@@ -84,6 +88,9 @@ jobs:
           grep -q 'V240_CAPABILITY_HONESTY_OK' tools/client-v240-device-control.spec.js
           grep -q 'V240_SECURE_PAIRING_FAILS_CLOSED_OK' tools/client-v240-device-control.spec.js
           grep -q 'V240_NO_TOKEN_IN_CLUB_STATE_OK' tools/client-v240-device-control.spec.js
+          grep -q 'media/ps5-available.png' "$A/client-operator-ux-v240.js"
+          grep -q 'media/sim-vip.png' "$A/client-operator-ux-v240.js"
+          grep -q 'V240_SNOOKER_PRICE_PERSISTENCE_OK' tools/client-v240-operator-ux.spec.js
           ! grep -qi 'adb shell' "$A/p2-device-control-v240.js"
 
           test -f tvagent/build.gradle.kts
@@ -108,6 +115,7 @@ jobs:
           grep -q 'J.ai vérifié l.overlay sur le gameplay HDMI réel' tvagent/src/main/java/com/lapauseclub/tvagent/AgentActivity.java
           echo V240_DEVICE_CONTROL_STRUCTURE_OK
           echo V240_TV_AGENT_SECURITY_STRUCTURE_OK
+          echo V240_OPERATOR_UX_STRUCTURE_OK
 
       - name: Compile manager bridge and TV Agent
         working-directory: v16-original-source
@@ -144,6 +152,20 @@ jobs:
           grep -q 'V240_SECURE_PAIRING_FAILS_CLOSED_OK' ../e2e-v240-device.txt
           grep -q 'V240_DEVICE_CONTROL_E2E_OK' ../e2e-v240-device.txt
           grep -q 'V240_DISCOVERY_REQUIRES_OPERATOR_PAIR_OK' ../e2e-v240-device.txt
+
+      - name: Operator UX cumulative regression gates
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          LP_E2E_URL=http://127.0.0.1:4173/index.html npx playwright test tools/client-v240-operator-ux.spec.js --reporter=line --workers=1 | tee ../e2e-v240-operator-ux.txt
+          grep -q 'V240_METIER_SEPARATION_OK' ../e2e-v240-operator-ux.txt
+          grep -q 'V240_DYNAMIC_IDLE_MEDIA_OK' ../e2e-v240-operator-ux.txt
+          grep -q 'V240_MARKETING_SURFACE_OK' ../e2e-v240-operator-ux.txt
+          grep -q 'V240_NO_FAKE_WALKIN_SELECT_OK' ../e2e-v240-operator-ux.txt
+          grep -q 'V240_DYNAMIC_GAME_MEDIA_OK' ../e2e-v240-operator-ux.txt
+          grep -q 'V240_NON_GAME_FAST_START_OK' ../e2e-v240-operator-ux.txt
+          grep -q 'V240_SNOOKER_PRICE_PERSISTENCE_OK' ../e2e-v240-operator-ux.txt
 
       - name: Full v2.3 browser non-regression
         working-directory: v16-original-source
@@ -189,6 +211,7 @@ jobs:
           name: v240-device-control-ci-${{ github.run_number }}
           path: |
             e2e-v240-device.txt
+            e2e-v240-operator-ux.txt
             e2e-v240-regression.txt
             e2e-v240-server.log
             policy-v240.txt
