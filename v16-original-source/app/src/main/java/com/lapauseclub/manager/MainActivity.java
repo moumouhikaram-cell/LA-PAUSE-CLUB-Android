@@ -349,7 +349,7 @@ public class MainActivity extends Activity {
         }
 
         private String persistLegacyCache(JSONObject incoming, String json) {
-            String safeJson = sanitizeSyncToken(json, false);
+            String safeJson = sanitizeSyncToken(json, true);
             JSONObject safeIncoming = incoming;
             try { safeIncoming = new JSONObject(safeJson); } catch (Exception ignored) {}
             String previous = prefs.getString("state_json", "");
