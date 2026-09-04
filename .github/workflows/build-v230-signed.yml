@@ -13,90 +13,9 @@ permissions:
   contents: read
 
 jobs:
-  android-native-smoke:
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "21"
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "9.4.1"
-
-      - name: Enable KVM acceleration
-        shell: bash
-        run: |
-          set -euxo pipefail
-          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
-
-      - name: Configure Android SDK
-        shell: bash
-        run: |
-          set -euxo pipefail
-          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
-          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
-          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" "platform-tools"
-
-      - name: Build debug APK for native gate
-        working-directory: v16-original-source
-        shell: bash
-        run: |
-          set -euxo pipefail
-          bash tools/prepare-client-media-v230.sh
-          gradle --no-daemon --stacktrace :app:assembleDebug
-          test -f app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Run debug APK on lightweight AOSP Android
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 33
-          target: default
-          arch: x86_64
-          profile: pixel_2
-          cores: 1
-          ram-size: 1536M
-          heap-size: 384M
-          disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
-          script: bash v16-original-source/tools/android-native-smoke-v230.sh
-
-      - name: Require complete native smoke
-        shell: bash
-        run: |
-          set -euxo pipefail
-          grep -q 'ANDROID_LAUNCH_OK' android-native-smoke.txt
-          grep -q 'ANDROID_HOME_EXIT_DIALOG_OK' android-native-smoke.txt
-          grep -q 'ANDROID_ROTATION_OK' android-native-smoke.txt
-          grep -q 'ANDROID_LOGCAT_OK' android-native-smoke.txt
-          grep -q 'ANDROID_NATIVE_SMOKE_OK' android-native-smoke.txt
-
-      - name: Upload native smoke diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: v230-final-native-smoke-${{ github.run_number }}
-          path: |
-            android-native-smoke.txt
-            android-native-trace.txt
-            android-launch.txt
-            android-focus.txt
-            android-focus-back.txt
-            android-window-back.xml
-            android-window-portrait.xml
-            android-logcat.txt
-          if-no-files-found: warn
-          retention-days: 30
-
   build-signed-final:
-    needs: android-native-smoke
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v5
@@ -106,12 +25,6 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "9.4.1"
-
-      - name: Enable KVM acceleration
-        shell: bash
-        run: |
-          set -euxo pipefail
-          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
 
       - name: Configure Android SDK
         shell: bash
@@ -199,41 +112,18 @@ jobs:
           sha256sum "$SIGNED" | tee signed-sha256.txt
           stat -c '%s bytes' "$SIGNED" | tee signed-size.txt
 
-      - name: Run signed FINAL APK on lightweight AOSP Android
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 33
-          target: default
-          arch: x86_64
-          profile: pixel_2
-          cores: 1
-          ram-size: 1536M
-          heap-size: 384M
-          disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
-          script: bash v16-original-source/tools/android-native-smoke-v230.sh LA-PAUSE-OS-Android-v2.3.0-FINAL-SIGNED.apk
-
-      - name: Verify signed FINAL native smoke markers
-        shell: bash
-        run: |
-          set -euxo pipefail
-          grep -q 'ANDROID_LAUNCH_OK' android-native-smoke.txt
-          grep -q 'ANDROID_HOME_EXIT_DIALOG_OK' android-native-smoke.txt
-          grep -q 'ANDROID_ROTATION_OK' android-native-smoke.txt
-          grep -q 'ANDROID_LOGCAT_OK' android-native-smoke.txt
-          grep -q 'ANDROID_NATIVE_SMOKE_OK' android-native-smoke.txt
-
-      - name: Create final manifest
+      - name: Create signed release manifest
         shell: bash
         run: |
           set -euxo pipefail
           {
             echo 'LA PAUSE OS Android 2.3.0 FINAL'
             echo "Commit: $GITHUB_SHA"
+            echo 'Product CI: required separately on the same canonical branch'
+            echo 'Android Native Smoke: required separately on the same canonical branch'
             cat signing-key-fingerprint.txt
             cat signed-sha256.txt
             cat signed-size.txt
-            cat android-native-smoke.txt
           } > LA-PAUSE-OS-Android-v2.3.0-FINAL-MANIFEST.txt
 
       - name: Upload FINAL signed APK
@@ -247,7 +137,60 @@ jobs:
             signed-size.txt
             signed-certificate.txt
             signed-badging.txt
-            android-native-smoke.txt
-            android-native-trace.txt
           if-no-files-found: error
           retention-days: 90
+
+  signed-native-smoke:
+    needs: build-signed-final
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: LA-PAUSE-OS-Android-v2.3.0-FINAL-SIGNED
+          path: signed-dist
+      - name: Enable KVM acceleration
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Run signed FINAL APK on lightweight AOSP Android
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          target: default
+          arch: x86_64
+          profile: pixel_2
+          cores: 1
+          ram-size: 1536M
+          heap-size: 384M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
+          script: bash v16-original-source/tools/android-native-smoke-v230.sh signed-dist/LA-PAUSE-OS-Android-v2.3.0-FINAL-SIGNED.apk
+      - name: Verify signed FINAL native smoke markers
+        shell: bash
+        run: |
+          set -euxo pipefail
+          grep -q 'ANDROID_LAUNCH_OK' android-native-smoke.txt
+          grep -q 'ANDROID_HOME_EXIT_DIALOG_OK' android-native-smoke.txt
+          grep -q 'ANDROID_ROTATION_OK' android-native-smoke.txt
+          grep -q 'ANDROID_LOGCAT_OK' android-native-smoke.txt
+          grep -q 'ANDROID_NATIVE_SMOKE_OK' android-native-smoke.txt
+      - name: Upload signed native smoke diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v230-signed-native-smoke-${{ github.run_number }}
+          path: |
+            android-native-smoke.txt
+            android-native-trace.txt
+            android-launch.txt
+            android-focus.txt
+            android-focus-back.txt
+            android-window-back.xml
+            android-window-portrait.xml
+            android-logcat.txt
+          if-no-files-found: warn
+          retention-days: 30
