@@ -1,4 +1,5 @@
 'use strict';
+// Release-blocking operational persistence coverage for the dedicated Android tablet.
 const { test, expect } = require('@playwright/test');
 
 const APP_URL = process.env.LP_E2E_URL || 'http://127.0.0.1:4173/index.html';
