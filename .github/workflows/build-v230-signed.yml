@@ -52,14 +52,18 @@ jobs:
           gradle --no-daemon --stacktrace :app:assembleDebug
           test -f app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Run debug APK on stable AOSP Android
+      - name: Run debug APK on lightweight AOSP Android
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 34
+          api-level: 33
           target: default
           arch: x86_64
-          profile: pixel_6
+          profile: pixel_2
+          cores: 1
+          ram-size: 1536M
+          heap-size: 384M
           disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
           script: bash v16-original-source/tools/android-native-smoke-v230.sh
 
       - name: Require complete native smoke
@@ -195,14 +199,18 @@ jobs:
           sha256sum "$SIGNED" | tee signed-sha256.txt
           stat -c '%s bytes' "$SIGNED" | tee signed-size.txt
 
-      - name: Run signed FINAL APK on stable AOSP Android
+      - name: Run signed FINAL APK on lightweight AOSP Android
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 34
+          api-level: 33
           target: default
           arch: x86_64
-          profile: pixel_6
+          profile: pixel_2
+          cores: 1
+          ram-size: 1536M
+          heap-size: 384M
           disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
           script: bash v16-original-source/tools/android-native-smoke-v230.sh LA-PAUSE-OS-Android-v2.3.0-FINAL-SIGNED.apk
 
       - name: Verify signed FINAL native smoke markers
