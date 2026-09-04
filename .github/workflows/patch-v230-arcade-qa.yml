@@ -1,0 +1,58 @@
+name: Patch v2.3 Arcade QA
+
+on:
+  push:
+    branches:
+      - android-client-final-v230
+    paths:
+      - ".ops-stage/arcade-qa-trigger.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  patch-arcade-qa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: android-client-final-v230
+          fetch-depth: 0
+      - name: Align Arcade optional game-field journey
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('v16-original-source/tools/client-v230-e2e.spec.js')
+          s=p.read_text()
+          old="""  await expect(page.locator('#opsSessionForm')).toContainText('Par partie');
+  await expect(page.locator('#opsGameTitle')).toBeVisible();
+  await expect(page.locator('#opsGameTitle')).toHaveValue('Arcade');
+  await page.locator('#startSessionBtn').click();
+"""
+          new="""  await expect(page.locator('#opsSessionForm')).toContainText('Par partie');
+  await expect(page.locator('#opsGameTitle')).toBeHidden();
+  await page.locator('details.ops-more > summary').click();
+  await expect(page.locator('#opsGameTitle')).toBeVisible();
+  await expect(page.locator('#opsGameTitle')).toHaveValue('Arcade');
+  await page.locator('#startSessionBtn').click();
+"""
+          if new not in s:
+              if old not in s: raise SystemExit('Arcade QA anchor not found')
+              s=s.replace(old,new,1)
+              p.write_text(s)
+          PY
+          node --check v16-original-source/tools/client-v230-e2e.spec.js
+          grep -q "details.ops-more > summary" v16-original-source/tools/client-v230-e2e.spec.js
+          git diff --check
+      - name: Commit QA correction
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git config user.name "moumouhikaram-cell"
+          git config user.email "moumouhi.karam@gmail.com"
+          git add v16-original-source/tools/client-v230-e2e.spec.js
+          git diff --cached --quiet && exit 0
+          git commit -m "test(v230): verify arcade optional game field without slowing fast path"
+          git push origin HEAD:android-client-final-v230
