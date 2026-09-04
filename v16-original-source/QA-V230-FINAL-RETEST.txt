@@ -1,7 +1,8 @@
 LA PAUSE OS 2.3.0 FINAL RETEST
 Canonical branch: android-client-final-v230
-Canonical checkpoint: 1bfcfdc83ebad444d78b7f5d236242eef250751a
-Operator QA contract commit: 39070623a66e5bfb6c1fcb1836365507d6c03d52
-Operator dashboard QA alignment commit: 56293736402a68e1373eef215327d1ddd0947ae2
-QA scope: exhaustive customer click matrix, operator PS5 selectors/payment journey, current Control Center active-session KPI assertion, Next Best Action Home return + assisted revenue + acceptedActions, business/domain tests, Android native smoke, permanent signed release APK smoke.
+Canonical product checkpoint before direct QA trigger: 43982185419a4d335d72bc270928539697e2bbf0
+Scope: exhaustive customer click matrix and dedicated game journeys for CONSOLE, SIM_RACING, PC_GAMING, BILLIARD_TABLE, SNOOKER_TABLE, TABLE_TENNIS, PRIVATE_ROOM, CUSTOM and ARCADE.
+End-to-end contract: resource entry -> type-specific form -> quote -> payment -> active session -> game-specific action -> remaining payment -> finish -> paid history.
+History semantics must be type-aware: Console Solo/Duo; other resources player counts; billiard/snooker game counts; custom amount labelled Montant libre.
+Also require operator dashboard/control-center assertions, Next Best Action return + assisted revenue, persistence, business/domain gates, Android native smoke and permanent signed release APK verification.
 This file is a QA trigger/ledger only and is not loaded by the Android application.
