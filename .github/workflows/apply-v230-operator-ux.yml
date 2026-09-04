@@ -59,3 +59,6 @@ jobs:
                   v16-original-source/tools/client-v230-e2e.spec.js
           git commit -m "feat(v230): operator-first control center and contextual conversion UX"
           git push origin HEAD:android-client-final-v230
+
+      - name: Applied marker
+        run: echo OPERATOR_UX_APPLY_COMPLETED
