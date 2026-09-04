@@ -23,34 +23,34 @@ jobs:
       matrix:
         include:
           - name: console
-            grep: "^CONSOLE journey"
+            grep: "CONSOLE journey"
             marker: V240_JOURNEY_CONSOLE_OK
           - name: sim-racing
-            grep: "^SIM_RACING journey"
+            grep: "SIM_RACING journey"
             marker: V240_JOURNEY_SIM_RACING_OK
           - name: pc-gaming
-            grep: "^PC_GAMING journey"
+            grep: "PC_GAMING journey"
             marker: V240_JOURNEY_PC_GAMING_OK
           - name: billiard
-            grep: "^BILLIARD_TABLE journey"
+            grep: "BILLIARD_TABLE journey"
             marker: V240_JOURNEY_BILLIARD_OK
           - name: snooker
-            grep: "^SNOOKER_TABLE journey"
+            grep: "SNOOKER_TABLE journey"
             marker: V240_JOURNEY_SNOOKER_OK
           - name: table-tennis
-            grep: "^TABLE_TENNIS journey"
+            grep: "TABLE_TENNIS journey"
             marker: V240_JOURNEY_TABLE_TENNIS_OK
           - name: private-room
-            grep: "^PRIVATE_ROOM journey"
+            grep: "PRIVATE_ROOM journey"
             marker: V240_JOURNEY_PRIVATE_ROOM_OK
           - name: arcade
-            grep: "^ARCADE journey"
+            grep: "ARCADE journey"
             marker: V240_JOURNEY_ARCADE_OK
           - name: custom
-            grep: "^CUSTOM journey"
+            grep: "CUSTOM journey"
             marker: V240_JOURNEY_CUSTOM_OK
           - name: coverage
-            grep: "^all game/resource journeys"
+            grep: "all game/resource journeys"
             marker: V240_METIER_FIRST_GAME_JOURNEYS_OK
     steps:
       - uses: actions/checkout@v4
