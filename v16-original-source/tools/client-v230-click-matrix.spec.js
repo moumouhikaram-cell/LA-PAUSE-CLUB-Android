@@ -2,6 +2,7 @@
 const { test, expect } = require('@playwright/test');
 
 const APP_URL = process.env.LP_E2E_URL || 'http://127.0.0.1:4173/index.html';
+const CONTROL_SELECTOR = '#view button:not([disabled]):visible,#view a[href]:visible,#view input[type="button"]:not([disabled]):visible,#view input[type="submit"]:not([disabled]):visible,#view input[type="checkbox"]:not([disabled]):visible,#view input[type="radio"]:not([disabled]):visible,#view select:not([disabled]):visible,#view summary:visible';
 test.setTimeout(600000);
 
 async function boot(page){
@@ -34,6 +35,23 @@ async function boot(page){
   return runtime;
 }
 
+async function captureStorage(page){
+  return page.evaluate(()=>{
+    const out={};
+    for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);out[k]=localStorage.getItem(k);}
+    return out;
+  });
+}
+
+async function resetToBaseline(page,baseline){
+  await page.evaluate(store=>{
+    localStorage.clear();
+    for(const [k,v] of Object.entries(store))localStorage.setItem(k,v);
+  },baseline);
+  await page.reload({waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>!!window.LPClient&&document.body.classList.contains('cs-ready'));
+}
+
 async function go(page,route){
   await page.evaluate(r=>{
     try{window.closeOverlay&&window.closeOverlay();}catch(_){}
@@ -45,10 +63,7 @@ async function go(page,route){
 }
 
 async function controls(page){
-  return page.locator('#view button:not([disabled]),#view a[href],#view input[type="button"]:not([disabled]),#view input[type="submit"]:not([disabled]),#view input[type="checkbox"]:not([disabled]),#view input[type="radio"]:not([disabled]),#view select:not([disabled]),#view summary').evaluateAll(els=>els.filter(el=>{
-    const s=getComputedStyle(el),r=el.getBoundingClientRect();
-    return s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity)!==0&&r.width>0&&r.height>0;
-  }).map((el,i)=>({
+  return page.locator(CONTROL_SELECTOR).evaluateAll((els)=>els.map((el,i)=>({
     i,
     tag:el.tagName,
     type:el.getAttribute('type')||'',
@@ -60,8 +75,7 @@ async function controls(page){
 }
 
 async function activate(page,index){
-  const q='#view button:not([disabled]),#view a[href],#view input[type="button"]:not([disabled]),#view input[type="submit"]:not([disabled]),#view input[type="checkbox"]:not([disabled]),#view input[type="radio"]:not([disabled]),#view select:not([disabled]),#view summary';
-  const loc=page.locator(q).filter({visible:true}).nth(index);
+  const loc=page.locator(CONTROL_SELECTOR).nth(index);
   const tag=await loc.evaluate(el=>el.tagName);
   if(tag==='SELECT'){
     const vals=await loc.locator('option').evaluateAll(os=>os.filter(o=>!o.disabled).map(o=>o.value));
@@ -74,11 +88,13 @@ async function activate(page,index){
 
 test('all visible route controls survive isolated customer clicks without runtime failure',async({page})=>{
   const runtime=await boot(page);
+  const baseline=await captureStorage(page);
   const routes=await page.evaluate(()=>Array.from(new Set(window.LPClient.menuGroups.flatMap(g=>g.items.map(i=>i[0])).concat(['csHome','csStations','csSetup']))));
   const failures=[];
   const coverage=[];
 
   for(const route of routes){
+    await resetToBaseline(page,baseline);
     await go(page,route);
     const list=await controls(page);
     coverage.push({route,total:list.length,controls:list});
@@ -86,11 +102,12 @@ test('all visible route controls survive isolated customer clicks without runtim
       const c=list[i];
       const beforeErrors=runtime.length;
       try{
+        await resetToBaseline(page,baseline);
         await go(page,route);
         const fresh=await controls(page);
-        if(i>=fresh.length){failures.push(`${route} :: control disappeared before click #${i} ${c.text||c.id||c.data}`);continue;}
+        if(i>=fresh.length) throw new Error(`control missing from clean baseline at index ${i}`);
         await activate(page,i);
-        await page.waitForTimeout(120);
+        await page.waitForTimeout(150);
         const newErrors=runtime.slice(beforeErrors);
         if(newErrors.length) throw new Error(newErrors.join(' | '));
         await expect(page.locator('#csTop')).toHaveCount(1);
@@ -104,8 +121,6 @@ test('all visible route controls survive isolated customer clicks without runtim
         if(!hasSurface) throw new Error('blank customer surface after click');
       }catch(e){
         failures.push(`${route} :: #${i} ${c.tag}/${c.type} ${c.id||c.text||c.data||c.name||'unnamed'} => ${e.message}`);
-      }finally{
-        try{await page.evaluate(()=>{try{window.closeOverlay&&window.closeOverlay()}catch(_){};try{window.closeModal&&window.closeModal()}catch(_){};});}catch(_){}
       }
     }
   }
