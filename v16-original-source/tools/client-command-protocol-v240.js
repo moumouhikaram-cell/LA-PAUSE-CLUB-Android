@@ -41,10 +41,17 @@ must(runtime,"state.meta.androidCommandCore='DB_V11_AUTH_V12'",'runtime native c
 must(runtime,'window.MasterV2={contract:M2_CONTRACT,protocol:M2_PROTOCOL','public protocol diagnostic');
 
 const literalTypes=[...runtime.matchAll(/m2Commit\('([^']+)'/g)].map(m=>m[1]);
-const expected=['SESSION.REQUEST','SESSION.PAY','SESSION.START','PAYMENT.RECORD','REFUND.FULL','REFUND.PARTIAL','QUEUE.JOIN'];
-for(const t of expected)if(!literalTypes.includes(t))throw new Error(`critical canonical command missing: ${t}`);
+const literalExpected=['SESSION.REQUEST','SESSION.PAY','SESSION.START','PAYMENT.RECORD','QUEUE.JOIN'];
+for(const t of literalExpected)if(!literalTypes.includes(t))throw new Error(`critical canonical command missing: ${t}`);
+
+const refundStart=runtime.indexOf('function m2RefundCore(');
+const refundEnd=runtime.indexOf('window.p1PartialRefund=',refundStart);
+if(refundStart<0||refundEnd<0)throw new Error('refund core boundary missing');
+const refundCore=runtime.slice(refundStart,refundEnd);
+must(refundCore,"m2Commit(amt>=max-.001?'REFUND.FULL':'REFUND.PARTIAL'",'conditional refund command');
+for(const t of ['REFUND.FULL','REFUND.PARTIAL'])must(refundCore,`'${t}'`,'refund command type');
 
 console.log('CLIENT_COMMAND_PROTOCOL_V2_OK');
 console.log('CLIENT_COMMAND_V2_SCHEMA_STRICT_OK');
 console.log('CLIENT_COMMAND_ANDROID_COMPAT_ADAPTER_OK');
-console.log('CLIENT_COMMAND_CRITICAL_TYPES_OK '+literalTypes.length);
+console.log('CLIENT_COMMAND_CRITICAL_TYPES_OK '+(literalTypes.length+2));
