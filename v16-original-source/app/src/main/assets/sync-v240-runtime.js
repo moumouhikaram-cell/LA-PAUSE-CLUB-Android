@@ -8,7 +8,9 @@
 const LP_SYNC_PROTOCOL_V2='la-pause-sync/2';
 const LP_SYNC_SCHEMA_V2=2;
 const LP_SYNC_BATCH_LIMIT=100;
+const LP_SYNC_TOKEN_KEY_V2='sync.api.token.v2';
 let lpSyncInFlightV2=null;
+let lpSyncTokenV2='';
 
 function lpSyncScopeV2(){
   return {
@@ -23,6 +25,48 @@ function lpSyncAssertScopeV2(candidate,expected,label){
   for(const key of ['tenantId','venueId','branchId']){
     if(String(scope[key]||'').trim()!==expected[key])throw new Error(`SYNC_SCOPE_MISMATCH:${label}:${key}`);
   }
+}
+
+function lpSyncGetTokenV2(){return lpSyncTokenV2;}
+
+function lpSyncSetTokenV2(value){
+  const token=String(value||'').trim();
+  const bridge=window.Android;
+  if(bridge&&typeof bridge.setSecureValue==='function'){
+    if(token){
+      if(!bridge.setSecureValue(LP_SYNC_TOKEN_KEY_V2,token))throw new Error('SYNC_TOKEN_SECURE_STORE_FAILED');
+    }else if(typeof bridge.deleteSecureValue==='function'){
+      const deleted=bridge.deleteSecureValue(LP_SYNC_TOKEN_KEY_V2);
+      if(!deleted&&typeof bridge.hasSecureValue==='function'&&bridge.hasSecureValue(LP_SYNC_TOKEN_KEY_V2))throw new Error('SYNC_TOKEN_SECURE_DELETE_FAILED');
+    }
+  }
+  lpSyncTokenV2=token;
+  if(state?.sync)state.sync.token='';
+  return token;
+}
+
+function lpSyncInitSecureTokenV2(){
+  const bridge=window.Android;
+  const legacy=String(state?.sync?.token||'').trim();
+  let secure='';
+  try{
+    if(bridge&&typeof bridge.getSecureValue==='function')secure=String(bridge.getSecureValue(LP_SYNC_TOKEN_KEY_V2)||'').trim();
+  }catch(_e){}
+  if(legacy){
+    if(bridge&&typeof bridge.setSecureValue==='function'){
+      if(!bridge.setSecureValue(LP_SYNC_TOKEN_KEY_V2,legacy)){
+        lpSyncTokenV2=legacy;
+        return false;
+      }
+      secure=legacy;
+    }else secure=legacy;
+  }
+  lpSyncTokenV2=secure||legacy;
+  if(state?.sync&&legacy){
+    state.sync.token='';
+    try{if(typeof saveState==='function')saveState();}catch(_e){}
+  }
+  return true;
 }
 
 function lpSyncReadCanonicalBatchV2(){
@@ -109,9 +153,9 @@ async function lpSyncExecuteV2(manual=false){
       events:batch.events,
       clientRevision:Number(state?.meta?.dataRevision||0),
       clientTime:new Date().toISOString(),
-      capabilities:['canonical-events-v11','scoped-ack','offline-outbox','fail-closed-remote-apply']
+      capabilities:['canonical-events-v11','scoped-ack','offline-outbox','fail-closed-remote-apply','keystore-sync-token']
     };
-    const res=await nativeRequest('POST',`${state.sync.apiBase}/v1/sync`,state.sync.token,payload);
+    const res=await nativeRequest('POST',`${state.sync.apiBase}/v1/sync`,lpSyncGetTokenV2(),payload);
     const validated=lpSyncValidateResponseV2(res.body||{},eventIds);
     lpSyncAcknowledgeV2(validated.ackEventIds);
     if(validated.cursor!==undefined)state.meta.lastServerCursor=validated.cursor;
@@ -145,6 +189,48 @@ function lpConfigureSyncV2(){
   syncTimer=setInterval(()=>lpSyncNowV2(false),Math.max(5,Number(state.sync.pollSeconds||10))*1000);
 }
 
+lpSyncInitSecureTokenV2();
+
+// Preserve the existing Settings UI while routing the token through Android Keystore.
+const lpLegacySettingsSyncV2=typeof settingsSync==='function'?settingsSync:null;
+if(lpLegacySettingsSyncV2){
+  settingsSync=function(){
+    if(!state?.sync)return lpLegacySettingsSyncV2();
+    state.sync.token=lpSyncGetTokenV2();
+    try{return lpLegacySettingsSyncV2();}
+    finally{state.sync.token='';}
+  };
+}
+const lpLegacyBindSettingsV2=typeof bindSettings==='function'?bindSettings:null;
+if(lpLegacyBindSettingsV2){
+  bindSettings=function(section){
+    lpLegacyBindSettingsV2(section);
+    if(section!=='sync')return;
+    const saveButton=$('saveSync');
+    if(!saveButton)return;
+    saveButton.onclick=()=>{
+      try{
+        state.sync.enabled=$('syncEnabled').checked;
+        state.sync.apiBase=$('apiBase').value.trim().replace(/\/$/,'');
+        state.sync.wsUrl=$('wsUrl').value.trim();
+        state.sync.branchId=$('syncBranchId').value.trim()||'elhajeb-main';
+        lpSyncSetTokenV2($('syncToken').value);
+        state.sync.pollSeconds=+$('pollSeconds').value;
+        state.sync.status='local';
+        state.sync.lastError='';
+        state.sync.token='';
+        saveState({eventType:'settings.sync'});
+        configureSync();
+        renderSettings();
+        toast('Synchronisation configurée');
+      }catch(_error){
+        state.sync.token='';
+        toast('Échec de sécurisation du token');
+      }
+    };
+  };
+}
+
 // Replace legacy sync globals used by existing Settings handlers without changing UI.
 syncNow=lpSyncNowV2;
 configureSync=lpConfigureSyncV2;
@@ -152,7 +238,7 @@ applyRemoteChanges=lpRejectLegacyRemoteChangesV2;
 window.syncNow=lpSyncNowV2;
 window.configureSync=lpConfigureSyncV2;
 window.applyRemoteChanges=lpRejectLegacyRemoteChangesV2;
-window.LPSyncV2={protocolVersion:LP_SYNC_PROTOCOL_V2,schemaVersion:LP_SYNC_SCHEMA_V2,readBatch:lpSyncReadCanonicalBatchV2,validateResponse:lpSyncValidateResponseV2};
+window.LPSyncV2={protocolVersion:LP_SYNC_PROTOCOL_V2,schemaVersion:LP_SYNC_SCHEMA_V2,readBatch:lpSyncReadCanonicalBatchV2,validateResponse:lpSyncValidateResponseV2,getToken:lpSyncGetTokenV2,setToken:lpSyncSetTokenV2};
 
 lpSyncRefreshDiagnosticsV2();
 configureSync();
