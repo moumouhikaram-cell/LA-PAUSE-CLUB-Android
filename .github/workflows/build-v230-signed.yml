@@ -181,13 +181,14 @@ jobs:
           grep -q 'registerOnBackInvokedCallback' "$J/PremiumActivity.java"
           grep -q 'requestExitConfirmation' "$J/PremiumActivity.java"
           grep -q 'getSafeInsetsJson' "$J/PremiumActivity.java"
-          for f in client-product-core.js client-product-media.js client-product-views.js client-product-setup.js client-product-session-policy.js client-product-shift-compat.js client-product-settings-compat.js client-product-boot.js master-v2-runtime.js master-v2-safety.js p1-core.js; do node --check "$A/$f"; done
+          for f in client-product-core.js client-product-media.js client-product-views.js client-product-setup.js client-product-session-policy.js client-product-shift-compat.js client-product-settings-compat.js client-product-render-dispatch.js client-product-boot.js master-v2-runtime.js master-v2-safety.js p1-core.js; do node --check "$A/$f"; done
           node --check tools/client-v230-e2e.spec.js
           node --check tools/client-v230-click-matrix.spec.js
           node --check tools/client-v230-persistence.spec.js
           grep -q 'src="client-product-session-policy.js"' "$A/index.html"
           grep -q 'src="client-product-shift-compat.js"' "$A/index.html"
           grep -q 'src="client-product-settings-compat.js"' "$A/index.html"
+          grep -q 'src="client-product-render-dispatch.js"' "$A/index.html"
           grep -q 'client-product-v230.css' "$A/index.html"
           ! grep -q 'src="client-product-v230.js"' "$A/index.html"
           ! grep -q 'src="client-shell.js"' "$A/index.html"
@@ -242,12 +243,13 @@ jobs:
           grep "versionName='2.3.0'" signed-badging.txt
           grep -qi 'Signer #1 certificate DN: CN=LA PAUSE OS' signed-certificate.txt
           unzip -l "$SIGNED" | tee signed-assets.txt
-          for f in client-product-core.js client-product-media.js client-product-views.js client-product-setup.js client-product-session-policy.js client-product-shift-compat.js client-product-settings-compat.js client-product-boot.js client-product-core.css client-product-responsive.css client-product-v230.css; do grep -q "assets/$f" signed-assets.txt; done
+          for f in client-product-core.js client-product-media.js client-product-views.js client-product-setup.js client-product-session-policy.js client-product-shift-compat.js client-product-settings-compat.js client-product-render-dispatch.js client-product-boot.js client-product-core.css client-product-responsive.css client-product-v230.css; do grep -q "assets/$f" signed-assets.txt; done
           for f in ps5.jpg sim.jpg pc.jpg billiard.jpg snooker.jpg table-tennis.jpg arcade.jpg lounge.jpg; do grep -q "assets/media/premium/$f" signed-assets.txt; unzip -p "$SIGNED" "assets/media/premium/$f" | wc -c | awk '$1 > 120000'; done
           unzip -p "$SIGNED" assets/index.html > signed-index.html
           grep -q 'client-product-session-policy.js' signed-index.html
           grep -q 'client-product-shift-compat.js' signed-index.html
           grep -q 'client-product-settings-compat.js' signed-index.html
+          grep -q 'client-product-render-dispatch.js' signed-index.html
           ! grep -q 'src="client-product-v230.js"' signed-index.html
           ! grep -q 'src="client-shell.js"' signed-index.html
           ! grep -q 'src="client-platform-guard.js"' signed-index.html
