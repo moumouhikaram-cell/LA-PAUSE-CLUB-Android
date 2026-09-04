@@ -41,6 +41,8 @@ jobs:
           grep -q "SYNC_PROTOCOL_V2_OK" sync-protocol-v240-proof.txt
           grep -q "SYNC_CANONICAL_V11_OUTBOX_OK" sync-protocol-v240-proof.txt
           grep -q "SYNC_SCOPE_ACK_FAIL_CLOSED_OK" sync-protocol-v240-proof.txt
+          grep -q "SYNC_SINGLE_FLIGHT_OK" sync-protocol-v240-proof.txt
+          grep -q "SYNC_TOKEN_KEYSTORE_OK" sync-protocol-v240-proof.txt
           grep -q "SYNC_REMOTE_LEGACY_MERGE_BLOCKED_OK" sync-protocol-v240-proof.txt
           grep -q "SYNC_OFFLINE_RETRY_BOOKKEEPING_OK" sync-protocol-v240-proof.txt
       - name: Upload canonical sync proof
