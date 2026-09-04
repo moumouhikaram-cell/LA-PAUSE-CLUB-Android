@@ -1,0 +1,48 @@
+name: LA PAUSE OS 2.4 Client Protocol V2 CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - android-device-control-v240
+    paths:
+      - "contracts/protocol/client-command-envelope.v2.schema.json"
+      - "v16-original-source/app/src/main/assets/master-v2-runtime.js"
+      - "v16-original-source/tools/client-command-protocol-v240.js"
+      - ".github/workflows/v240-client-protocol-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  protocol-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Syntax check canonical runtime
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          node --check app/src/main/assets/master-v2-runtime.js
+      - name: Prove canonical client command protocol v2
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          node tools/client-command-protocol-v240.js | tee ../client-protocol-v2.txt
+          grep -q 'CLIENT_COMMAND_PROTOCOL_V2_OK' ../client-protocol-v2.txt
+          grep -q 'CLIENT_COMMAND_V2_SCHEMA_STRICT_OK' ../client-protocol-v2.txt
+          grep -q 'CLIENT_COMMAND_ANDROID_COMPAT_ADAPTER_OK' ../client-protocol-v2.txt
+          grep -q 'CLIENT_COMMAND_CRITICAL_TYPES_OK' ../client-protocol-v2.txt
+      - name: Upload protocol proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: v240-client-protocol-v2-${{ github.run_number }}
+          path: client-protocol-v2.txt
+          if-no-files-found: error
+          retention-days: 30
