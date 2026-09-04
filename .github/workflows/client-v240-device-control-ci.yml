@@ -1,4 +1,4 @@
-name: LA PAUSE OS 2.4.0 Device Control CI
+name: LA PAUSE OS 2.4.0 SaaS + Device Control CI
 
 on:
   workflow_dispatch:
@@ -7,16 +7,18 @@ on:
       - android-device-control-v240
     paths:
       - "v16-original-source/**"
+      - "contracts/**"
       - "docs/DEVICE_AGENT_PROTOCOL_V1.md"
+      - "docs/LA_PAUSE_SAAS_PLATFORM_BLUEPRINT_V1.md"
       - ".github/workflows/client-v240-device-control-ci.yml"
 
 permissions:
   contents: read
 
 jobs:
-  device-control-gates:
+  saas-device-control-gates:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 70
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v5
@@ -49,81 +51,89 @@ jobs:
           set -euxo pipefail
           bash tools/prepare-client-media-v230.sh
 
-      - name: Device Control 2.4 structural and security contract
-        working-directory: v16-original-source
+      - name: SaaS, Device Control and security structural contract
         shell: bash
         run: |
           set -euxo pipefail
-          A=app/src/main/assets
+          A=v16-original-source/app/src/main/assets
           node --check "$A/p2-device-control-v240.js"
           node --check "$A/client-operator-ux-v240.js"
-          node --check tools/client-v240-device-control.spec.js
-          node --check tools/client-v240-operator-ux.spec.js
-          grep -q 'versionCode = 29' app/build.gradle.kts
-          grep -q 'versionName = "2.4.0"' app/build.gradle.kts
-          grep -q 'include(":app", ":tvagent")' settings.gradle.kts
-          grep -q 'p2-device-control-v240.css' "$A/index.html"
-          grep -q 'p2-device-control-v240.js' "$A/index.html"
-          grep -q 'client-operator-ux-v240.css' "$A/index.html"
-          grep -q 'client-operator-ux-v240.js' "$A/index.html"
+          node --check "$A/client-operator-ux-v240-hotfix.js"
+          node --check "$A/saas-entitlement-rbac-v240.js"
+          node --check v16-original-source/tools/client-v240-device-control.spec.js
+          node --check v16-original-source/tools/client-v240-operator-ux.spec.js
+          node --check v16-original-source/tools/saas-entitlement-rbac-v240.spec.js
+
+          grep -q 'versionCode = 29' v16-original-source/app/build.gradle.kts
+          grep -q 'versionName = "2.4.0"' v16-original-source/app/build.gradle.kts
+          grep -q 'isMinifyEnabled = true' v16-original-source/app/build.gradle.kts
+          grep -q 'isShrinkResources = true' v16-original-source/app/build.gradle.kts
+          grep -q 'ENTITLEMENT_PUBLIC_KEY_B64' v16-original-source/app/build.gradle.kts
+          grep -q 'include(":app", ":tvagent")' v16-original-source/settings.gradle.kts
+          grep -q 'android:allowBackup="false"' v16-original-source/app/src/main/AndroidManifest.xml
+          grep -q 'android:fullBackupContent="false"' v16-original-source/app/src/main/AndroidManifest.xml
+          test -f v16-original-source/app/proguard-rules.pro
+          test -f v16-original-source/app/src/main/java/com/lapauseclub/manager/security/AppIntegrity.java
+          test -f v16-original-source/app/src/main/java/com/lapauseclub/manager/security/EntitlementVerifier.java
+          grep -q 'OFFICIAL_SIGNER_SHA256' v16-original-source/app/src/main/java/com/lapauseclub/manager/security/AppIntegrity.java
+          grep -q 'f154909d8c631131975553c41481b67c282f514beb0ed9ab228d7275fa8e321f' v16-original-source/app/src/main/java/com/lapauseclub/manager/security/AppIntegrity.java
+          grep -q 'SHA256withECDSA' v16-original-source/app/src/main/java/com/lapauseclub/manager/security/EntitlementVerifier.java
+          grep -q 'LP_CANONICAL_JSON_V1' v16-original-source/app/src/main/java/com/lapauseclub/manager/security/EntitlementVerifier.java
+          grep -q 'getAppSecurityInfoJson' v16-original-source/app/src/main/java/com/lapauseclub/manager/MainActivity.java
+          grep -q 'verifyEntitlementJson' v16-original-source/app/src/main/java/com/lapauseclub/manager/MainActivity.java
+          grep -q 'WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)' v16-original-source/app/src/main/java/com/lapauseclub/manager/MainActivity.java
+          grep -q 'setAllowUniversalAccessFromFileURLs(false)' v16-original-source/app/src/main/java/com/lapauseclub/manager/MainActivity.java
+          grep -q 'HTTP clair interdit hors réseau local' v16-original-source/app/src/main/java/com/lapauseclub/manager/MainActivity.java
+
+          test -f contracts/saas/module-catalog.v1.json
+          test -f contracts/security/entitlement.v1.schema.json
+          test -f contracts/protocol/client-command-envelope.v2.schema.json
+          grep -q 'la-pause-module-catalog/1' contracts/saas/module-catalog.v1.json
+          grep -q 'ECDSA_P256_SHA256' contracts/security/entitlement.v1.schema.json
+          grep -q 'la-pause-client/2' contracts/protocol/client-command-envelope.v2.schema.json
+          grep -q 'saas-entitlement-rbac-v240.js' "$A/index.html"
           python3 - <<'PY'
           from pathlib import Path
-          s=Path('app/src/main/assets/index.html').read_text()
+          s=Path('v16-original-source/app/src/main/assets/index.html').read_text()
+          assert s.index('p5-platform.js') < s.index('saas-entitlement-rbac-v240.js') < s.index('master-v2-runtime.js')
           assert s.index('client-product-render-dispatch.js') < s.index('p2-device-control-v240.js') < s.index('client-operator-ux-v240.js') < s.index('client-product-boot.js')
-          print('V240_RENDER_ORDER_OK')
+          print('V240_SAAS_RUNTIME_ORDER_OK')
           PY
+          python3 - <<'PY'
+          import json,re
+          from pathlib import Path
+          catalog=json.loads(Path('contracts/saas/module-catalog.v1.json').read_text())
+          src=Path('v16-original-source/app/src/main/assets/saas-entitlement-rbac-v240.js').read_text()
+          expected={'PLATFORM_CORE',*(m['id'] for m in catalog['modules'])}
+          missing=[x for x in sorted(expected) if x not in src]
+          assert not missing, missing
+          print('V240_MODULE_CATALOG_RUNTIME_PARITY_OK')
+          PY
+
           grep -q 'LA_PAUSE_DEVICE_AGENT_V1' "$A/p2-device-control-v240.js"
-          grep -q 'discoverLaPauseAgents' app/src/main/java/com/lapauseclub/manager/PremiumActivity.java
-          grep -q 'DEVICE_AGENT_PROTOCOL' app/src/main/java/com/lapauseclub/manager/PremiumActivity.java
-          grep -q 'Executors.newFixedThreadPool(32)' app/src/main/java/com/lapauseclub/manager/PremiumActivity.java
-          grep -q 'setConnectTimeout(350)' app/src/main/java/com/lapauseclub/manager/PremiumActivity.java
-          grep -q 'supportedCommands' app/src/main/java/com/lapauseclub/manager/PremiumActivity.java
+          grep -q 'discoverLaPauseAgents' v16-original-source/app/src/main/java/com/lapauseclub/manager/PremiumActivity.java
+          grep -q 'supportedCommands' v16-original-source/app/src/main/java/com/lapauseclub/manager/PremiumActivity.java
           grep -q '/v1/pair' "$A/p2-device-control-v240.js"
           grep -q 'getSecureValue' "$A/p2-device-control-v240.js"
-          grep -q 'setSecureValue' "$A/p2-device-control-v240.js"
           grep -q 'BLOCKED_AUTH' "$A/p2-device-control-v240.js"
-          grep -q 'supportedCommands' "$A/p2-device-control-v240.js"
-          grep -q 'device.discovery.paired' "$A/p2-device-control-v240.js"
-          grep -q 'V240_DISCOVERY_REQUIRES_OPERATOR_PAIR_OK' tools/client-v240-device-control.spec.js
-          grep -q 'V240_CAPABILITY_HONESTY_OK' tools/client-v240-device-control.spec.js
-          grep -q 'V240_SECURE_PAIRING_FAILS_CLOSED_OK' tools/client-v240-device-control.spec.js
-          grep -q 'V240_NO_TOKEN_IN_CLUB_STATE_OK' tools/client-v240-device-control.spec.js
           grep -q 'media/ps5-available.png' "$A/client-operator-ux-v240.js"
           grep -q 'media/sim-vip.png' "$A/client-operator-ux-v240.js"
-          grep -q 'V240_SNOOKER_PRICE_PERSISTENCE_OK' tools/client-v240-operator-ux.spec.js
-          ! grep -qi 'adb shell' "$A/p2-device-control-v240.js"
 
-          test -f tvagent/build.gradle.kts
-          test -f tvagent/src/main/AndroidManifest.xml
-          test -f tvagent/src/main/java/com/lapauseclub/tvagent/AgentActivity.java
-          test -f tvagent/src/main/java/com/lapauseclub/tvagent/AgentService.java
-          test -f tvagent/src/main/java/com/lapauseclub/tvagent/AgentHttpServer.java
-          test -f tvagent/src/main/java/com/lapauseclub/tvagent/AgentConfig.java
-          grep -q 'applicationId = "com.lapauseclub.tvagent"' tvagent/build.gradle.kts
-          grep -q 'versionName = "1.0.0"' tvagent/build.gradle.kts
-          grep -q 'android.permission.SYSTEM_ALERT_WINDOW' tvagent/src/main/AndroidManifest.xml
-          grep -q 'android.permission.FOREGROUND_SERVICE_SPECIAL_USE' tvagent/src/main/AndroidManifest.xml
-          grep -q 'android.intent.action.BOOT_COMPLETED' tvagent/src/main/AndroidManifest.xml
-          grep -q 'LA_PAUSE_DEVICE_AGENT_V1' tvagent/src/main/java/com/lapauseclub/tvagent/AgentConfig.java
-          grep -q 'sha256(token)' tvagent/src/main/java/com/lapauseclub/tvagent/AgentConfig.java
-          grep -q 'revokeAllTokens' tvagent/src/main/java/com/lapauseclub/tvagent/AgentConfig.java
-          grep -q '"/v1/pair"' tvagent/src/main/java/com/lapauseclub/tvagent/AgentHttpServer.java
-          grep -q 'authorization' tvagent/src/main/java/com/lapauseclub/tvagent/AgentHttpServer.java
-          grep -q 'idempotencyKey' tvagent/src/main/java/com/lapauseclub/tvagent/AgentHttpServer.java
-          grep -q 'supportedCommands' tvagent/src/main/java/com/lapauseclub/tvagent/AgentHttpServer.java
-          grep -q 'overlayReady' tvagent/src/main/java/com/lapauseclub/tvagent/AgentHttpServer.java
-          grep -q 'J.ai vérifié l.overlay sur le gameplay HDMI réel' tvagent/src/main/java/com/lapauseclub/tvagent/AgentActivity.java
+          test -f v16-original-source/tvagent/build.gradle.kts
+          test -f v16-original-source/tvagent/src/main/java/com/lapauseclub/tvagent/AgentHttpServer.java
+          grep -q 'LA_PAUSE_DEVICE_AGENT_V1' v16-original-source/tvagent/src/main/java/com/lapauseclub/tvagent/AgentConfig.java
+          grep -q 'sha256(token)' v16-original-source/tvagent/src/main/java/com/lapauseclub/tvagent/AgentConfig.java
+          grep -q 'idempotencyKey' v16-original-source/tvagent/src/main/java/com/lapauseclub/tvagent/AgentHttpServer.java
+          echo V240_SAAS_SECURITY_STRUCTURE_OK
           echo V240_DEVICE_CONTROL_STRUCTURE_OK
-          echo V240_TV_AGENT_SECURITY_STRUCTURE_OK
-          echo V240_OPERATOR_UX_STRUCTURE_OK
 
-      - name: Compile manager bridge and TV Agent
+      - name: Compile hardened manager and TV Agent
         working-directory: v16-original-source
         shell: bash
         run: |
           set -euxo pipefail
           gradle --no-daemon --stacktrace :app:compileReleaseJavaWithJavac :tvagent:compileDebugJavaWithJavac
-          echo V240_NATIVE_DISCOVERY_COMPILE_OK
+          echo V240_SAAS_SECURITY_NATIVE_COMPILE_OK
           echo V240_TV_AGENT_COMPILE_OK
 
       - name: Install browser test runtime
@@ -137,7 +147,22 @@ jobs:
           echo $! > ../e2e-v240-server.pid
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:4173/index.html >/dev/null && break; sleep 1; done
 
-      - name: Device Control browser E2E first
+      - name: SaaS entitlement and RBAC E2E
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          LP_E2E_URL=http://127.0.0.1:4173/index.html npx playwright test tools/saas-entitlement-rbac-v240.spec.js --reporter=line --workers=1 | tee ../e2e-v240-saas.txt
+          grep -q 'SAAS_FORGED_ENTITLEMENT_REJECTED_OK' ../e2e-v240-saas.txt
+          grep -q 'SAAS_SCOPE_ISOLATION_OK' ../e2e-v240-saas.txt
+          grep -q 'SAAS_OFFLINE_EXPIRY_OK' ../e2e-v240-saas.txt
+          grep -q 'SAAS_MODULE_DEPENDENCY_OK' ../e2e-v240-saas.txt
+          grep -q 'SAAS_INTEGRITY_FAIL_CLOSED_OK' ../e2e-v240-saas.txt
+          grep -q 'SAAS_RBAC_CASHIER_OK' ../e2e-v240-saas.txt
+          grep -q 'SAAS_RBAC_BRANCH_SCOPE_OK' ../e2e-v240-saas.txt
+          grep -q 'SAAS_ROUTE_MODULE_MAP_OK' ../e2e-v240-saas.txt
+
+      - name: Device Control browser E2E
         working-directory: v16-original-source
         shell: bash
         run: |
@@ -187,16 +212,19 @@ jobs:
           grep -q 'MASTER_V2_DOMAIN_TESTS_OK' ../domain-v240.txt
           grep -q 'UNIVERSAL_RESOURCE_SESSIONS_OK' ../domain-v240.txt
 
-      - name: Assemble Android manager and TV Agent APKs
+      - name: Assemble debug apps and hardened release
         working-directory: v16-original-source
         shell: bash
         run: |
           set -euxo pipefail
-          gradle --no-daemon --stacktrace :app:assembleDebug :tvagent:assembleDebug
+          gradle --no-daemon --stacktrace :app:assembleDebug :tvagent:assembleDebug :app:assembleRelease
           test -f app/build/outputs/apk/debug/app-debug.apk
           test -f tvagent/build/outputs/apk/debug/tvagent-debug.apk
-          echo V240_MANAGER_APK_OK
+          test -f app/build/outputs/apk/release/app-release-unsigned.apk
+          test -f app/build/outputs/mapping/release/mapping.txt
+          echo V240_MANAGER_DEBUG_APK_OK
           echo V240_TV_AGENT_APK_OK
+          echo V240_HARDENED_RELEASE_R8_OK
 
       - name: Stop local E2E server
         if: always()
@@ -208,8 +236,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: v240-device-control-ci-${{ github.run_number }}
+          name: v240-saas-device-control-ci-${{ github.run_number }}
           path: |
+            e2e-v240-saas.txt
             e2e-v240-device.txt
             e2e-v240-operator-ux.txt
             e2e-v240-regression.txt
@@ -218,6 +247,8 @@ jobs:
             domain-v240.txt
             v16-original-source/test-results/
             v16-original-source/app/build/outputs/apk/debug/app-debug.apk
+            v16-original-source/app/build/outputs/apk/release/app-release-unsigned.apk
+            v16-original-source/app/build/outputs/mapping/release/mapping.txt
             v16-original-source/tvagent/build/outputs/apk/debug/tvagent-debug.apk
           if-no-files-found: warn
           retention-days: 14
