@@ -59,6 +59,22 @@ jobs:
           printf '%s' "$ENT_PUB" | base64 -d >/dev/null
           echo SAAS_ENTITLEMENT_PUBLIC_KEY_PINNED_OK
 
+      - name: Verify and stage signed offline bootstrap entitlement
+        working-directory: v16-original-source
+        shell: bash
+        env:
+          LA_PAUSE_BOOTSTRAP_ENTITLEMENT_B64: ${{ secrets.LA_PAUSE_BOOTSTRAP_ENTITLEMENT_B64 }}
+          LA_PAUSE_ENTITLEMENT_KEY_ID: ${{ secrets.LA_PAUSE_ENTITLEMENT_KEY_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$LA_PAUSE_BOOTSTRAP_ENTITLEMENT_B64"
+          case "$LA_PAUSE_BOOTSTRAP_ENTITLEMENT_B64" in *[!A-Za-z0-9+/=_-]*) echo INVALID_BOOTSTRAP_BASE64; exit 1;; esac
+          node tools/verify-bootstrap-entitlement-v240.js ../contracts/security/entitlement-prod-v1-public.der.b64 | tee bootstrap-entitlement-proof.txt
+          grep -q 'BOOTSTRAP_ENTITLEMENT_SIGNATURE_OK' bootstrap-entitlement-proof.txt
+          printf "'use strict';\nwindow.LP_BOOTSTRAP_ENTITLEMENT_B64='%s';\n" "$LA_PAUSE_BOOTSTRAP_ENTITLEMENT_B64" > app/src/main/assets/bootstrap-entitlement-v240.js
+          grep -Eq "LP_BOOTSTRAP_ENTITLEMENT_B64='[^']{20,}'" app/src/main/assets/bootstrap-entitlement-v240.js
+          echo SIGNED_OFFLINE_BOOTSTRAP_STAGED_OK
+
       - name: Restore permanent LA PAUSE Android signing key
         shell: bash
         env:
@@ -83,13 +99,18 @@ jobs:
         run: |
           set -euxo pipefail
           bash tools/prepare-client-media-v230.sh
+          node --check app/src/main/assets/entitlement-offline-v240.js
+          node tools/native-entitlement-offline-v240.js
           grep -q 'versionCode = 29' app/build.gradle.kts
           grep -q 'versionName = "2.4.0"' app/build.gradle.kts
           grep -q 'isMinifyEnabled = true' app/build.gradle.kts
           grep -q 'saas-entitlement-rbac-v240.js' app/src/main/assets/index.html
+          grep -q 'entitlement-offline-v240.js' app/src/main/assets/index.html
+          grep -q 'bootstrap-entitlement-v240.js' app/src/main/assets/index.html
           grep -q 'client-shell-next-v240.js' app/src/main/assets/index.html
           grep -q 'client-domain-route-bridge-v240.js' app/src/main/assets/index.html
           grep -q 'client-session-semantic-guard-v240.js' app/src/main/assets/index.html
+          grep -Eq "LP_BOOTSTRAP_ENTITLEMENT_B64='[^']{20,}'" app/src/main/assets/bootstrap-entitlement-v240.js
           test -f ../contracts/saas/module-catalog.v1.json
           test -f ../contracts/security/entitlement.v1.schema.json
           test -s ../contracts/security/entitlement-prod-v1-public.der.b64
@@ -129,7 +150,10 @@ jobs:
           unzip -p "$OUT" assets/index.html > signed-v240-index.html
           grep -q 'client-shell-next-v240.js' signed-v240-index.html
           grep -q 'saas-entitlement-rbac-v240.js' signed-v240-index.html
+          grep -q 'entitlement-offline-v240.js' signed-v240-index.html
           grep -q 'client-session-semantic-guard-v240.js' signed-v240-index.html
+          unzip -p "$OUT" assets/bootstrap-entitlement-v240.js > signed-v240-bootstrap.js
+          grep -Eq "LP_BOOTSTRAP_ENTITLEMENT_B64='[^']{20,}'" signed-v240-bootstrap.js
           sha256sum "$OUT" | tee signed-v240-sha256.txt
           stat -c '%s bytes' "$OUT" | tee signed-v240-size.txt
 
@@ -142,6 +166,7 @@ jobs:
             echo 'R8: enabled'
             echo 'Signed entitlement verifier: ECDSA P-256 SHA-256 / keyId prod-v1'
             echo 'Entitlement verifier public key: contracts/security/entitlement-prod-v1-public.der.b64'
+            echo 'Offline bootstrap entitlement: signature verified before build and hydrated through Android Keystore cache'
             cat signer-v240.txt
             cat signed-v240-sha256.txt
             cat signed-v240-size.txt
@@ -154,6 +179,7 @@ jobs:
           path: |
             LA-PAUSE-OS-Android-v2.4.0-SAAS-SIGNED.apk
             LA-PAUSE-OS-v2.4.0-SAAS-MANIFEST.txt
+            bootstrap-entitlement-proof.txt
             signed-v240-certificate.txt
             signed-v240-badging.txt
             signed-v240-sha256.txt
