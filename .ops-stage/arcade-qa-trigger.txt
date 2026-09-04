@@ -1,3 +1,4 @@
 verify explicit ARCADE per-game journey while keeping optional game title behind Plus d’options
 include ARCADE in the dedicated all-game journey harness and Product CI gate
 rerun after YAML indentation correction
+test-only push after workflow-permission split
