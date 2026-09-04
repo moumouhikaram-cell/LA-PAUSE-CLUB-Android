@@ -22,7 +22,7 @@ async function boot(page, viewport={width:412,height:915}) {
   return errors;
 }
 
-async function currentRoute(page){return page.evaluate(() => window.LPClient.canonical(window.currentView));}
+async function currentRoute(page){return page.evaluate(() => window.LPClient.canonical(window.LPClient.lastRendered));}
 async function goHome(page){await page.evaluate(() => window.LPClient.go('csHome')); await expect.poll(()=>currentRoute(page)).toBe('csHome');}
 
 async function assertChrome(page){
@@ -98,7 +98,7 @@ test('back stack, transient overlays, legacy direct routes and Home exit are det
   // Old/domain routes may still assign currentView and call renderView directly. The product shell must capture them.
   await page.evaluate(() => { window.LPClient.go('csStations'); });
   await expect.poll(()=>currentRoute(page)).toBe('csStations');
-  await page.evaluate(() => { window.currentView='clients'; window.renderView(); });
+  await page.evaluate(() => { window.setView('clients'); });
   await expect.poll(()=>currentRoute(page)).toBe('clients');
   await page.locator('#csBack').click();
   await expect.poll(()=>currentRoute(page)).toBe('csStations');
@@ -140,7 +140,7 @@ test('portrait-landscape rotation preserves route, form value, scroll and one na
     await editable.fill(expected);
   }
   await page.evaluate(() => scrollTo(0, Math.min(450, Math.max(0, document.documentElement.scrollHeight-innerHeight))));
-  const before=await page.evaluate(()=>({route:window.LPClient.canonical(window.currentView),y:scrollY}));
+  const before=await page.evaluate(()=>({route:window.LPClient.canonical(window.LPClient.lastRendered),y:scrollY}));
   await page.setViewportSize({width:915,height:412});
   await page.evaluate(() => window.onLaPauseViewportChanged && window.onLaPauseViewportChanged());
   await page.waitForTimeout(250);
