@@ -233,6 +233,13 @@ public class PremiumActivity extends MainActivity {
                 result.put("latencyMs", Math.max(0, System.currentTimeMillis() - started));
                 Object capabilities = health.opt("capabilities");
                 result.put("capabilities", capabilities == null || capabilities == JSONObject.NULL ? new JSONObject() : capabilities);
+                Object commands = health.opt("supportedCommands");
+                result.put("supportedCommands", commands == null || commands == JSONObject.NULL ? new JSONArray() : commands);
+                result.put("authRequired", health.optBoolean("authRequired", false));
+                result.put("pairingRequired", health.optBoolean("pairingRequired", health.optBoolean("authRequired", false)));
+                result.put("paired", health.optBoolean("paired", false));
+                result.put("overlayPermission", health.optBoolean("overlayPermission", false));
+                result.put("overlayVerified", health.optBoolean("overlayVerified", false));
                 return result;
             } catch (Exception ignored) {
             } finally {

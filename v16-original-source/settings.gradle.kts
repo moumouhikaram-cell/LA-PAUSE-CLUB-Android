@@ -13,4 +13,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "LaPauseClubManager"
-include(":app")
+include(":app", ":tvagent")
