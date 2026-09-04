@@ -1,0 +1,77 @@
+name: LA PAUSE OS 2.4 Canonical Sync Protocol CI
+
+on:
+  push:
+    branches:
+      - android-device-control-v240
+    paths:
+      - "v16-original-source/app/src/main/java/com/lapauseclub/manager/core/CoreSyncTransportV12.java"
+      - "v16-original-source/app/src/main/java/com/lapauseclub/manager/SyncBridgeV12.java"
+      - "v16-original-source/app/src/main/java/com/lapauseclub/manager/MainActivity.java"
+      - "v16-original-source/app/src/main/assets/sync-v240-runtime.js"
+      - "v16-original-source/app/src/main/assets/index.html"
+      - "v16-original-source/tools/sync-protocol-v240.js"
+      - ".github/workflows/v240-sync-protocol-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate canonical sync runtime syntax
+        working-directory: v16-original-source
+        run: |
+          node --check app/src/main/assets/sync-v240-runtime.js
+          node --check tools/sync-protocol-v240.js
+      - name: Prove scoped canonical outbox sync and fail-closed remote apply
+        working-directory: v16-original-source
+        run: node tools/sync-protocol-v240.js | tee sync-protocol-v240-proof.txt
+      - name: Verify sync proof markers
+        working-directory: v16-original-source
+        run: |
+          grep -q "SYNC_PROTOCOL_V2_OK" sync-protocol-v240-proof.txt
+          grep -q "SYNC_CANONICAL_V11_OUTBOX_OK" sync-protocol-v240-proof.txt
+          grep -q "SYNC_SCOPE_ACK_FAIL_CLOSED_OK" sync-protocol-v240-proof.txt
+          grep -q "SYNC_REMOTE_LEGACY_MERGE_BLOCKED_OK" sync-protocol-v240-proof.txt
+          grep -q "SYNC_OFFLINE_RETRY_BOOKKEEPING_OK" sync-protocol-v240-proof.txt
+      - name: Upload canonical sync proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: v240-canonical-sync-proof
+          path: v16-original-source/sync-protocol-v240-proof.txt
+          if-no-files-found: error
+
+  android-compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.4.1"
+      - name: Configure Android SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+      - name: Compile manager with canonical sync bridge
+        working-directory: v16-original-source
+        run: gradle --no-daemon --stacktrace :app:compileDebugJavaWithJavac
