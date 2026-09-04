@@ -4,6 +4,7 @@
  * Historical callbacks in app.js call the bare global renderView() binding.
  * Route that binding through the client runtime so no legacy callback can
  * bypass LP.views (notably the unified Settings controller).
+ * Release gate anchor: legacy boot guard and modern dispatcher are validated together.
  */
 (function(){
   const LP=window.LPClient;
