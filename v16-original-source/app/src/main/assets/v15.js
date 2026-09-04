@@ -87,8 +87,8 @@ function ensureV15ParityState(){
 function v15Metrics(items){return `<div class="v15-metrics">${items.map(x=>`<div class="v15-metric"><small>${esc(x.label)}</small><b>${x.value}</b>${x.sub?`<small>${esc(x.sub)}</small>`:''}</div>`).join('')}</div>`}
 function tabV15(id,label,current,badge=''){return `<button class="${current===id?'active':''}" data-v15-tab="${id}">${esc(label)}${badge!==''?` · ${badge}`:''}</button>`}
 function clientV15(id){return state.clients.find(c=>c.id===id)}
-function bookingStartMsV15(b){return b.startAt||fromIsoV15(b.startsAt)}
-function bookingEndMsV15(b){return b.endAt||fromIsoV15(b.endsAt)}
+function bookingStartMsV15(b){if(!b)return 0;return b.startAt||fromIsoV15(b.startsAt)}
+function bookingEndMsV15(b){if(!b)return 0;return b.endAt||fromIsoV15(b.endsAt)}
 function bookingStatusV15(b){return String(b.status||'CONFIRMED').toUpperCase()}
 function bookingKindV15(b){return b.stationKind||((b.stationIds||[]).some(id=>stationById(id)?.type==='SIM')?'SIMULATOR':'PS5')}
 function bookingConflictsV15(stationIds,start,end,ignoreId=null){
