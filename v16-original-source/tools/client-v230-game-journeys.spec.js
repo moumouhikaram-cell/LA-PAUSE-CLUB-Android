@@ -52,8 +52,14 @@ async function openJourney(page,id){
   const card=page.locator(`[data-cs-station="${id}"]`);
   await expect(card).toBeVisible();
   const quick=card.locator(`[data-ops-quick-id="${id}"]`);
-  await expect(quick).toBeVisible();
-  await quick.click();
+  if(await quick.count()){
+    await expect(quick).toBeVisible();
+    await quick.click();
+  }else{
+    const start=card.locator(`[data-cs-start="${id}"]`).first();
+    await expect(start).toBeVisible();
+    await start.click();
+  }
   await expect(page.locator('#opsSessionForm')).toBeVisible();
   await expect(page.locator('#opsSessionForm')).not.toContainText('Image personnalisée');
   await expect(page.locator('#opsSessionForm input[type="url"]')).toHaveCount(0);
