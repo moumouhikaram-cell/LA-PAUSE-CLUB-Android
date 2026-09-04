@@ -57,7 +57,8 @@ async function discoverRoutes(page){
   await expect(page.locator('#nxMenuLayer')).toHaveClass(/show/);
   const menu=await page.locator('#nxMenuSections [data-nx-menu-route]').evaluateAll(els=>els.map(e=>e.dataset.nxMenuRoute).filter(Boolean));
   const dock=await page.locator('#nxDock [data-nx-route]').evaluateAll(els=>els.map(e=>e.dataset.nxRoute).filter(Boolean));
-  await page.locator('[data-nx-close]').first().click();
+  await page.locator('.nx-menu-close').click();
+  await expect(page.locator('#nxMenuLayer')).not.toHaveClass(/show/);
   return Array.from(new Set([...dock,...menu]));
 }
 
