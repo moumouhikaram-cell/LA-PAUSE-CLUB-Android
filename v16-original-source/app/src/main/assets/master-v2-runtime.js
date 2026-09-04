@@ -1,9 +1,10 @@
 'use strict';
 /* LA PAUSE OS Android — canonical Master V2 critical-operation runtime.
    Loaded last. Keeps the existing UI/modules, but routes sensitive writes through
-   Android SQLite DB v9 with idempotency, expectedRevision, audit and canonical events. */
+   Android SQLite DB v11 with idempotency, scoped revisions, audit and canonical events. */
 
-const M2_CONTRACT='2026-09-02-v2-audited';
+const M2_CONTRACT='2026-09-04-v2-client-protocol';
+const M2_PROTOCOL='la-pause-client/2';
 
 function m2Ensure(){
   state.featureFlags={
@@ -12,7 +13,7 @@ function m2Ensure(){
     memberships:true,venueCredits:true,referrals:true,familyMode:false,responsiblePlay:true,notificationOrchestrator:true,experimentLab:true,energyOptimizer:true,staffPlanner:true,controllerMaintenance:true,autoHeal:true,
     gameLicenseVault:true,saasBilling:false,zeroToLiveOnboarding:true,...(state.featureFlags||{})
   };
-  state.meta=state.meta||{};state.meta.masterContractVersion=M2_CONTRACT;state.meta.androidCommandCore='DB_V9';
+  state.meta=state.meta||{};state.meta.masterContractVersion=M2_CONTRACT;state.meta.androidCommandCore='DB_V11_AUTH_V12';state.meta.clientProtocol=M2_PROTOCOL;
   state.business=state.business||{};state.business.timezone=state.business.timezone||'Africa/Casablanca';state.business.currency=state.business.currency||'MAD';
   if(!Array.isArray(state.creditNotes))state.creditNotes=[];
 }
@@ -26,14 +27,22 @@ function m2Device(){return state.meta?.deviceId||'android-local'}
 function m2Revision(entity){return Math.max(0,num(entity?.revision,0))}
 function m2LocalCache(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(state))}catch(_e){}}
 function m2CanonicalEvent(eventType,entityType,entityId,payload={},extra={}){return {eventId:uid('evt'),eventType,tenantId:m2Tenant(),venueId:m2Venue(),branchId:m2Branch(),stationId:extra.stationId||null,deviceId:m2Device(),entityType,entityId,actorId:m2Actor(),serverTimestamp:now(),payload,correlationId:extra.correlationId||null,causationId:extra.causationId||null,idempotencyKey:extra.idempotencyKey||uid('evt-idem'),severity:extra.severity||'INFO',schemaVersion:1}}
-function m2Command(type,entityType,entityId,expectedRevision,payload={},idempotencyKey=null,correlationId=null){const id=uid('cmd');return {commandId:id,type,idempotencyKey:idempotencyKey||id,expectedRevision:expectedRevision==null?null:expectedRevision,payload,actorId:m2Actor(),branchId:m2Branch(),originDeviceId:m2Device(),tenantId:m2Tenant(),venueId:m2Venue(),entityType:entityType||null,entityId:entityId||null,correlationId:correlationId||uid('corr')}}
+function m2Command(commandType,entityType,entityId,baseRevision,payload={},idempotencyKey=null,correlationId=null){
+  const id=uid('cmd');
+  return {schemaVersion:2,protocolVersion:M2_PROTOCOL,commandId:id,idempotencyKey:idempotencyKey||id,commandType,entityType:entityType||null,entityId:entityId||null,tenantId:m2Tenant(),venueId:m2Venue(),branchId:m2Branch(),actorId:m2Actor(),originDeviceId:m2Device(),clientType:'ANDROID',baseRevision:baseRevision==null?null:Math.max(0,num(baseRevision,0)),issuedAt:now(),correlationId:correlationId||uid('corr'),causationId:null,payloadSchemaVersion:1,payload};
+}
+function m2NativeCommand(command){
+  // Temporary Android bridge adapter. The canonical object above remains strict
+  // la-pause-client/2; legacy aliases are added only at the local native boundary.
+  return {...command,type:command.commandType,expectedRevision:command.baseRevision};
+}
 
 function m2Commit(type,entityType,entityId,expectedRevision,mutate,payload={},eventType=null,extra={}){
   if(!native?.commitCoreCommand)throw new Error('Core transactionnel Android indisponible');
   const next=deepClone(state);mutate(next);
   const cmd=m2Command(type,entityType,entityId,expectedRevision,payload,extra.idempotencyKey,extra.correlationId);
   const evt=m2CanonicalEvent(eventType||String(type).replaceAll('.','_'),entityType,entityId,payload,{stationId:extra.stationId,correlationId:cmd.correlationId,causationId:cmd.commandId,idempotencyKey:`event:${cmd.idempotencyKey}`,severity:extra.severity});
-  const raw=native.commitCoreCommand(JSON.stringify(cmd),JSON.stringify(next),JSON.stringify(evt));
+  const raw=native.commitCoreCommand(JSON.stringify(m2NativeCommand(cmd)),JSON.stringify(next),JSON.stringify(evt));
   const result=JSON.parse(raw||'{}');
   if(!result.ok)throw new Error(result.message||result.code||'Commande refusée');
   state=migrate(result.state||next);m2Ensure();m2LocalCache();return result;
@@ -84,4 +93,4 @@ window.seatQueueV15=function(id){const q=state.queue.find(x=>x.id===id);if(!q)re
 const M2_RENDER_QUEUE=window.renderQueueV15;if(typeof M2_RENDER_QUEUE==='function'){window.renderQueueV15=function(){M2_RENDER_QUEUE();const add=$('queueAddV15');if(add)add.onclick=window.openQueueV15;document.querySelectorAll('[data-q-call-v15]').forEach(b=>b.onclick=()=>{try{m2QueueTransition(b.dataset.qCallV15,'QUEUE.CALL','CALLED','calledAt','QUEUE_CALLED');renderQueueV15()}catch(e){toast(e.message)}});document.querySelectorAll('[data-q-left-v15]').forEach(b=>b.onclick=()=>{try{m2QueueTransition(b.dataset.qLeftV15,'QUEUE.LEAVE','LEFT','leftAt','QUEUE_LEFT');renderQueueV15()}catch(e){toast(e.message)}});document.querySelectorAll('[data-q-seat-v15]').forEach(b=>b.onclick=()=>window.seatQueueV15(b.dataset.qSeatV15));}}
 
 function m2CoreBadge(){try{const c=JSON.parse(native?.getCoreStatusJson?.()||'{}');return c?.commandCore||{}}catch(_e){return {}}}
-window.MasterV2={contract:M2_CONTRACT,commit:m2Commit,coreStatus:m2CoreBadge,flags:()=>state.featureFlags};
+window.MasterV2={contract:M2_CONTRACT,protocol:M2_PROTOCOL,command:m2Command,commit:m2Commit,coreStatus:m2CoreBadge,flags:()=>state.featureFlags};
