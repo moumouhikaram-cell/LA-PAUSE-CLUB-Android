@@ -1,0 +1,101 @@
+name: LA PAUSE OS 2.4 Parallel Regression Diagnosis
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - android-device-control-v240
+    paths:
+      - "v16-original-source/app/src/main/assets/**"
+      - "v16-original-source/tools/client-v230-*.spec.js"
+      - "v16-original-source/tools/client-v230-policy-tests.js"
+      - "v16-original-source/tools/master-v2-domain-tests.js"
+      - ".github/workflows/v240-browser-regression-parallel.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  browser-regression:
+    name: browser-${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: core-e2e
+            spec: tools/client-v230-e2e.spec.js
+            marker: V230_E2E_OK
+          - name: click-matrix
+            spec: tools/client-v230-click-matrix.spec.js
+            marker: V230_CLICK_MATRIX_OK
+          - name: persistence
+            spec: tools/client-v230-persistence.spec.js
+            marker: V230_OPERATIONAL_PERSISTENCE_OK
+          - name: game-journeys
+            spec: tools/client-v230-game-journeys.spec.js
+            marker: V230_ALL_GAME_JOURNEYS_OK
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Prepare embedded media
+        working-directory: v16-original-source
+        run: bash tools/prepare-client-media-v230.sh
+      - name: Install Playwright Chromium
+        working-directory: v16-original-source
+        run: |
+          set -euxo pipefail
+          npm install --no-save @playwright/test@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Start app asset server
+        working-directory: v16-original-source
+        run: |
+          set -euxo pipefail
+          python3 -m http.server 4173 --directory app/src/main/assets >"../server-${{ matrix.name }}.log" 2>&1 &
+          echo $! > "../server-${{ matrix.name }}.pid"
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:4173/index.html >/dev/null && exit 0; sleep 1; done
+          exit 1
+      - name: Run ${{ matrix.name }} independently
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -o pipefail
+          timeout --signal=TERM --kill-after=20s 9m env LP_E2E_URL=http://127.0.0.1:4173/index.html npx playwright test "${{ matrix.spec }}" --reporter=line --workers=1 | tee "../regression-${{ matrix.name }}.txt"
+          grep -q "${{ matrix.marker }}" "../regression-${{ matrix.name }}.txt"
+      - name: Stop asset server
+        if: always()
+        run: |
+          if [ -f "server-${{ matrix.name }}.pid" ]; then kill "$(cat "server-${{ matrix.name }}.pid")" 2>/dev/null || true; fi
+      - name: Upload diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v240-regression-${{ matrix.name }}-${{ github.run_number }}
+          path: |
+            regression-${{ matrix.name }}.txt
+            server-${{ matrix.name }}.log
+            v16-original-source/test-results/
+          if-no-files-found: warn
+          retention-days: 7
+
+  business-domain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Session policy and universal resource domain gates
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          node tools/client-v230-policy-tests.js | tee ../policy-v240-parallel.txt
+          grep -q 'V230_SESSION_POLICY_TESTS_OK' ../policy-v240-parallel.txt
+          node tools/master-v2-domain-tests.js | tee ../domain-v240-parallel.txt
+          grep -q 'MASTER_V2_DOMAIN_TESTS_OK' ../domain-v240-parallel.txt
+          grep -q 'UNIVERSAL_RESOURCE_SESSIONS_OK' ../domain-v240-parallel.txt
