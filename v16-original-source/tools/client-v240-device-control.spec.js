@@ -76,8 +76,8 @@ test('LAN discovery -> pair resource -> command -> home pulse', async ({ page })
   await page.locator('#v240MsgSend').click();
   await page.waitForFunction(() => (state.deviceCommands||[]).some(c => c.commandType==='SHOW_MESSAGE' && c.payload?.text==='Session terminée'));
 
-  await page.evaluate(() => { currentView='home'; renderView(); });
-  await page.waitForTimeout(60);
+  // csHome is the canonical operator Home. The legacy "home" route is intentionally not an alias.
+  await page.evaluate(() => { currentView='csHome'; renderView(); });
   await expect(page.locator('#v240DevicePulse')).toBeVisible();
   const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem('la-pause-club-manager-v6')||'{}').deviceRegistry?.some(d=>d.agentId==='agent-tv-test-1'));
   expect(persisted).toBe(true);
