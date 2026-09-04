@@ -19,63 +19,30 @@ jobs:
           ref: android-client-final-v230
           fetch-depth: 0
 
-      - name: Load variable-amount fix and enforce every game journey
+      - name: Align journey harness with real entry controls
         shell: bash
         run: |
           set -euxo pipefail
           python3 - <<'PY'
           from pathlib import Path
-
-          index=Path('v16-original-source/app/src/main/assets/index.html')
-          s=index.read_text()
-          needle='<script src="client-operator-actions-v230.js"></script><script src="client-product-render-dispatch.js"></script>'
-          repl='<script src="client-operator-actions-v230.js"></script><script src="client-operator-journey-fix-v230.js"></script><script src="client-product-render-dispatch.js"></script>'
-          if 'client-operator-journey-fix-v230.js' not in s:
-              if needle not in s: raise SystemExit('index operator insertion point not found')
-              s=s.replace(needle,repl,1)
-          index.write_text(s)
-
-          ci=Path('.github/workflows/client-v230-ci.yml')
-          y=ci.read_text()
-          if 'client-operator-journey-fix-v230.js master-v2-runtime.js' not in y:
-              y=y.replace('client-product-boot.js master-v2-runtime.js','client-product-boot.js client-operator-journey-fix-v230.js master-v2-runtime.js',1)
-          if 'node --check tools/client-v230-game-journeys.spec.js' not in y:
-              y=y.replace('node --check tools/client-v230-persistence.spec.js','node --check tools/client-v230-persistence.spec.js\n          node --check tools/client-v230-game-journeys.spec.js',1)
-          old='tools/client-v230-e2e.spec.js tools/client-v230-click-matrix.spec.js tools/client-v230-persistence.spec.js --reporter=line'
-          new='tools/client-v230-e2e.spec.js tools/client-v230-click-matrix.spec.js tools/client-v230-persistence.spec.js tools/client-v230-game-journeys.spec.js --reporter=line'
-          if 'tools/client-v230-game-journeys.spec.js --reporter=line' not in y:
-              if old not in y: raise SystemExit('playwright command insertion point not found')
-              y=y.replace(old,new,1)
-          if "grep -q 'V230_ALL_GAME_JOURNEYS_OK'" not in y:
-              marker="          grep -q 'V230_SIM_CLICK_FLOW_OK' ../e2e-v230.txt\n"
-              extra=(
-                  "          grep -q 'V230_JOURNEY_CONSOLE_OK' ../e2e-v230.txt\n"
-                  "          grep -q 'V230_JOURNEY_SIM_RACING_OK' ../e2e-v230.txt\n"
-                  "          grep -q 'V230_JOURNEY_PC_GAMING_OK' ../e2e-v230.txt\n"
-                  "          grep -q 'V230_JOURNEY_BILLIARD_OK' ../e2e-v230.txt\n"
-                  "          grep -q 'V230_JOURNEY_SNOOKER_OK' ../e2e-v230.txt\n"
-                  "          grep -q 'V230_JOURNEY_TABLE_TENNIS_OK' ../e2e-v230.txt\n"
-                  "          grep -q 'V230_JOURNEY_PRIVATE_ROOM_OK' ../e2e-v230.txt\n"
-                  "          grep -q 'V230_JOURNEY_CUSTOM_OK' ../e2e-v230.txt\n"
-                  "          grep -q 'V230_ALL_GAME_JOURNEYS_OK' ../e2e-v230.txt\n"
-              )
-              if marker not in y: raise SystemExit('grep insertion point not found')
-              y=y.replace(marker,marker+extra,1)
-          ci.write_text(y)
+          p=Path('v16-original-source/tools/client-v230-game-journeys.spec.js')
+          s=p.read_text()
+          old='''  const quick=card.locator(`[data-ops-quick-id="${id}"]`);\n  await expect(quick).toBeVisible();\n  await quick.click();\n'''
+          new='''  const quick=card.locator(`[data-ops-quick-id="${id}"]`);\n  if(await quick.count()){\n    await expect(quick).toBeVisible();\n    await quick.click();\n  }else{\n    const start=card.locator(`[data-cs-start="${id}"]`).first();\n    await expect(start).toBeVisible();\n    await start.click();\n  }\n'''
+          if old in s:s=s.replace(old,new,1)
+          if 'if(await quick.count())' not in s:raise SystemExit('journey entry patch not applied')
+          p.write_text(s)
           PY
-          node --check v16-original-source/app/src/main/assets/client-operator-journey-fix-v230.js
           node --check v16-original-source/tools/client-v230-game-journeys.spec.js
-          grep -q 'client-operator-journey-fix-v230.js' v16-original-source/app/src/main/assets/index.html
-          grep -q 'V230_ALL_GAME_JOURNEYS_OK' .github/workflows/client-v230-ci.yml
           git diff --check
 
-      - name: Commit game journey gate
+      - name: Commit journey harness
         shell: bash
         run: |
           set -euxo pipefail
           git config user.name "moumouhikaram-cell"
           git config user.email "moumouhi.karam@gmail.com"
-          git add v16-original-source/app/src/main/assets/index.html .github/workflows/client-v230-ci.yml
+          git add v16-original-source/tools/client-v230-game-journeys.spec.js
           git diff --cached --quiet && exit 0
-          git commit -m "test(v230): enforce dedicated journey for every game type"
+          git commit -m "test(v230): follow real entry control for each game journey"
           git push origin HEAD:android-client-final-v230
