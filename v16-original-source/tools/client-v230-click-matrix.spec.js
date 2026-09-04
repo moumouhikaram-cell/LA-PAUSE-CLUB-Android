@@ -57,7 +57,15 @@ async function go(page,route){
   await page.evaluate(r=>{
     try{window.closeOverlay&&window.closeOverlay();}catch(_){}
     try{window.closeModal&&window.closeModal();}catch(_){}
+    if(r==='settings'){
+      try{settingsSection=null;}catch(_){}
+      try{if(state?.ui)state.ui.settingsSection=null;}catch(_){}
+      try{if(Array.isArray(V14_NAV_STACK))V14_NAV_STACK.length=0;}catch(_){}
+    }
     window.LPClient.go(r);
+    if(r==='settings'){
+      try{settingsSection=null;renderSettings();}catch(_){}
+    }
   },route);
   await expect.poll(()=>page.evaluate(()=>window.LPClient.canonical(window.LPClient.lastRendered))).toBe(route);
   await expect(page.locator('#view')).not.toBeEmpty();
