@@ -30,6 +30,7 @@ async function boot(page){
   page.on('pageerror',e=>runtime.push(`pageerror: ${e.stack||e.message}`));
   page.on('console',m=>{if(m.type()==='error')runtime.push(`console: ${m.text()}`);});
   page.on('dialog',async d=>{try{await d.dismiss();}catch(_){}});
+  page.on('filechooser',async f=>{try{await f.setFiles([]);}catch(_){}});
   await page.goto(APP_URL,{waitUntil:'networkidle'});
   await page.waitForFunction(()=>!!window.LPClient&&document.body.classList.contains('cs-ready'));
   return runtime;
@@ -86,6 +87,18 @@ async function activate(page,index){
   }
 }
 
+async function assertHealthySurface(page){
+  await expect(page.locator('#csTop')).toHaveCount(1);
+  await expect(page.locator('#legacyBridge')).toBeHidden();
+  const hasSurface=await page.evaluate(()=>{
+    const view=(document.querySelector('#view')?.innerText||'').trim();
+    const overlay=document.querySelector('#overlay')?.classList.contains('show');
+    const modal=document.querySelector('#modalBackdrop')?.classList.contains('show');
+    return view.length>0||overlay||modal;
+  });
+  if(!hasSurface) throw new Error('blank customer surface after click');
+}
+
 test('all visible route controls survive isolated customer clicks without runtime failure',async({page})=>{
   const runtime=await boot(page);
   const baseline=await captureStorage(page);
@@ -110,15 +123,7 @@ test('all visible route controls survive isolated customer clicks without runtim
         await page.waitForTimeout(150);
         const newErrors=runtime.slice(beforeErrors);
         if(newErrors.length) throw new Error(newErrors.join(' | '));
-        await expect(page.locator('#csTop')).toHaveCount(1);
-        await expect(page.locator('#legacyBridge')).toBeHidden();
-        const hasSurface=await page.evaluate(()=>{
-          const view=(document.querySelector('#view')?.innerText||'').trim();
-          const overlay=document.querySelector('#overlay')?.classList.contains('show');
-          const modal=document.querySelector('#modalBackdrop')?.classList.contains('show');
-          return view.length>0||overlay||modal;
-        });
-        if(!hasSurface) throw new Error('blank customer surface after click');
+        await assertHealthySurface(page);
       }catch(e){
         failures.push(`${route} :: #${i} ${c.tag}/${c.type} ${c.id||c.text||c.data||c.name||'unnamed'} => ${e.message}`);
       }
@@ -133,4 +138,55 @@ test('all visible route controls survive isolated customer clicks without runtim
   expect(failures,failures.join('\n')).toEqual([]);
   expect(runtime).toEqual([]);
   console.log('V230_CLICK_MATRIX_OK');
+});
+
+test('every settings subsection and every visible action inside it survives isolated use',async({page})=>{
+  const runtime=await boot(page);
+  const baseline=await captureStorage(page);
+  await go(page,'settings');
+  const sections=await page.locator('#view [data-settings]').evaluateAll(els=>els.map(el=>({id:el.dataset.settings,label:(el.innerText||'').trim().replace(/\s+/g,' ').slice(0,100)})));
+  const failures=[];
+  const coverage=[];
+
+  for(const section of sections){
+    await resetToBaseline(page,baseline);
+    await go(page,'settings');
+    const tile=page.locator(`#view [data-settings="${section.id}"]`);
+    await expect(tile).toBeVisible();
+    await tile.click();
+    await page.waitForTimeout(100);
+    const list=await controls(page);
+    coverage.push({section:section.id,total:list.length});
+
+    for(let i=0;i<list.length;i++){
+      const c=list[i];
+      const beforeErrors=runtime.length;
+      try{
+        await resetToBaseline(page,baseline);
+        await go(page,'settings');
+        const freshTile=page.locator(`#view [data-settings="${section.id}"]`);
+        await freshTile.click();
+        await page.waitForTimeout(80);
+        const fresh=await controls(page);
+        if(i>=fresh.length) throw new Error(`nested control missing from clean baseline at index ${i}`);
+        await activate(page,i);
+        await page.waitForTimeout(160);
+        const newErrors=runtime.slice(beforeErrors);
+        if(newErrors.length) throw new Error(newErrors.join(' | '));
+        await assertHealthySurface(page);
+      }catch(e){
+        failures.push(`settings/${section.id} :: #${i} ${c.tag}/${c.type} ${c.id||c.text||c.data||c.name||'unnamed'} => ${e.message}`);
+      }
+    }
+  }
+
+  const total=coverage.reduce((n,x)=>n+x.total,0);
+  console.log('V230_SETTINGS_DEPTH2_COVERAGE '+JSON.stringify(coverage));
+  console.log(`V230_SETTINGS_DEPTH2_TOTAL ${total}`);
+  if(failures.length) console.error('V230_SETTINGS_DEPTH2_FAILURES\n'+failures.join('\n'));
+  expect(sections.length).toBeGreaterThanOrEqual(10);
+  expect(total).toBeGreaterThan(20);
+  expect(failures,failures.join('\n')).toEqual([]);
+  expect(runtime).toEqual([]);
+  console.log('V230_SETTINGS_DEPTH2_OK');
 });
