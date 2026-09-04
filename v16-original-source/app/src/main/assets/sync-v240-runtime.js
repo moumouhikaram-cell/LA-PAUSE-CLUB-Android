@@ -8,6 +8,7 @@
 const LP_SYNC_PROTOCOL_V2='la-pause-sync/2';
 const LP_SYNC_SCHEMA_V2=2;
 const LP_SYNC_BATCH_LIMIT=100;
+let lpSyncInFlightV2=null;
 
 function lpSyncScopeV2(){
   return {
@@ -88,7 +89,7 @@ function lpSyncRefreshDiagnosticsV2(){
   }catch(_e){}
 }
 
-async function lpSyncNowV2(manual=false){
+async function lpSyncExecuteV2(manual=false){
   if(!state.sync.enabled||!state.sync.apiBase){if(manual)toast('Configure d’abord l’URL API');return false;}
   let eventIds=[];
   try{
@@ -124,6 +125,14 @@ async function lpSyncNowV2(manual=false){
     if(manual)toast('Échec de synchronisation');
     return false;
   }
+}
+
+function lpSyncNowV2(manual=false){
+  if(lpSyncInFlightV2)return lpSyncInFlightV2;
+  const run=lpSyncExecuteV2(manual);
+  lpSyncInFlightV2=run;
+  run.finally(()=>{if(lpSyncInFlightV2===run)lpSyncInFlightV2=null;});
+  return run;
 }
 
 function lpRejectLegacyRemoteChangesV2(){throw new Error('SYNC_REMOTE_APPLY_UNSUPPORTED');}
