@@ -31,10 +31,24 @@ async function boot(page){
   await settle(page);
   return runtime;
 }
-async function captureStorage(page){return page.evaluate(()=>{const out={};for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);out[k]=localStorage.getItem(k);}return out;});}
+async function captureBaseline(page){
+  return page.evaluate(()=>{
+    const local={};
+    for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);local[k]=localStorage.getItem(k);}
+    return {local,runtime:JSON.parse(JSON.stringify(state))};
+  });
+}
 async function resetToBaseline(page,baseline){
-  await page.evaluate(store=>{localStorage.clear();for(const [k,v] of Object.entries(store))localStorage.setItem(k,v);},baseline);
+  await page.evaluate(store=>{localStorage.clear();for(const [k,v] of Object.entries(store))localStorage.setItem(k,v);},baseline.local);
   await page.reload({waitUntil:'domcontentloaded'});
+  await settle(page);
+  await page.evaluate(snapshot=>{
+    const restored=JSON.parse(JSON.stringify(snapshot));
+    for(const key of Object.keys(state))delete state[key];
+    Object.assign(state,restored);
+    try{saveState();}catch(_e){}
+    window.LPClient.go('csHome');
+  },baseline.runtime);
   await settle(page);
 }
 async function go(page,route){
@@ -69,14 +83,14 @@ async function discoverRoutes(page){
 }
 
 test('all visible controls on every SaaS route survive isolated customer clicks',async({page})=>{
-  const runtime=await boot(page); const baseline=await captureStorage(page); const routes=await discoverRoutes(page); const failures=[]; const coverage=[];
+  const runtime=await boot(page); const baseline=await captureBaseline(page); const routes=await discoverRoutes(page); const failures=[]; const coverage=[];
   expect(routes.length).toBeGreaterThanOrEqual(15);
   for(const route of routes){
     await resetToBaseline(page,baseline); await go(page,route); const list=await controls(page); coverage.push({route,total:list.length});
     for(let i=0;i<list.length;i++){
       const c=list[i],beforeErrors=runtime.length;
       try{
-        await resetToBaseline(page,baseline); await go(page,route); const fresh=await controls(page); if(i>=fresh.length) throw new Error(`control missing from settled clean baseline at index ${i}`);
+        await resetToBaseline(page,baseline); await go(page,route); const fresh=await controls(page); if(i>=fresh.length) throw new Error(`control missing from full runtime baseline at index ${i}`);
         await activate(page,i); await page.waitForTimeout(90); const newErrors=runtime.slice(beforeErrors); if(newErrors.length) throw new Error(newErrors.join(' | ')); await assertHealthySurface(page);
       }catch(e){failures.push(`${route} :: #${i} ${c.tag}/${c.type} ${c.id||c.text||c.data||c.name||'unnamed'} => ${e.message}`);}
     }
@@ -90,7 +104,7 @@ test('all visible controls on every SaaS route survive isolated customer clicks'
 });
 
 test('every Settings hub action survives a real isolated click',async({page})=>{
-  const runtime=await boot(page); const baseline=await captureStorage(page); await go(page,'nxSettings');
+  const runtime=await boot(page); const baseline=await captureBaseline(page); await go(page,'nxSettings');
   const actions=await page.locator('#view [data-nx-route]').evaluateAll(els=>els.map(e=>({route:e.dataset.nxRoute,label:(e.innerText||'').trim().replace(/\s+/g,' ').slice(0,100)})));
   expect(actions.length).toBeGreaterThanOrEqual(10);
   const failures=[];
