@@ -7,6 +7,15 @@ async function boot(page){
   await page.evaluate(()=>{
     state.saas=state.saas||{};
     state.saas.tenantId='tenant-a';state.saas.venueId='venue-a';state.saas.branchId='branch-a';
+    state.accounts=Array.isArray(state.accounts)?state.accounts:[];
+    state.tenantMemberships=Array.isArray(state.tenantMemberships)?state.tenantMemberships:[];
+    state.identity=state.identity||{};
+    let account=state.accounts.find(a=>a.id==='account-test-owner');
+    if(!account){account={id:'account-test-owner',displayName:'Test Owner',status:'ACTIVE',authState:'TEST',createdAt:Date.now()};state.accounts.push(account)}
+    state.identity.activeAccountId=account.id;
+    let membership=state.tenantMemberships.find(m=>m.accountId===account.id&&m.tenantId==='tenant-a');
+    if(!membership){membership={id:'membership-test-owner',accountId:account.id,tenantId:'tenant-a',roleId:'OWNER',status:'ACTIVE',venueIds:['venue-a'],branchIds:['branch-a'],createdAt:Date.now()};state.tenantMemberships.push(membership)}
+    else Object.assign(membership,{roleId:'OWNER',status:'ACTIVE',venueIds:['venue-a'],branchIds:['branch-a']});
   });
 }
 function baseEnt(overrides={}){
@@ -49,16 +58,16 @@ test('module dependency prevents Marketing without CRM',async({page})=>{
 
 test('release integrity failure blocks premium even with verified entitlement',async({page})=>{
   await boot(page);
-  const result=await page.evaluate(ent=>LPSaas.evaluateEntitlement(ent,{security:{debug:false,integrityOk:false},signatureVerified:true}),baseEnt({modules:['M01_OPERATIONS','M02_POS','M09_DEVICE_CONTROL']}));
-  expect(result.valid).toBe(false);expect(result.status).toBe('BLOCKED_INTEGRITY');expect([...result.modules]).toEqual(['PLATFORM_CORE']);
+  const result=await page.evaluate(ent=>{const r=LPSaas.evaluateEntitlement(ent,{security:{debug:false,integrityOk:false},signatureVerified:true});return {valid:r.valid,status:r.status,mods:[...r.modules],reason:r.reason}},baseEnt({modules:['M01_OPERATIONS','M02_POS','M09_DEVICE_CONTROL']}));
+  expect(result.valid).toBe(false);expect(result.status).toBe('BLOCKED_INTEGRITY');expect(result.mods).toEqual(['PLATFORM_CORE']);expect(result.reason).toBe('APP_INTEGRITY_FAILED');
   console.log('SAAS_INTEGRITY_FAIL_CLOSED_OK');
 });
 
 test('RBAC cashier can capture payment but cannot modify pricing or control devices',async({page})=>{
   await boot(page);
   const result=await page.evaluate(()=>{
-    LPSaas.ensure();
     const m=state.tenantMemberships.find(x=>x.accountId===state.identity.activeAccountId&&x.tenantId==='tenant-a');
+    if(!m)throw new Error('TEST_MEMBERSHIP_MISSING');
     m.roleId='CASHIER';m.venueIds=['venue-a'];m.branchIds=['branch-a'];
     return {capture:LPSaas.can('payment.capture'),read:LPSaas.can('payment.read'),pricing:LPSaas.can('pricing.write'),device:LPSaas.can('device.control')};
   });
@@ -69,8 +78,8 @@ test('RBAC cashier can capture payment but cannot modify pricing or control devi
 test('RBAC branch scope prevents cross-branch action',async({page})=>{
   await boot(page);
   const result=await page.evaluate(()=>{
-    LPSaas.ensure();
     const m=state.tenantMemberships.find(x=>x.accountId===state.identity.activeAccountId&&x.tenantId==='tenant-a');
+    if(!m)throw new Error('TEST_MEMBERSHIP_MISSING');
     m.roleId='VENUE_MANAGER';m.venueIds=['venue-a'];m.branchIds=['branch-a'];
     return {own:LPSaas.can('session.start',{tenantId:'tenant-a',venueId:'venue-a',branchId:'branch-a'}),other:LPSaas.can('session.start',{tenantId:'tenant-a',venueId:'venue-a',branchId:'branch-b'})};
   });
