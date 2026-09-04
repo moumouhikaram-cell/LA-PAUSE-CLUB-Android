@@ -2,9 +2,11 @@ plugins {
     id("com.android.application")
 }
 
+val pinnedEntitlementKeyFile = rootProject.file("../contracts/security/entitlement-prod-v1-public.der.b64")
+val pinnedEntitlementPublicKey = if (pinnedEntitlementKeyFile.exists()) pinnedEntitlementKeyFile.readText().trim() else ""
 val entitlementPublicKey = ((findProperty("LA_PAUSE_ENTITLEMENT_PUBLIC_KEY_B64") as String?)
     ?: System.getenv("LA_PAUSE_ENTITLEMENT_PUBLIC_KEY_B64")
-    ?: "").replace("\\", "\\\\").replace("\"", "\\\"")
+    ?: pinnedEntitlementPublicKey).replace("\\", "\\\\").replace("\"", "\\\"")
 val entitlementKeyId = ((findProperty("LA_PAUSE_ENTITLEMENT_KEY_ID") as String?)
     ?: System.getenv("LA_PAUSE_ENTITLEMENT_KEY_ID")
     ?: "prod-v1").replace("\\", "\\\\").replace("\"", "\\\"")
