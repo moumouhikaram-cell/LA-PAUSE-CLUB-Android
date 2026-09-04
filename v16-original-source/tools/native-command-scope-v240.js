@@ -5,6 +5,7 @@ const path=require('path');
 const root=path.join(__dirname,'..');
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
 const must=(s,n,l)=>{if(!s.includes(n))throw new Error(`${l}: missing ${n}`)};
+const mustOne=(s,variants,l)=>{if(!variants.some(n=>s.includes(n)))throw new Error(`${l}: missing one of ${variants.join(', ')}`)};
 const mustNot=(s,n,l)=>{if(s.includes(n))throw new Error(`${l}: forbidden ${n}`)};
 
 const cmd=read('app/src/main/java/com/lapauseclub/manager/core/CoreCommandSchemaV11.java');
@@ -35,7 +36,7 @@ must(store,'CoreCommandSchemaV11.lastAuditHash(db,tenant,venue,branch)','scoped 
 must(store,'FROM domain_events_v11 WHERE tenant_id=? AND venue_id=? AND branch_id=?','scoped timeline events');
 must(store,'stateMatchesScope(root,scope[0],scope[1],scope[2])','scoped timeline snapshots');
 must(store,'legacyCommandV9Preserved','V9 rollback diagnostic');
-must(store,'RESOURCE_AND_COMMAND_SCOPE','isolation stage');
+mustOne(store,['RESOURCE_AND_COMMAND_SCOPE','RESOURCE_COMMAND_AND_AUTHORITY_SCOPE'],'isolation stage');
 
 must(runtime,'tenantId:m2Tenant(),venueId:m2Venue()','UI emits tenant/venue');
 must(runtime,'branchId:m2Branch()','UI emits branch');
