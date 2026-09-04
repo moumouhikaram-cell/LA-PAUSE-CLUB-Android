@@ -1,0 +1,68 @@
+name: LA PAUSE OS 2.4 Offline Entitlement CI
+
+on:
+  push:
+    branches:
+      - android-device-control-v240
+    paths:
+      - "v16-original-source/app/src/main/java/com/lapauseclub/manager/security/SecureStore.java"
+      - "v16-original-source/app/src/main/java/com/lapauseclub/manager/security/EntitlementStore.java"
+      - "v16-original-source/app/src/main/java/com/lapauseclub/manager/security/EntitlementVerifier.java"
+      - "v16-original-source/app/src/main/assets/bootstrap-entitlement-v240.js"
+      - "v16-original-source/app/src/main/assets/entitlement-offline-v240.js"
+      - "v16-original-source/app/src/main/assets/index.html"
+      - "v16-original-source/tools/native-entitlement-offline-v240.js"
+      - "v16-original-source/tools/verify-bootstrap-entitlement-v240.js"
+      - ".github/workflows/build-v240-signed.yml"
+      - ".github/workflows/v240-entitlement-offline-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-entitlement-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate offline entitlement JavaScript syntax
+        working-directory: v16-original-source
+        run: |
+          node --check app/src/main/assets/bootstrap-entitlement-v240.js
+          node --check app/src/main/assets/entitlement-offline-v240.js
+          node --check tools/verify-bootstrap-entitlement-v240.js
+          node --check tools/native-entitlement-offline-v240.js
+      - name: Prove secure cache, anti-rollback and signed release bootstrap
+        working-directory: v16-original-source
+        run: node tools/native-entitlement-offline-v240.js
+
+  android-compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.4.1"
+      - name: Configure Android SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+      - name: Compile manager with entitlement cache authority
+        working-directory: v16-original-source
+        run: gradle --no-daemon --stacktrace :app:compileDebugJavaWithJavac
