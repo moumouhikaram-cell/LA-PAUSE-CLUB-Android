@@ -19,30 +19,58 @@ jobs:
           ref: android-client-final-v230
           fetch-depth: 0
 
-      - name: Align journey harness with real entry controls
+      - name: Enforce type-aware history and full game journeys
         shell: bash
         run: |
           set -euxo pipefail
           python3 - <<'PY'
           from pathlib import Path
+
+          app=Path('v16-original-source/app/src/main/assets/app.js')
+          a=app.read_text()
+          old="""function historySessionRow(s){const due=dueForSession(s);return `<div class=\"row-card clickable\" data-session-row=\"${s.id}\"><div class=\"row-main\"><div class=\"row-title\">${esc(stationLabel(s.stationId))} · ${s.players===2?'Duo':'Solo'}</div><div class=\"row-meta\">${fmtDateTime(s.startAt)} · ${fmtDuration(sessionElapsedMinutes(s,s.finishedAt||now()))}</div></div><div class=\"row-right\"><div class=\"money\">${fmtMoney(s.totalAmount)}</div><span class=\"tag ${s.status==='cancelled'?'bad':due>0?'due':'good'}\">${s.status==='cancelled'?'ANNULÉE':due>0?'À PAYER':'PAYÉE'}</span></div></div>`}\n"""
+          new="""function historySessionRow(s){const due=dueForSession(s),st=stationById(s.stationId),players=Math.max(1,num(s.players,1)),model=String(s.billingModel||s.pricingSnapshot?.billingModel||''),isConsole=String(s.resourceType||'').toUpperCase()==='CONSOLE'||st?.type==='PS5',playerLabel=isConsole?(players===2?'Duo':'Solo'):`${players} joueur${players>1?'s':''}`,activityLabel=['PER_GAME','PER_PLAYER_GAME'].includes(model)?`${Math.max(1,num(s.units,1))} ${num(s.units,1)>1?'parties':'partie'}`:model==='CUSTOM_AMOUNT'?'Montant libre':fmtDuration(sessionElapsedMinutes(s,s.finishedAt||now()));return `<div class=\"row-card clickable\" data-session-row=\"${s.id}\"><div class=\"row-main\"><div class=\"row-title\">${esc(stationLabel(s.stationId))} · ${esc(playerLabel)}</div><div class=\"row-meta\">${fmtDateTime(s.startAt)} · ${esc(activityLabel)}</div></div><div class=\"row-right\"><div class=\"money\">${fmtMoney(s.totalAmount)}</div><span class=\"tag ${s.status==='cancelled'?'bad':due>0?'due':'good'}\">${s.status==='cancelled'?'ANNULÉE':due>0?'À PAYER':'PAYÉE'}</span></div></div>`}\n"""
+          if old in a:a=a.replace(old,new,1)
+          if 'activityLabel=[' not in a or 'playerLabel=isConsole' not in a:raise SystemExit('type-aware history patch not applied')
+          app.write_text(a)
+
           p=Path('v16-original-source/tools/client-v230-game-journeys.spec.js')
           s=p.read_text()
-          old='''  const quick=card.locator(`[data-ops-quick-id="${id}"]`);\n  await expect(quick).toBeVisible();\n  await quick.click();\n'''
-          new='''  const quick=card.locator(`[data-ops-quick-id="${id}"]`);\n  if(await quick.count()){\n    await expect(quick).toBeVisible();\n    await quick.click();\n  }else{\n    const start=card.locator(`[data-cs-start="${id}"]`).first();\n    await expect(start).toBeVisible();\n    await start.click();\n  }\n'''
-          if old in s:s=s.replace(old,new,1)
-          if 'if(await quick.count())' not in s:raise SystemExit('journey entry patch not applied')
+          if 'async function settleFinishAndHistory' not in s:
+              marker="""async function assertHistorySurface(page,name){\n  await page.evaluate(()=>window.LPClient.go('history'));\n  await expect(page.locator('#view')).not.toBeEmpty();\n  const txt=await page.locator('#view').innerText();\n  expect(txt.length).toBeGreaterThan(10);\n  await page.evaluate(()=>window.LPClient.go('csHome'));\n  await expect(page.locator(`[data-cs-station]`).first()).toBeVisible();\n  return txt.includes(name);\n}\n"""
+              helper="""async function settleFinishAndHistory(page,id,name,expectedTotal,semantic){\n  const d=await activeData(page,id);\n  const sid=d.s.id;\n  if(!(await page.locator('.ops-active').count())){\n    const card=page.locator(`[data-cs-station=\"${id}\"]`);\n    await card.locator('[data-cs-manage]').click();\n  }\n  await expect(page.locator('#finishBtn')).toBeVisible();\n  const due=await page.evaluate(x=>{const s=state.sessions.find(v=>v.id===x),paid=(state.payments||[]).filter(p=>p.sessionId===x).reduce((n,p)=>n+Number(p.amount||0),0);return Math.max(0,Number(s?.totalAmount||0)-paid)},sid);\n  if(due>0.009){\n    await page.locator('#paymentBtn').click();\n    await expect(page.locator('#payConfirm')).toBeVisible();\n    expect(Number(await page.locator('#payAmount').inputValue())).toBeCloseTo(due,5);\n    await page.locator('#payConfirm').click();\n    await expect(page.locator('#finishBtn')).toBeVisible();\n  }\n  await page.locator('#finishBtn').click();\n  await expect(page.locator('#modalOk')).toBeVisible();\n  await expect(page.locator('#modalBackdrop')).not.toContainText('reste');\n  await page.locator('#modalOk').click();\n  await expect.poll(()=>page.evaluate(x=>state.sessions.find(v=>v.id===x)?.status,sid)).toBe('completed');\n  const settled=await page.evaluate(x=>{const s=state.sessions.find(v=>v.id===x),paid=(state.payments||[]).filter(p=>p.sessionId===x).reduce((n,p)=>n+Number(p.amount||0),0);return {total:Number(s?.totalAmount||0),paid}},sid);\n  expect(settled.total).toBeCloseTo(expectedTotal,5);\n  expect(settled.paid).toBeCloseTo(expectedTotal,5);\n  await page.evaluate(()=>window.LPClient.go('history'));\n  const row=page.locator(`[data-session-row=\"${sid}\"]`);\n  await expect(row).toBeVisible();\n  await expect(row).toContainText(name);\n  await expect(row).toContainText('PAYÉE');\n  if(semantic)await expect(row).toContainText(semantic);\n  await page.evaluate(()=>window.LPClient.go('csHome'));\n  return sid;\n}\n"""
+              if marker not in s:raise SystemExit('history helper insertion point not found')
+              s=s.replace(marker,helper,1)
+
+          replacements={
+            "  await assertHistorySurface(page,s.name);\n  expect(errors).toEqual([]);console.log('V230_JOURNEY_CONSOLE_OK');":"  await settleFinishAndHistory(page,s.id,s.name,14,'Duo');\n  expect(errors).toEqual([]);console.log('V230_JOURNEY_CONSOLE_OK');",
+            "  expect(errors).toEqual([]);console.log('V230_JOURNEY_SIM_RACING_OK');":"  await settleFinishAndHistory(page,s.id,s.name,50,'1 joueur');\n  expect(errors).toEqual([]);console.log('V230_JOURNEY_SIM_RACING_OK');",
+            "  expect(errors).toEqual([]);console.log('V230_JOURNEY_PC_GAMING_OK');":"  await settleFinishAndHistory(page,s.id,s.name,33,'1 joueur');\n  expect(errors).toEqual([]);console.log('V230_JOURNEY_PC_GAMING_OK');",
+            "  expect(errors).toEqual([]);console.log('V230_JOURNEY_BILLIARD_OK');":"  await settleFinishAndHistory(page,s.id,s.name,14,'2 parties');\n  expect(errors).toEqual([]);console.log('V230_JOURNEY_BILLIARD_OK');",
+            "  expect(errors).toEqual([]);console.log('V230_JOURNEY_SNOOKER_OK');":"  await settleFinishAndHistory(page,s.id,s.name,42,'3 parties');\n  expect(errors).toEqual([]);console.log('V230_JOURNEY_SNOOKER_OK');",
+            "  expect(errors).toEqual([]);console.log('V230_JOURNEY_TABLE_TENNIS_OK');":"  await settleFinishAndHistory(page,s.id,s.name,20,'2 joueurs');\n  expect(errors).toEqual([]);console.log('V230_JOURNEY_TABLE_TENNIS_OK');",
+            "  expect(errors).toEqual([]);console.log('V230_JOURNEY_PRIVATE_ROOM_OK');":"  await settleFinishAndHistory(page,s.id,s.name,120,'4 joueurs');\n  expect(errors).toEqual([]);console.log('V230_JOURNEY_PRIVATE_ROOM_OK');",
+            "  expect(errors).toEqual([]);console.log('V230_JOURNEY_CUSTOM_OK');":"  await settleFinishAndHistory(page,s.id,s.name,37.5,'Montant libre');\n  expect(errors).toEqual([]);console.log('V230_JOURNEY_CUSTOM_OK');"
+          }
+          for old_text,new_text in replacements.items():
+              if new_text not in s:
+                  if old_text not in s:raise SystemExit('journey completion insertion point missing: '+old_text[-40:])
+                  s=s.replace(old_text,new_text,1)
           p.write_text(s)
           PY
+          node --check v16-original-source/app/src/main/assets/app.js
           node --check v16-original-source/tools/client-v230-game-journeys.spec.js
+          grep -q 'settleFinishAndHistory' v16-original-source/tools/client-v230-game-journeys.spec.js
+          grep -q "activityLabel=\['PER_GAME','PER_PLAYER_GAME'\]" v16-original-source/app/src/main/assets/app.js
           git diff --check
 
-      - name: Commit journey harness
+      - name: Commit full game journey contract
         shell: bash
         run: |
           set -euxo pipefail
           git config user.name "moumouhikaram-cell"
           git config user.email "moumouhi.karam@gmail.com"
-          git add v16-original-source/tools/client-v230-game-journeys.spec.js
+          git add v16-original-source/app/src/main/assets/app.js v16-original-source/tools/client-v230-game-journeys.spec.js
           git diff --cached --quiet && exit 0
-          git commit -m "test(v230): follow real entry control for each game journey"
+          git commit -m "test(v230): verify every game through payment finish and history"
           git push origin HEAD:android-client-final-v230
