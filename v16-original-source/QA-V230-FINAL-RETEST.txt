@@ -1,10 +1,10 @@
 LA PAUSE OS 2.3.0 FINAL RETEST
 Canonical branch: android-client-final-v230
 Canonical product checkpoint: 4ad4d5d1724c249dc4ea5ddf678fc0ebc712c291
-CI stabilization checkpoint: bc691c37e95609197f4f652d60358c3725695dd2
+Final CI stabilization checkpoint: 7be63ad2f22d0e8d5b08250dc9350e8fc2b07cec
 Scope: exhaustive customer click matrix and dedicated game journeys for CONSOLE, SIM_RACING, PC_GAMING, BILLIARD_TABLE, SNOOKER_TABLE, TABLE_TENNIS, PRIVATE_ROOM, ARCADE and CUSTOM.
 End-to-end contract: resource entry -> type-specific form -> quote -> payment -> active session -> game-specific action -> remaining payment -> finish -> paid history.
 History semantics must be type-aware: Console Solo/Duo; other resources player counts; billiard/snooker game counts; custom amount labelled Montant libre.
 Also require operator dashboard/control-center assertions, Next Best Action return + assisted revenue, persistence, business/domain gates, Android native smoke and permanent signed release APK verification.
-Android native verification uses a stable AOSP/default emulator image to avoid unrelated Google launcher/ADB instability observed on hosted API-35 Google images.
+Android native verification uses lightweight AOSP Android 33 / Pixel 2 settings. Embedded media downloads use retry-all-errors to survive transient CDN resets.
 This file is a QA trigger/ledger only and is not loaded by the Android application.
