@@ -39,6 +39,14 @@ jobs:
           s = s.replace('[data-duration="30"]', '[data-ops-duration="30"]', 1)
           s = s.replace('[data-players="2"]', '[data-ops-players="2"]', 1)
 
+          legacy_home_kpi = "  await expect(page.locator('.cs-kpi').filter({hasText:'SESSIONS ACTIVES'})).toContainText('1');\n"
+          operator_home_kpi = (
+              "  await expect(page.locator('.ops-live-active')).toContainText('SESSIONS ACTIVES');\n"
+              "  await expect(page.locator('.ops-live-active')).toContainText('1');\n"
+          )
+          if legacy_home_kpi in s:
+              s = s.replace(legacy_home_kpi, operator_home_kpi, 1)
+
           old_nba = (
               "  await expect(row).toContainText('+30 min');\n"
               "  await row.click();\n"
@@ -69,8 +77,11 @@ jobs:
                   raise SystemExit('marketing assertion block not found')
               s = s.replace(old_nba, new_nba, 1)
 
-          if '#payNow' in s[s.find("test('real customer PS5 session flow"):s.find("test('SIM session")]:
+          ps5_block = s[s.find("test('real customer PS5 session flow"):s.find("test('SIM session")]
+          if '#payNow' in ps5_block:
               raise SystemExit('legacy #payNow assertion still present in PS5 journey')
+          if '.cs-kpi' in ps5_block:
+              raise SystemExit('legacy dashboard KPI selector still present in PS5 journey')
           if '[data-duration="30"]' in s or '[data-players="2"]' in s:
               raise SystemExit('legacy PS5 selectors still present')
 
@@ -79,6 +90,7 @@ jobs:
           node --check v16-original-source/tools/client-v230-e2e.spec.js
           grep -q 'data-ops-duration="30"' v16-original-source/tools/client-v230-e2e.spec.js
           grep -q 'data-ops-players="2"' v16-original-source/tools/client-v230-e2e.spec.js
+          grep -q 'ops-live-active' v16-original-source/tools/client-v230-e2e.spec.js
           grep -q 'V230_ASSISTED_REVENUE_OK' v16-original-source/tools/client-v230-e2e.spec.js
           git diff --check
 
@@ -90,5 +102,5 @@ jobs:
           git config user.email "moumouhi.karam@gmail.com"
           git add v16-original-source/tools/client-v230-e2e.spec.js
           git diff --cached --quiet && exit 0
-          git commit -m "test(v230): enforce operator payment and assisted revenue journeys"
+          git commit -m "test(v230): enforce operator dashboard journey assertions"
           git push origin HEAD:android-client-final-v230
