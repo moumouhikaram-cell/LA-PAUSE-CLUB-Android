@@ -153,6 +153,7 @@ public class MainActivity extends Activity {
             }
         });
         webView.addJavascriptInterface(new AndroidBridge(), "Android");
+        webView.addJavascriptInterface(new SyncBridgeV12(coreStore), "AndroidSync");
         webView.loadUrl(TRUSTED_ASSET_PREFIX + "index.html");
     }
 
@@ -233,6 +234,7 @@ public class MainActivity extends Activity {
         networkPool.shutdownNow();
         if (coreStore != null) coreStore.close();
         if (webView != null) {
+            webView.removeJavascriptInterface("AndroidSync");
             webView.removeJavascriptInterface("Android");
             webView.destroy();
         }
