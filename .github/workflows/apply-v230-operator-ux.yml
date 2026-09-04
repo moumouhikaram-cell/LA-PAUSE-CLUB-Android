@@ -88,19 +88,123 @@ jobs:
           p.write_text(s)
           PY
           node --check v16-original-source/tools/client-v230-e2e.spec.js
-          grep -q 'data-ops-duration="30"' v16-original-source/tools/client-v230-e2e.spec.js
-          grep -q 'data-ops-players="2"' v16-original-source/tools/client-v230-e2e.spec.js
-          grep -q 'ops-live-active' v16-original-source/tools/client-v230-e2e.spec.js
-          grep -q 'V230_ASSISTED_REVENUE_OK' v16-original-source/tools/client-v230-e2e.spec.js
+
+      - name: Add explicit Arcade resource contract and end-to-end journey
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def patch(path, old, new, marker):
+              p=Path(path); s=p.read_text()
+              if marker in s:
+                  return
+              if old not in s:
+                  raise SystemExit(f'patch anchor missing in {path}: {old[:80]}')
+              p.write_text(s.replace(old,new,1))
+
+          core='v16-original-source/app/src/main/assets/client-product-core.js'
+          patch(core,
+            "LP.typeLabel={CONSOLE:'PS5',SIM_RACING:'SIM RACING',PC_GAMING:'PC GAMING',BILLIARD_TABLE:'BILLARD',SNOOKER_TABLE:'SNOOKER',TABLE_TENNIS:'TENNIS DE TABLE',PRIVATE_ROOM:'SALLE PRIVÉE',CUSTOM:'AUTRE'};",
+            "LP.typeLabel={CONSOLE:'PS5',SIM_RACING:'SIM RACING',PC_GAMING:'PC GAMING',BILLIARD_TABLE:'BILLARD',SNOOKER_TABLE:'SNOOKER',TABLE_TENNIS:'TENNIS DE TABLE',PRIVATE_ROOM:'SALLE PRIVÉE',ARCADE:'CONSOLE ARCADE',CUSTOM:'AUTRE'};",
+            "ARCADE:'CONSOLE ARCADE'")
+          patch(core,
+            "LP.typePrefix={CONSOLE:'PS5',SIM_RACING:'SIM',PC_GAMING:'PC',BILLIARD_TABLE:'BILLARD',SNOOKER_TABLE:'SNOOKER',TABLE_TENNIS:'PING-PONG',PRIVATE_ROOM:'SALLE',CUSTOM:'POSTE'};",
+            "LP.typePrefix={CONSOLE:'PS5',SIM_RACING:'SIM',PC_GAMING:'PC',BILLIARD_TABLE:'BILLARD',SNOOKER_TABLE:'SNOOKER',TABLE_TENNIS:'PING-PONG',PRIVATE_ROOM:'SALLE',ARCADE:'ARCADE',CUSTOM:'POSTE'};",
+            "ARCADE:'ARCADE'")
+          patch(core,
+            "LP.types=['CONSOLE','SIM_RACING','PC_GAMING','BILLIARD_TABLE','SNOOKER_TABLE','TABLE_TENNIS','PRIVATE_ROOM','CUSTOM'];",
+            "LP.types=['CONSOLE','SIM_RACING','PC_GAMING','BILLIARD_TABLE','SNOOKER_TABLE','TABLE_TENNIS','PRIVATE_ROOM','ARCADE','CUSTOM'];",
+            "'PRIVATE_ROOM','ARCADE','CUSTOM'")
+          patch(core,
+            "LP.media={CONSOLE:'media/premium/ps5.jpg',SIM_RACING:'media/premium/sim.jpg',PC_GAMING:'media/premium/pc.jpg',BILLIARD_TABLE:'media/premium/billiard.jpg',SNOOKER_TABLE:'media/premium/snooker.jpg',TABLE_TENNIS:'media/premium/table-tennis.jpg',PRIVATE_ROOM:'media/premium/lounge.jpg',CUSTOM:'media/premium/arcade.jpg'};",
+            "LP.media={CONSOLE:'media/premium/ps5.jpg',SIM_RACING:'media/premium/sim.jpg',PC_GAMING:'media/premium/pc.jpg',BILLIARD_TABLE:'media/premium/billiard.jpg',SNOOKER_TABLE:'media/premium/snooker.jpg',TABLE_TENNIS:'media/premium/table-tennis.jpg',PRIVATE_ROOM:'media/premium/lounge.jpg',ARCADE:'media/premium/arcade.jpg',CUSTOM:'media/premium/arcade.jpg'};",
+            "ARCADE:'media/premium/arcade.jpg'")
+
+          p1='v16-original-source/app/src/main/assets/p1-core.js'
+          patch(p1,
+            "  'SNOOKER_TABLE','TABLE_TENNIS','PRIVATE_ROOM','CUSTOM'",
+            "  'SNOOKER_TABLE','TABLE_TENNIS','PRIVATE_ROOM','ARCADE','CUSTOM'",
+            "'PRIVATE_ROOM','ARCADE','CUSTOM'")
+          patch(p1,
+            "({CONSOLE:'Jeu console',SIM_RACING:'Sim Racing',PC_GAMING:'PC Gaming',BILLIARD_TABLE:'Billard',SNOOKER_TABLE:'Snooker',TABLE_TENNIS:'Tennis de table',PRIVATE_ROOM:'Salle privée',CUSTOM:'Activité'})",
+            "({CONSOLE:'Jeu console',SIM_RACING:'Sim Racing',PC_GAMING:'PC Gaming',BILLIARD_TABLE:'Billard',SNOOKER_TABLE:'Snooker',TABLE_TENNIS:'Tennis de table',PRIVATE_ROOM:'Salle privée',ARCADE:'Console Arcade',CUSTOM:'Activité'})",
+            "ARCADE:'Console Arcade'")
+          patch(p1,
+            "if(!['CONSOLE','SIM_RACING','PC_GAMING'].includes(type)) return '';",
+            "if(!['CONSOLE','SIM_RACING','PC_GAMING','ARCADE'].includes(type)) return '';",
+            "'PC_GAMING','ARCADE'")
+          patch(p1,
+            "gameTitle:type==='SIM_RACING'?'Sim Racing':type==='PC_GAMING'?'PC Gaming':'EA SPORTS FC'",
+            "gameTitle:type==='SIM_RACING'?'Sim Racing':type==='PC_GAMING'?'PC Gaming':type==='ARCADE'?'Arcade':'EA SPORTS FC'",
+            "type==='ARCADE'?'Arcade'")
+
+          setup='v16-original-source/app/src/main/assets/client-product-setup.js'
+          patch(setup,
+            "PRIVATE_ROOM:'PRIVATE_ROOM',CUSTOM:'CUSTOM'})[t]||'CUSTOM'",
+            "PRIVATE_ROOM:'PRIVATE_ROOM',ARCADE:'ARCADE',CUSTOM:'CUSTOM'})[t]||'CUSTOM'",
+            "ARCADE:'ARCADE',CUSTOM:'CUSTOM'")
+          patch(setup,
+            "maxPlayers:t==='CONSOLE'?2:['BILLIARD_TABLE','SNOOKER_TABLE'].includes(t)?2:t==='PRIVATE_ROOM'?8:4",
+            "maxPlayers:['CONSOLE','ARCADE'].includes(t)?2:['BILLIARD_TABLE','SNOOKER_TABLE'].includes(t)?2:t==='PRIVATE_ROOM'?8:4",
+            "['CONSOLE','ARCADE'].includes(t)?2")
+
+          op='v16-original-source/app/src/main/assets/client-operator-v230.js'
+          patch(op,
+            "    PRIVATE_ROOM:'media/premium/lounge.jpg',CUSTOM:'media/premium/arcade.jpg'",
+            "    PRIVATE_ROOM:'media/premium/lounge.jpg',ARCADE:'media/premium/arcade.jpg',CUSTOM:'media/premium/arcade.jpg'",
+            "PRIVATE_ROOM:'media/premium/lounge.jpg',ARCADE:")
+          patch(op,
+            "const LEGACY_TYPE={CONSOLE:'PS5',SIM_RACING:'SIM',PC_GAMING:'PC',BILLIARD_TABLE:'BILLIARD',SNOOKER_TABLE:'SNOOKER',TABLE_TENNIS:'TABLE_TENNIS',PRIVATE_ROOM:'PRIVATE_ROOM',CUSTOM:'CUSTOM'};",
+            "const LEGACY_TYPE={CONSOLE:'PS5',SIM_RACING:'SIM',PC_GAMING:'PC',BILLIARD_TABLE:'BILLIARD',SNOOKER_TABLE:'SNOOKER',TABLE_TENNIS:'TABLE_TENNIS',PRIVATE_ROOM:'PRIVATE_ROOM',ARCADE:'ARCADE',CUSTOM:'CUSTOM'};",
+            "PRIVATE_ROOM:'PRIVATE_ROOM',ARCADE:'ARCADE'")
+          patch(op,
+            "    PRIVATE_ROOM:{label:'Salle privée',defaultModel:MODEL.BLOCK,models:[MODEL.BLOCK,MODEL.TIME,MODEL.FIXED],players:true,game:false,presets:[60,120,180],open:false,budget:false},\n    CUSTOM:{label:'Activité',defaultModel:MODEL.FIXED,models:[MODEL.FIXED,MODEL.TIME,MODEL.BLOCK,MODEL.GAME,MODEL.CUSTOM],players:true,game:false,presets:[1],open:false,budget:false}",
+            "    PRIVATE_ROOM:{label:'Salle privée',defaultModel:MODEL.BLOCK,models:[MODEL.BLOCK,MODEL.TIME,MODEL.FIXED],players:true,game:false,presets:[60,120,180],open:false,budget:false},\n    ARCADE:{label:'Console Arcade',defaultModel:MODEL.GAME,models:[MODEL.GAME,MODEL.TIME,MODEL.BLOCK,MODEL.FIXED,MODEL.CUSTOM],players:true,game:true,presets:[1,3,5],open:false,budget:false},\n    CUSTOM:{label:'Activité',defaultModel:MODEL.FIXED,models:[MODEL.FIXED,MODEL.TIME,MODEL.BLOCK,MODEL.GAME,MODEL.CUSTOM],players:true,game:false,presets:[1],open:false,budget:false}",
+            "ARCADE:{label:'Console Arcade'")
+          patch(op,
+            "gameTitle:typeOf(st)==='SIM_RACING'?'Sim Racing':typeOf(st)==='PC_GAMING'?'PC Gaming':'EA SPORTS FC'",
+            "gameTitle:typeOf(st)==='SIM_RACING'?'Sim Racing':typeOf(st)==='PC_GAMING'?'PC Gaming':typeOf(st)==='ARCADE'?'Arcade':'EA SPORTS FC'",
+            "typeOf(st)==='ARCADE'?'Arcade'")
+
+          test='v16-original-source/tools/client-v230-e2e.spec.js'
+          p=Path(test); s=p.read_text()
+          if "V230_ARCADE_JOURNEY_OK" not in s:
+              anchor="test('all eight resource types have contextual billing profiles and media/settings stay responsive', async ({page}) => {"
+              if anchor not in s: raise SystemExit('resource types test anchor missing')
+              arcade="""test('arcade console has its own per-game operator journey', async ({page}) => {\n  const errors=await boot(page);\n  await page.evaluate(() => {\n    state.stations=state.stations.filter(s=>s.id!=='qa-arcade');\n    state.stations.push({id:'qa-arcade',name:'ARCADE QA',type:'ARCADE',osResourceType:'ARCADE',enabled:true,maxPlayers:2,sort:81,mediaUrl:'media/premium/arcade.jpg'});\n    state.ratePlans=(state.ratePlans||[]).filter(p=>p.resourceType!=='ARCADE');\n    state.ratePlans.push({id:'rate-qa-arcade',scope:'TYPE',resourceType:'ARCADE',name:'Arcade par partie',billingModel:'PER_GAME',pricingModel:'PER_GAME',unitPrice:5,hourlyRate:0,playerRates:{},currency:'MAD',enabled:true,createdAt:Date.now(),updatedAt:Date.now(),revision:1});\n    saveState(); window.LPClient.go('csHome');\n  });\n  const card=page.locator('[data-cs-station=\"qa-arcade\"]');\n  await expect(card).toBeVisible();\n  await expect(card).toContainText('/ partie');\n  await expect(card).not.toContainText('/ h');\n  await card.locator('[data-ops-quick-id=\"qa-arcade\"]').click();\n  await expect(page.locator('#opsSessionForm')).toBeVisible();\n  await expect(page.locator('#opsSessionForm')).toContainText('Par partie');\n  await expect(page.locator('#opsGameTitle')).toBeVisible();\n  await expect(page.locator('#opsGameTitle')).toHaveValue('Arcade');\n  await page.locator('#startSessionBtn').click();\n  const first=await page.evaluate(()=>({s:state.sessions.find(x=>(x.stationId==='qa-arcade'||x.resourceId==='qa-arcade')&&x.status==='active'),p:state.payments.at(-1)}));\n  expect(first.s).toBeTruthy(); expect(first.s.billingModel).toBe('PER_GAME'); expect(Number(first.s.totalAmount)).toBe(5); expect(Number(first.p.amount)).toBe(5);\n  await card.locator('[data-cs-manage]').click();\n  await expect(page.locator('#opsAddUnit')).toBeVisible();\n  await page.locator('#opsAddUnit').click();\n  const second=await page.evaluate(()=>state.sessions.find(x=>(x.stationId==='qa-arcade'||x.resourceId==='qa-arcade')&&x.status==='active'));\n  expect(Number(second.units)).toBe(2); expect(Number(second.totalAmount)).toBe(10);\n  expect(errors).toEqual([]);\n  console.log('V230_ARCADE_JOURNEY_OK');\n});\n\n"""
+              s=s.replace(anchor,arcade+anchor,1)
+          s=s.replace("test('all eight resource types have contextual billing profiles and media/settings stay responsive'", "test('all nine resource types have contextual billing profiles and media/settings stay responsive'",1)
+          s=s.replace('expect(profiles).toHaveLength(8);','expect(profiles).toHaveLength(9);',1)
+          if "expect(profiles.find(x=>x.type==='ARCADE').model).toBe('PER_GAME');" not in s:
+              s=s.replace("  expect(profiles.find(x=>x.type==='CONSOLE').model).toBe('TIME_PRORATED');\n", "  expect(profiles.find(x=>x.type==='CONSOLE').model).toBe('TIME_PRORATED');\n  expect(profiles.find(x=>x.type==='ARCADE').model).toBe('PER_GAME');\n",1)
+          s=s.replace("toHaveCount(8);","toHaveCount(9);",3)
+          s=s.replace("V230_MEDIA_8_TYPES_OK","V230_MEDIA_9_TYPES_OK")
+          p.write_text(s)
+          PY
+          node --check v16-original-source/app/src/main/assets/client-product-core.js
+          node --check v16-original-source/app/src/main/assets/p1-core.js
+          node --check v16-original-source/app/src/main/assets/client-product-setup.js
+          node --check v16-original-source/app/src/main/assets/client-operator-v230.js
+          node --check v16-original-source/tools/client-v230-e2e.spec.js
+          grep -q "ARCADE:'CONSOLE ARCADE'" v16-original-source/app/src/main/assets/client-product-core.js
+          grep -q "ARCADE:{label:'Console Arcade'" v16-original-source/app/src/main/assets/client-operator-v230.js
+          grep -q 'V230_ARCADE_JOURNEY_OK' v16-original-source/tools/client-v230-e2e.spec.js
+          grep -q 'toHaveLength(9)' v16-original-source/tools/client-v230-e2e.spec.js
           git diff --check
 
-      - name: Commit journey contract
+      - name: Commit operator contract
         shell: bash
         run: |
           set -euxo pipefail
           git config user.name "moumouhikaram-cell"
           git config user.email "moumouhi.karam@gmail.com"
-          git add v16-original-source/tools/client-v230-e2e.spec.js
+          git add v16-original-source/app/src/main/assets/client-product-core.js \
+                  v16-original-source/app/src/main/assets/p1-core.js \
+                  v16-original-source/app/src/main/assets/client-product-setup.js \
+                  v16-original-source/app/src/main/assets/client-operator-v230.js \
+                  v16-original-source/tools/client-v230-e2e.spec.js
           git diff --cached --quiet && exit 0
-          git commit -m "test(v230): enforce operator dashboard journey assertions"
+          git commit -m "fix(v230): make arcade an explicit operator resource"
           git push origin HEAD:android-client-final-v230
