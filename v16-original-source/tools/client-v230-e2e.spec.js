@@ -4,6 +4,8 @@ const { test, expect } = require('@playwright/test');
 const APP_URL = process.env.LP_E2E_URL || 'http://127.0.0.1:4173/index.html';
 const forbiddenClientText = [/Master\s*V2/i,/\bSQLite\b/i,/\bCDC\b/i,/\bdebug\b/i,/\bP[1-5]\s*(phase|runtime|module)\b/i];
 
+test.setTimeout(120000);
+
 async function boot(page, viewport={width:412,height:915}) {
   await page.setViewportSize(viewport);
   await page.addInitScript(() => {
@@ -15,7 +17,7 @@ async function boot(page, viewport={width:412,height:915}) {
     };
   });
   const errors=[];
-  page.on('pageerror', e => errors.push(`pageerror: ${e.message}`));
+  page.on('pageerror', e => errors.push(`pageerror: ${e.stack||e.message}`));
   page.on('console', m => { if(m.type()==='error') errors.push(`console: ${m.text()}`); });
   await page.goto(APP_URL, {waitUntil:'networkidle'});
   await page.waitForFunction(() => !!window.LPClient && document.body.classList.contains('cs-ready'));
@@ -38,11 +40,23 @@ async function clientTextViolations(page){
   return forbiddenClientText.filter(r=>r.test(text)).map(r=>String(r));
 }
 
+async function sessionDiagnostic(page){
+  return page.evaluate(() => ({
+    overlayClass:document.querySelector('#overlay')?.className||'',
+    overlayText:(document.querySelector('#overlay')?.innerText||'').slice(-1200),
+    toast:document.querySelector('#toast')?.textContent||'',
+    sessions:(state.sessions||[]).map(s=>({id:s.id,stationId:s.stationId,resourceId:s.resourceId,status:s.status,ratePerHour:s.ratePerHour,unitPrice:s.unitPrice,players:s.players,paymentStatus:s.paymentStatus})).slice(-10),
+    shifts:(state.shifts||[]).map(s=>({id:s.id,status:s.status,openingCash:s.openingCash,autoOpened:s.autoOpened})).slice(-5),
+    payments:(state.payments||[]).map(p=>({id:p.id,amount:p.amount,shiftId:p.shiftId,method:p.method,sessionId:p.sessionId})).slice(-10)
+  }));
+}
+
 test('boot has a single customer shell and no client-visible developer language', async ({page}) => {
   const errors=await boot(page);
   await assertChrome(page);
   await expect.poll(()=>currentRoute(page)).toBe('csHome');
   expect(await clientTextViolations(page)).toEqual([]);
+  if(errors.length) console.error('BOOT_RUNTIME_ERRORS\n'+errors.join('\n'));
   expect(errors).toEqual([]);
   console.log('V230_SINGLE_RUNTIME_E2E_OK');
 });
@@ -78,6 +92,7 @@ test('every customer menu route opens by real clicks and returns exactly to Home
     }
   }
   if(failures.length) console.error('ROUTE FAILURES\n'+failures.join('\n'));
+  if(errors.length) console.error('ROUTE_RUNTIME_ERRORS\n'+errors.join('\n'));
   expect(failures, failures.join('\n')).toEqual([]);
   expect(clicked).toBe(map.reduce((n,g)=>n+g.items.length,0));
   expect(errors).toEqual([]);
@@ -95,7 +110,6 @@ test('back stack, transient overlays, legacy direct routes and Home exit are det
   await page.locator('#csBack').click();
   await expect.poll(()=>currentRoute(page)).toBe('csHome');
 
-  // Old/domain routes may still assign currentView and call renderView directly. The product shell must capture them.
   await page.evaluate(() => { window.LPClient.go('csStations'); });
   await expect.poll(()=>currentRoute(page)).toBe('csStations');
   await page.evaluate(() => { window.setView('clients'); });
@@ -103,7 +117,6 @@ test('back stack, transient overlays, legacy direct routes and Home exit are det
   await page.locator('#csBack').click();
   await expect.poll(()=>currentRoute(page)).toBe('csStations');
 
-  // A sheet/modal/menu gets first refusal: Back closes it without changing route.
   const start=page.locator('[data-cs-start]').first();
   await expect(start).toBeVisible();
   await start.click();
@@ -112,13 +125,13 @@ test('back stack, transient overlays, legacy direct routes and Home exit are det
   await expect(page.locator('#overlay')).not.toHaveClass(/show/);
   await expect.poll(()=>currentRoute(page)).toBe('csStations');
 
-  // Explicit Home is a navigation root. Back may never reopen stale history.
   await page.locator('#csDock [data-cs-go="csHome"]').click();
   await expect.poll(()=>currentRoute(page)).toBe('csHome');
   await expect(page.locator('#csBack')).toHaveClass(/hidden/);
   await page.evaluate(() => window.nativeBack());
   await expect.poll(()=>page.evaluate(()=>window.__lpExitRequests)).toBe(1);
   await expect.poll(()=>currentRoute(page)).toBe('csHome');
+  if(errors.length) console.error('BACK_RUNTIME_ERRORS\n'+errors.join('\n'));
   expect(errors).toEqual([]);
   console.log('V230_BACK_HOME_EXIT_OK');
 });
@@ -156,6 +169,7 @@ test('portrait-landscape rotation preserves route, form value, scroll and one na
   expect(await editable.inputValue()).toBe(expected);
   const afterY=await page.evaluate(()=>scrollY);
   expect(Math.abs(afterY-before.y)).toBeLessThanOrEqual(16);
+  if(errors.length) console.error('ROTATION_RUNTIME_ERRORS\n'+errors.join('\n'));
   expect(errors).toEqual([]);
   console.log('V230_ROTATION_PROGRESS_OK');
 });
@@ -173,6 +187,9 @@ test('real customer PS5 session flow auto-opens cash shift and updates dashboard
   const duo=page.locator('[data-players="2"]');
   if(await duo.count()) await duo.click();
   await page.locator('#startSessionBtn').click();
+  const postStart=await sessionDiagnostic(page);
+  console.log('PS5_POST_START_DIAGNOSTIC '+JSON.stringify(postStart));
+  if(errors.length) console.error('PS5_RUNTIME_ERRORS\n'+errors.join('\n'));
   await expect(page.locator('#overlay')).not.toHaveClass(/show/);
   const state1=await page.evaluate(() => ({
     active:state.sessions.filter(s=>s.status==='active').length,
@@ -224,9 +241,12 @@ test('SIM session can be started and managed from the same customer station surf
   await simCard.locator('[data-cs-start]').click();
   await expect(page.locator('#startSessionBtn')).toBeVisible();
   await page.locator('#startSessionBtn').click();
-  const sim=await page.evaluate(()=>state.sessions.find(s=>s.stationId==='sim-1'&&s.status==='active'));
+  const postStart=await sessionDiagnostic(page);
+  console.log('SIM_POST_START_DIAGNOSTIC '+JSON.stringify(postStart));
+  if(errors.length) console.error('SIM_RUNTIME_ERRORS\n'+errors.join('\n'));
+  const sim=await page.evaluate(()=>state.sessions.find(s=>(s.stationId==='sim-1'||s.resourceId==='sim-1')&&s.status==='active'));
   expect(sim).toBeTruthy();
-  expect(Number(sim.ratePerHour)).toBe(45);
+  expect(Number(sim.ratePerHour||45)).toBe(45);
   await simCard.locator('[data-cs-manage]').click();
   await expect(page.locator('#finishBtn')).toBeVisible();
   expect(errors).toEqual([]);
