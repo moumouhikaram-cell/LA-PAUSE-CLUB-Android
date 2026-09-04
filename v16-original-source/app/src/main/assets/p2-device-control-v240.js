@@ -101,7 +101,8 @@ function v240InjectDeviceControl(){
 }
 
 function v240InjectHomePulse(){
-  if(!['home','floor','dashboard'].includes(currentView))return;
+  const route=typeof window.LPClient?.canonical==='function'?window.LPClient.canonical(currentView):currentView;
+  if(!['csHome','home','floor','dashboard'].includes(route))return;
   const root=$('view');if(!root||root.querySelector('#v240DevicePulse'))return;
   const anchor=root.querySelector('.ops-live-strip,.ops-control-center,.ops-kpis,.cs-dashboard');if(!anchor)return;
   const h=v240DeviceHealthCounts();const el=document.createElement('button');el.id='v240DevicePulse';el.className=`v240-home-pulse ${h.offline?'bad':h.total?'good':'neutral'}`;el.innerHTML=`<span>◉</span><div><b>Devices ${h.online}/${h.total}</b><small>${h.offline?`${h.offline} hors ligne`:h.total?'Tous joignables':'Aucun agent associé'}</small></div><strong>›</strong>`;el.onclick=v240GoDevices;anchor.insertAdjacentElement('afterend',el);
