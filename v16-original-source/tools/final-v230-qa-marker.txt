@@ -1,0 +1,13 @@
+LA PAUSE OS 2.3.0 FINAL QA DELIVERY MARKER
+Operator-first game journey contract: 9 explicit resource types.
+CONSOLE
+SIM_RACING
+PC_GAMING
+BILLIARD_TABLE
+SNOOKER_TABLE
+TABLE_TENNIS
+PRIVATE_ROOM
+ARCADE
+CUSTOM
+ARCADE is first-class and must emit V230_JOURNEY_ARCADE_OK.
+Product source is unchanged by this marker; it exists only to trigger Product CI, Android Native Smoke and FINAL SIGNED on one commit.
