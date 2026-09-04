@@ -43,6 +43,18 @@
       }
     },
     "deviceBindings": { "type": "array", "items": { "type": "string" }, "uniqueItems": true, "default": [] },
+    "bootstrapIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["accountId", "roleId"],
+      "properties": {
+        "accountId": { "type": "string", "minLength": 8 },
+        "roleId": { "enum": ["OWNER", "TENANT_ADMIN", "VENUE_MANAGER", "CASHIER", "FLOOR_STAFF", "ACCOUNTANT", "MARKETING", "TECHNICIAN", "VIEWER"] },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "venueIds": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "branchIds": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
+      }
+    },
     "issuedAt": { "type": "integer", "minimum": 1 },
     "periodStart": { "type": "integer", "minimum": 1 },
     "periodEnd": { "type": "integer", "minimum": 1 },
