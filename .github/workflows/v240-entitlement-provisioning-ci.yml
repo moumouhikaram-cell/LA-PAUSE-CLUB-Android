@@ -1,0 +1,56 @@
+name: Entitlement Provisioning CI
+
+on:
+  push:
+    branches:
+      - android-device-control-v240
+    paths:
+      - "contracts/security/entitlement.v1.schema.json"
+      - "contracts/saas/module-catalog.v1.json"
+      - "v16-original-source/tools/sign-entitlement-v240.js"
+      - "v16-original-source/tools/entitlement-provisioner-v240.js"
+      - ".github/workflows/v240-entitlement-provisioning-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  entitlement-provisioning:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate signer syntax
+        working-directory: v16-original-source
+        run: |
+          set -euo pipefail
+          node --check tools/sign-entitlement-v240.js
+          node --check tools/entitlement-provisioner-v240.js
+          echo ENTITLEMENT_PROVISIONER_SYNTAX_OK
+      - name: Prove ephemeral P-256 provisioning path
+        working-directory: v16-original-source
+        run: |
+          set -euo pipefail
+          node tools/entitlement-provisioner-v240.js | tee entitlement-provisioning-proof.txt
+          grep -q 'ENTITLEMENT_PROVISIONER_V240_OK' entitlement-provisioning-proof.txt
+          grep -q 'ENTITLEMENT_EPHEMERAL_P256_OK' entitlement-provisioning-proof.txt
+          grep -q 'ENTITLEMENT_TAMPER_REJECTED_OK' entitlement-provisioning-proof.txt
+          grep -q 'ENTITLEMENT_CATALOG_DEPENDENCIES_OK' entitlement-provisioning-proof.txt
+          grep -q 'ENTITLEMENT_PRIVATE_KEY_NOT_LOGGED_OK' entitlement-provisioning-proof.txt
+      - name: Assert repository contains no production private entitlement key
+        working-directory: v16-original-source
+        run: |
+          set -euo pipefail
+          ! grep -RIl --exclude='sign-entitlement-v240.js' --exclude='entitlement-provisioner-v240.js' -E 'BEGIN (EC )?PRIVATE KEY|LA_PAUSE_ENTITLEMENT_PRIVATE_KEY_(PEM|B64)=' . ../contracts >/tmp/lp-private-key-hits.txt
+          test ! -s /tmp/lp-private-key-hits.txt
+          echo ENTITLEMENT_PRIVATE_KEY_ABSENT_FROM_REPO_OK
+      - name: Upload provisioning proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: entitlement-provisioning-v240-proof
+          path: v16-original-source/entitlement-provisioning-proof.txt
+          if-no-files-found: error
