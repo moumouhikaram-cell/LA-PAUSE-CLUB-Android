@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lapauseos.local/contracts/security/entitlement.v1.schema.json",
+  "title": "LA PAUSE OS Signed Entitlement V1",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "entitlementId",
+    "catalogVersion",
+    "tenantId",
+    "status",
+    "modules",
+    "features",
+    "limits",
+    "issuedAt",
+    "periodStart",
+    "periodEnd",
+    "offlineValidUntil",
+    "keyId",
+    "algorithm",
+    "signature"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "entitlementId": { "type": "string", "minLength": 8 },
+    "catalogVersion": { "type": "string", "minLength": 1 },
+    "tenantId": { "type": "string", "minLength": 1 },
+    "venueIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true, "default": [] },
+    "branchIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true, "default": [] },
+    "status": { "enum": ["ACTIVE", "TRIAL", "PAST_DUE_GRACE", "SUSPENDED", "EXPIRED", "REVOKED"] },
+    "modules": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "features": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "limits": {
+      "type": "object",
+      "additionalProperties": {
+        "anyOf": [
+          { "type": "integer", "minimum": 0 },
+          { "type": "number", "minimum": 0 },
+          { "type": "boolean" },
+          { "type": "string" }
+        ]
+      }
+    },
+    "deviceBindings": { "type": "array", "items": { "type": "string" }, "uniqueItems": true, "default": [] },
+    "issuedAt": { "type": "integer", "minimum": 1 },
+    "periodStart": { "type": "integer", "minimum": 1 },
+    "periodEnd": { "type": "integer", "minimum": 1 },
+    "offlineValidUntil": { "type": "integer", "minimum": 1 },
+    "revocationEpoch": { "type": "integer", "minimum": 0, "default": 0 },
+    "keyId": { "type": "string", "minLength": 1 },
+    "algorithm": { "const": "ECDSA_P256_SHA256" },
+    "signature": { "type": "string", "minLength": 20 }
+  }
+}
