@@ -94,3 +94,18 @@ test('saving Snooker métier price clears stale resource override and survives r
   expect(persisted.rid).toBeNull();expect(persisted.price).toBe(13);
   console.log('V240_SNOOKER_PRICE_PERSISTENCE_OK');
 });
+
+test('Billard per-game active session never becomes a legacy negative countdown',async({page})=>{
+  await boot(page);await seed(page);
+  await page.evaluate(()=>{
+    const s={id:'ux-billard-session',stationId:'ux-billiard',resourceId:'ux-billiard',resourceType:'BILLIARD_TABLE',status:'active',mode:'unit',billingModel:'PER_GAME',startAt:Date.now()-20*60000,endAt:null,pausedAt:null,pauseTotalMs:0,players:2,plannedMinutes:null,units:1,unitPrice:7,pricingSnapshot:{billingModel:'PER_GAME',unitPrice:7,resourceType:'BILLIARD_TABLE'},baseAmount:7,discountAmount:0,totalAmount:7,customerId:null,gameTitle:'Billard',createdAt:Date.now(),updatedAt:Date.now(),revision:1};
+    state.sessions=[s];saveState();window.drawActiveSheet(s);
+  });
+  await expect(page.locator('#activeSheetTimer')).toHaveText('1 PARTIE');
+  await page.waitForTimeout(1300);
+  await expect(page.locator('#activeSheetTimer')).toHaveText('1 PARTIE');
+  await expect(page.locator('#activeSheetTimer')).not.toContainText('-');
+  await page.evaluate(()=>{const s=state.sessions.find(x=>x.id==='ux-billard-session');s.units=2;s.totalAmount=14;LPSessionSemanticGuard.enforce()});
+  await expect(page.locator('#activeSheetTimer')).toHaveText('2 PARTIES');
+  console.log('V240_PER_GAME_TIMER_SEMANTICS_OK');
+});
