@@ -17,8 +17,10 @@ const defaultAgent = {
 
 async function bootDevicePage(page){
   await page.goto(URL);
-  await page.waitForFunction(() => typeof window.renderView === 'function' && typeof window.p2RenderMesh === 'function' && typeof window.v240StartDiscovery === 'function');
-  await page.evaluate(() => { currentView='deviceMesh'; renderView(); });
+  await page.waitForFunction(() => document.body.classList.contains('nx-shell-ready') && window.LPClient?.go && window.LPSaas?.hasModule && typeof window.p2RenderMesh === 'function' && typeof window.v240StartDiscovery === 'function');
+  const access = await page.evaluate(() => ({module:LPSaas.hasModule('M09_DEVICE_CONTROL'),debug:LPSaas.nativeSecurity?.().debug===true}));
+  expect(access.module || access.debug).toBe(true);
+  await page.evaluate(() => LPClient.go('deviceMesh'));
   await expect(page.locator('#v240DiscoverBtn')).toBeVisible();
 }
 
@@ -84,7 +86,7 @@ test('LAN discovery -> pair resource -> command -> home pulse', async ({ page })
   await page.locator('#v240MsgSend').click();
   await page.waitForFunction(() => (state.deviceCommands||[]).some(c => c.commandType==='SHOW_MESSAGE' && c.payload?.text==='Session terminée'));
 
-  await page.evaluate(() => { currentView='csHome'; renderView(); });
+  await page.evaluate(() => LPClient.go('csHome'));
   await expect(page.locator('#v240DevicePulse')).toBeVisible();
   const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem('la-pause-club-manager-v6')||'{}').deviceRegistry?.some(d=>d.agentId==='agent-tv-test-1'));
   expect(persisted).toBe(true);
