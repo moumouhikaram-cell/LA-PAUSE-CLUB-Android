@@ -15,6 +15,41 @@ adb_alive(){
 }
 require_adb(){ adb_alive || fail "ADB/emulator unavailable at: $*"; }
 
+current_focus(){ adb shell dumpsys window | grep -E 'mCurrentFocus=' | tail -n 1 || true; }
+focused_app(){ adb shell dumpsys window | grep -E 'mFocusedApp=' | tail -n 1 || true; }
+
+wait_app_window_focus(){
+  local context="$1" attempts="${2:-20}" focus="" appfocus=""
+  for attempt in $(seq 1 "$attempts"); do
+    require_adb "focus check $context attempt $attempt"
+    focus="$(current_focus)"
+    appfocus="$(focused_app)"
+    trace "FOCUS_CHECK_${attempt} context=$context current=$focus focused=$appfocus"
+    if [[ "$focus" == *"$PKG"* ]]; then
+      trace "APP_WINDOW_FOCUS_OK context=$context"
+      return 0
+    fi
+
+    # Hosted Android emulators can occasionally surface a Nexus Launcher ANR
+    # above the already-focused app. Dismiss only that external system overlay,
+    # then re-assert PremiumActivity before any Back behavior is tested.
+    if [[ "$focus" == *"Application Not Responding: com.google.android.apps.nexuslauncher"* ]]; then
+      trace "SYSTEM_LAUNCHER_ANR_OVERLAY_DETECTED context=$context"
+      timeout 8s adb shell input keyevent KEYCODE_BACK >> "$TRACE" 2>&1 || true
+      sleep 1
+      continue
+    fi
+
+    # ActivityManager may already consider LA PAUSE foreground while WindowManager
+    # has not yet handed it input focus. Re-assert the activity and keep waiting.
+    if [[ "$appfocus" == *"$PKG"* ]]; then
+      timeout 8s adb shell am start -n "$PKG/$ACTIVITY" >> "$TRACE" 2>&1 || true
+    fi
+    sleep 1
+  done
+  fail "LA PAUSE OS window never gained input focus at: $context"
+}
+
 ui_dump(){
   local remote="$1" localfile="$2" ok=0
   require_adb "before UI dump $remote"
@@ -46,13 +81,15 @@ sleep 7
 require_adb "after app launch"
 PID="$(adb shell pidof "$PKG" | tr -d '\r')"
 [[ -n "$PID" ]] || fail "process absent after launch"
-FOCUS="$(adb shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp' | tail -n 3 || true)"
+wait_app_window_focus "after app launch" 20
+FOCUS="$(adb shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp' | tail -n 4 || true)"
 echo "$FOCUS" | tee android-focus.txt | tee -a "$TRACE"
-[[ "$FOCUS" == *"$PKG"* ]] || fail "LA PAUSE OS is not foreground after launch"
+[[ "$(current_focus)" == *"$PKG"* ]] || fail "LA PAUSE OS input window is not foreground after launch"
 echo "ANDROID_LAUNCH_OK" | tee android-native-smoke.txt
 trace "ANDROID_LAUNCH_OK pid=$PID"
 
 # Home -> physical Android Back must show the app's real native exit confirmation.
+wait_app_window_focus "before Home Back" 12
 trace "BACK_HOME_SEND_BEGIN"
 require_adb "before Home Back"
 if ! timeout 8s adb shell input keyevent KEYCODE_BACK >> "$TRACE" 2>&1; then
@@ -78,6 +115,7 @@ trace "BACK_DIALOG_DISMISS_BEGIN"
 timeout 8s adb shell input keyevent KEYCODE_BACK >> "$TRACE" 2>&1 || fail "KEYCODE_BACK failed while dismissing exit dialog"
 sleep 1
 require_adb "after dismissing exit dialog"
+wait_app_window_focus "after dismissing exit dialog" 12
 PID_BEFORE="$(adb shell pidof "$PKG" | tr -d '\r')"
 [[ -n "$PID_BEFORE" ]] || fail "process missing before rotation"
 trace "ROTATE_LANDSCAPE_BEGIN pid=$PID_BEFORE"
@@ -94,9 +132,10 @@ require_adb "after portrait rotation"
 PID_AFTER="$(adb shell pidof "$PKG" | tr -d '\r')"
 [[ "$PID_BEFORE" = "$PID_AFTER" ]] || fail "process recreated/died on portrait rotation"
 trace "ROTATE_PORTRAIT_OK pid=$PID_AFTER"
+wait_app_window_focus "after portrait rotation" 12
 FOCUS_PORTRAIT="$(adb shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp' | tail -n 4 || true)"
 printf '%s\n' "$FOCUS_PORTRAIT" | tee android-focus-portrait.txt | tee -a "$TRACE"
-[[ "$FOCUS_PORTRAIT" == *"$PKG"* ]] || fail "LA PAUSE OS lost foreground after rotation"
+[[ "$(current_focus)" == *"$PKG"* ]] || fail "LA PAUSE OS lost input focus after rotation"
 ui_dump /sdcard/lp-window-portrait.xml android-window-portrait.xml
 # UIAutomator cannot introspect WebView HTML reliably. Native rotation success is proven by:
 # unchanged process + foreground PremiumActivity + package-owned full-screen WebView still attached.
