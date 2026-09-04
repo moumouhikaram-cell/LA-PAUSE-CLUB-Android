@@ -1,0 +1,63 @@
+name: Guard v2.3 Permanent Signing Fingerprint
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - android-client-final-v230
+    paths:
+      - ".github/workflows/guard-v230-signing-fingerprint.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch-signing-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: android-client-final-v230
+          fetch-depth: 0
+      - name: Pin the historical permanent signing certificate
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('.github/workflows/build-v230-signed.yml')
+          s=p.read_text()
+          fp='f154909d8c631131975553c41481b67c282f514beb0ed9ab228d7275fa8e321f'
+
+          old_restore='''          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/la-pause-release.p12"\n          keytool -list -storetype PKCS12 -keystore "$RUNNER_TEMP/la-pause-release.p12" -storepass "$KS_PASS" -alias "$KEY_ALIAS" >/dev/null\n'''
+          new_restore=f'''          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/la-pause-release.p12"\n          keytool -list -storetype PKCS12 -keystore "$RUNNER_TEMP/la-pause-release.p12" -storepass "$KS_PASS" -alias "$KEY_ALIAS" >/dev/null\n          CERT_PEM="$RUNNER_TEMP/la-pause-signing-cert.pem"\n          keytool -exportcert -rfc -storetype PKCS12 -keystore "$RUNNER_TEMP/la-pause-release.p12" -storepass "$KS_PASS" -alias "$KEY_ALIAS" > "$CERT_PEM"\n          ACTUAL_CERT_SHA256="$(openssl x509 -in "$CERT_PEM" -noout -fingerprint -sha256 | cut -d= -f2 | tr -d ':' | tr '[:upper:]' '[:lower:]')"\n          EXPECTED_CERT_SHA256="{fp}"\n          printf 'Signer certificate SHA-256: %s\\n' "$ACTUAL_CERT_SHA256" | tee signing-key-fingerprint.txt\n          test "$ACTUAL_CERT_SHA256" = "$EXPECTED_CERT_SHA256"\n          echo "PERMANENT_SIGNING_KEY_OK" | tee -a signing-key-fingerprint.txt\n          rm -f "$CERT_PEM"\n'''
+          if old_restore not in s:
+              raise SystemExit('Restore signing-key marker not found')
+          s=s.replace(old_restore,new_restore,1)
+
+          old_cert="          grep -qi 'Signer #1 certificate DN: CN=LA PAUSE OS' signed-certificate.txt\n"
+          new_cert=f"          grep -qi 'Signer #1 certificate DN: CN=LA PAUSE OS, OU=Android, O=LA PAUSE, L=El Hajeb, C=MA' signed-certificate.txt\n          grep -qi 'Signer #1 certificate SHA-256 digest: {fp}' signed-certificate.txt\n"
+          if old_cert not in s:
+              raise SystemExit('Signed certificate marker not found')
+          s=s.replace(old_cert,new_cert,1)
+
+          old_art='''            signed-size.txt\n            media-v230.txt\n'''
+          new_art='''            signed-size.txt\n            signing-key-fingerprint.txt\n            media-v230.txt\n'''
+          if old_art not in s:
+              raise SystemExit('Artifact list marker not found')
+          s=s.replace(old_art,new_art,1)
+
+          p.write_text(s)
+          PY
+          grep -q 'f154909d8c631131975553c41481b67c282f514beb0ed9ab228d7275fa8e321f' .github/workflows/build-v230-signed.yml
+          grep -q 'PERMANENT_SIGNING_KEY_OK' .github/workflows/build-v230-signed.yml
+          git diff --check
+      - name: Commit permanent signing guard
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git config user.name "moumouhikaram-cell"
+          git config user.email "moumouhi.karam@gmail.com"
+          git add .github/workflows/build-v230-signed.yml
+          git commit -m "ci(v230): pin historical permanent signing certificate"
+          git push origin HEAD:android-client-final-v230
