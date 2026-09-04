@@ -1,0 +1,156 @@
+name: Build Signed LA PAUSE OS 2.4.0 SaaS
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - android-device-control-v240
+    paths:
+      - "v16-original-source/RELEASE-V240.txt"
+      - ".github/workflows/build-v240-signed.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  signed-v240:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.4.1"
+
+      - name: Configure Android SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/36.0.0:$PATH"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/build-tools/36.0.0" >> "$GITHUB_PATH"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+
+      - name: Require production SaaS entitlement verifier key
+        shell: bash
+        env:
+          ENT_PUB: ${{ secrets.LA_PAUSE_ENTITLEMENT_PUBLIC_KEY_B64 }}
+          ENT_KID: ${{ secrets.LA_PAUSE_ENTITLEMENT_KEY_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$ENT_PUB"
+          test -n "$ENT_KID"
+          echo "LA_PAUSE_ENTITLEMENT_PUBLIC_KEY_B64=$ENT_PUB" >> "$GITHUB_ENV"
+          echo "LA_PAUSE_ENTITLEMENT_KEY_ID=$ENT_KID" >> "$GITHUB_ENV"
+          echo SAAS_ENTITLEMENT_PUBLIC_KEY_PRESENT_OK
+
+      - name: Restore permanent LA PAUSE Android signing key
+        shell: bash
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          test -n "$KS_B64"; test -n "$KS_PASS"; test -n "$KEY_ALIAS"
+          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/la-pause-release.p12"
+          keytool -list -storetype PKCS12 -keystore "$RUNNER_TEMP/la-pause-release.p12" -storepass "$KS_PASS" -alias "$KEY_ALIAS" >/dev/null
+          keytool -exportcert -rfc -storetype PKCS12 -keystore "$RUNNER_TEMP/la-pause-release.p12" -storepass "$KS_PASS" -alias "$KEY_ALIAS" > "$RUNNER_TEMP/cert.pem"
+          ACTUAL="$(openssl x509 -in "$RUNNER_TEMP/cert.pem" -noout -fingerprint -sha256 | cut -d= -f2 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          EXPECTED="f154909d8c631131975553c41481b67c282f514beb0ed9ab228d7275fa8e321f"
+          echo "Signer SHA-256: $ACTUAL" | tee signer-v240.txt
+          test "$ACTUAL" = "$EXPECTED"
+          echo OFFICIAL_ANDROID_SIGNER_OK | tee -a signer-v240.txt
+
+      - name: Prepare media and validate canonical SaaS source
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          bash tools/prepare-client-media-v230.sh
+          grep -q 'versionCode = 29' app/build.gradle.kts
+          grep -q 'versionName = "2.4.0"' app/build.gradle.kts
+          grep -q 'isMinifyEnabled = true' app/build.gradle.kts
+          grep -q 'saas-entitlement-rbac-v240.js' app/src/main/assets/index.html
+          grep -q 'client-shell-next-v240.js' app/src/main/assets/index.html
+          grep -q 'client-domain-route-bridge-v240.js' app/src/main/assets/index.html
+          grep -q 'client-session-semantic-guard-v240.js' app/src/main/assets/index.html
+          test -f ../contracts/saas/module-catalog.v1.json
+          test -f ../contracts/security/entitlement.v1.schema.json
+
+      - name: Build R8 hardened release
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          gradle --no-daemon --stacktrace :app:assembleRelease
+          test -f app/build/outputs/apk/release/app-release-unsigned.apk
+          test -f app/build/outputs/mapping/release/mapping.txt
+          grep -q 'ENTITLEMENT_PUBLIC_KEY_B64' app/build/generated/source/buildConfig/release/com/lapauseclub/manager/BuildConfig.java
+          ! grep -q 'ENTITLEMENT_PUBLIC_KEY_B64 = ""' app/build/generated/source/buildConfig/release/com/lapauseclub/manager/BuildConfig.java
+          echo V240_R8_RELEASE_OK
+
+      - name: Sign and verify LA PAUSE OS 2.4.0
+        shell: bash
+        env:
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euxo pipefail
+          BT="$ANDROID_HOME/build-tools/36.0.0"
+          U="v16-original-source/app/build/outputs/apk/release/app-release-unsigned.apk"
+          ALIGNED="$RUNNER_TEMP/lp-v240-aligned.apk"
+          OUT="LA-PAUSE-OS-Android-v2.4.0-SAAS-SIGNED.apk"
+          "$BT/zipalign" -f -p 4 "$U" "$ALIGNED"
+          "$BT/apksigner" sign --ks "$RUNNER_TEMP/la-pause-release.p12" --ks-type PKCS12 --ks-key-alias "$KEY_ALIAS" --ks-pass "pass:$KS_PASS" --key-pass "pass:$KEY_PASS" --out "$OUT" "$ALIGNED"
+          "$BT/apksigner" verify --verbose --print-certs "$OUT" | tee signed-v240-certificate.txt
+          "$BT/aapt" dump badging "$OUT" | tee signed-v240-badging.txt
+          grep "package: name='com.lapauseclub.manager'" signed-v240-badging.txt
+          grep "versionCode='29'" signed-v240-badging.txt
+          grep "versionName='2.4.0'" signed-v240-badging.txt
+          grep -qi 'Signer #1 certificate SHA-256 digest: f154909d8c631131975553c41481b67c282f514beb0ed9ab228d7275fa8e321f' signed-v240-certificate.txt
+          unzip -p "$OUT" assets/index.html > signed-v240-index.html
+          grep -q 'client-shell-next-v240.js' signed-v240-index.html
+          grep -q 'saas-entitlement-rbac-v240.js' signed-v240-index.html
+          grep -q 'client-session-semantic-guard-v240.js' signed-v240-index.html
+          sha256sum "$OUT" | tee signed-v240-sha256.txt
+          stat -c '%s bytes' "$OUT" | tee signed-v240-size.txt
+
+      - name: Build release manifest
+        shell: bash
+        run: |
+          {
+            echo 'LA PAUSE OS Android 2.4.0 SaaS'
+            echo "Commit: $GITHUB_SHA"
+            echo 'R8: enabled'
+            echo 'Signed entitlement verifier: required and embedded as public verification key'
+            cat signer-v240.txt
+            cat signed-v240-sha256.txt
+            cat signed-v240-size.txt
+          } > LA-PAUSE-OS-v2.4.0-SAAS-MANIFEST.txt
+
+      - name: Upload signed SaaS release
+        uses: actions/upload-artifact@v4
+        with:
+          name: LA-PAUSE-OS-Android-v2.4.0-SAAS-SIGNED
+          path: |
+            LA-PAUSE-OS-Android-v2.4.0-SAAS-SIGNED.apk
+            LA-PAUSE-OS-v2.4.0-SAAS-MANIFEST.txt
+            signed-v240-certificate.txt
+            signed-v240-badging.txt
+            signed-v240-sha256.txt
+            signed-v240-size.txt
+            v16-original-source/app/build/outputs/mapping/release/mapping.txt
+          if-no-files-found: error
+          retention-days: 90
