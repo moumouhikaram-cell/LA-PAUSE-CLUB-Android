@@ -5,7 +5,7 @@ const URL = process.env.LP_E2E_URL || 'http://127.0.0.1:4173/index.html';
 async function bootDevicePage(page){
   await page.goto(URL);
   await page.waitForFunction(() => typeof window.renderView === 'function' && typeof window.p2RenderMesh === 'function' && typeof window.v240StartDiscovery === 'function');
-  await page.evaluate(() => { window.currentView='deviceMesh'; window.renderView(); });
+  await page.evaluate(() => { currentView='deviceMesh'; renderView(); });
   await expect(page.locator('#v240DiscoverBtn')).toBeVisible();
 }
 
@@ -47,16 +47,16 @@ test('LAN discovery -> pair resource -> command -> home pulse', async ({ page })
   await expect(page.getByText('192.168.50.0/24')).toBeVisible();
   await expect(page.locator('[data-v240-associate="0"]')).toBeVisible();
 
-  await page.evaluate(() => { window.p2ProbeDevice = async () => {}; });
+  await page.evaluate(() => { p2ProbeDevice = async () => {}; });
   await page.locator('[data-v240-associate="0"]').click();
   const resource = await page.locator('#v240PairResource option').nth(1).getAttribute('value');
   expect(resource).toBeTruthy();
   await page.locator('#v240PairResource').selectOption(resource);
   await page.locator('#v240PairSave').click();
 
-  await page.waitForFunction(() => (window.state.deviceRegistry||[]).some(d => d.agentId==='agent-tv-test-1' && d.pairingState==='PAIRED' && !!d.resourceId));
+  await page.waitForFunction(() => (state.deviceRegistry||[]).some(d => d.agentId==='agent-tv-test-1' && d.pairingState==='PAIRED' && !!d.resourceId));
   const paired = await page.evaluate(() => {
-    const d=(window.state.deviceRegistry||[]).find(x=>x.agentId==='agent-tv-test-1');
+    const d=(state.deviceRegistry||[]).find(x=>x.agentId==='agent-tv-test-1');
     return {id:d.id,name:d.name,type:d.deviceType,address:d.address,resourceId:d.resourceId,capabilities:d.capabilities};
   });
   expect(paired.name).toBe('TV TEST 1');
@@ -65,18 +65,18 @@ test('LAN discovery -> pair resource -> command -> home pulse', async ({ page })
   expect(paired.capabilities.overlay).toBe(true);
 
   await page.evaluate(() => {
-    const d=(window.state.deviceRegistry||[]).find(x=>x.agentId==='agent-tv-test-1');
+    const d=(state.deviceRegistry||[]).find(x=>x.agentId==='agent-tv-test-1');
     d.address='';
-    window.p2RenderMesh();
-    requestAnimationFrame(window.v240InjectDeviceControl);
+    p2RenderMesh();
+    requestAnimationFrame(v240InjectDeviceControl);
   });
   await expect(page.locator(`[data-v240-message="${paired.id}"]`)).toBeVisible();
   await page.locator(`[data-v240-message="${paired.id}"]`).click();
   await page.locator('#v240MessageText').fill('Session terminée');
   await page.locator('#v240MsgSend').click();
-  await page.waitForFunction(() => (window.state.deviceCommands||[]).some(c => c.commandType==='SHOW_MESSAGE' && c.payload?.text==='Session terminée'));
+  await page.waitForFunction(() => (state.deviceCommands||[]).some(c => c.commandType==='SHOW_MESSAGE' && c.payload?.text==='Session terminée'));
 
-  await page.evaluate(() => { window.currentView='home'; window.renderView(); });
+  await page.evaluate(() => { currentView='home'; renderView(); });
   await page.waitForTimeout(60);
   await expect(page.locator('#v240DevicePulse')).toBeVisible();
   const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem('la-pause-club-manager-v6')||'{}').deviceRegistry?.some(d=>d.agentId==='agent-tv-test-1'));
@@ -93,7 +93,7 @@ test('discovery never auto-pairs an agent without operator action', async ({ pag
   await bootDevicePage(page);
   await page.locator('#v240DiscoverBtn').click();
   await expect(page.getByText('TV TEST 1')).toBeVisible();
-  const autoPaired = await page.evaluate(() => (window.state.deviceRegistry||[]).some(d=>d.agentId==='agent-tv-test-1'));
+  const autoPaired = await page.evaluate(() => (state.deviceRegistry||[]).some(d=>d.agentId==='agent-tv-test-1'));
   expect(autoPaired).toBe(false);
   console.log('V240_DISCOVERY_REQUIRES_OPERATOR_PAIR_OK');
 });
