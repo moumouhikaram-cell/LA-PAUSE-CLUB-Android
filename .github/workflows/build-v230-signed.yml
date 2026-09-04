@@ -165,6 +165,14 @@ jobs:
           test -n "$KEY_ALIAS"
           echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/la-pause-release.p12"
           keytool -list -storetype PKCS12 -keystore "$RUNNER_TEMP/la-pause-release.p12" -storepass "$KS_PASS" -alias "$KEY_ALIAS" >/dev/null
+          CERT_PEM="$RUNNER_TEMP/la-pause-signing-cert.pem"
+          keytool -exportcert -rfc -storetype PKCS12 -keystore "$RUNNER_TEMP/la-pause-release.p12" -storepass "$KS_PASS" -alias "$KEY_ALIAS" > "$CERT_PEM"
+          ACTUAL_CERT_SHA256="$(openssl x509 -in "$CERT_PEM" -noout -fingerprint -sha256 | cut -d= -f2 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          EXPECTED_CERT_SHA256="f154909d8c631131975553c41481b67c282f514beb0ed9ab228d7275fa8e321f"
+          printf 'Signer certificate SHA-256: %s\n' "$ACTUAL_CERT_SHA256" | tee signing-key-fingerprint.txt
+          test "$ACTUAL_CERT_SHA256" = "$EXPECTED_CERT_SHA256"
+          echo "PERMANENT_SIGNING_KEY_OK" | tee -a signing-key-fingerprint.txt
+          rm -f "$CERT_PEM"
 
       - name: Final 2.3 product gates
         working-directory: v16-original-source
@@ -241,7 +249,8 @@ jobs:
           grep "package: name='com.lapauseclub.manager'" signed-badging.txt
           grep "versionCode='28'" signed-badging.txt
           grep "versionName='2.3.0'" signed-badging.txt
-          grep -qi 'Signer #1 certificate DN: CN=LA PAUSE OS' signed-certificate.txt
+          grep -qi 'Signer #1 certificate DN: CN=LA PAUSE OS, OU=Android, O=LA PAUSE, L=El Hajeb, C=MA' signed-certificate.txt
+          grep -qi 'Signer #1 certificate SHA-256 digest: f154909d8c631131975553c41481b67c282f514beb0ed9ab228d7275fa8e321f' signed-certificate.txt
           unzip -l "$SIGNED" | tee signed-assets.txt
           for f in client-product-core.js client-product-media.js client-product-views.js client-product-setup.js client-product-session-policy.js client-product-shift-compat.js client-product-settings-compat.js client-product-render-dispatch.js client-product-boot.js client-product-core.css client-product-responsive.css client-product-v230.css; do grep -q "assets/$f" signed-assets.txt; done
           for f in ps5.jpg sim.jpg pc.jpg billiard.jpg snooker.jpg table-tennis.jpg arcade.jpg lounge.jpg; do grep -q "assets/media/premium/$f" signed-assets.txt; unzip -p "$SIGNED" "assets/media/premium/$f" | wc -c | awk '$1 > 120000'; done
@@ -292,6 +301,7 @@ jobs:
             signed-index.html
             signed-sha256.txt
             signed-size.txt
+            signing-key-fingerprint.txt
             media-v230.txt
             e2e-v230.txt
             client-v230-audit.txt
