@@ -13,6 +13,7 @@ const transport=read('app/src/main/java/com/lapauseclub/manager/core/CoreSyncTra
 const bridge=read('app/src/main/java/com/lapauseclub/manager/SyncBridgeV12.java');
 const activity=read('app/src/main/java/com/lapauseclub/manager/MainActivity.java');
 const runtime=read('app/src/main/assets/sync-v240-runtime.js');
+const runtimeExecutable=runtime.replace(/\/\*[\s\S]*?\*\//g,'');
 const index=read('app/src/main/assets/index.html');
 
 must(transport,'PROTOCOL_VERSION = "la-pause-sync/2"','native sync protocol');
@@ -35,7 +36,7 @@ must(runtime,'SYNC_REMOTE_APPLY_UNSUPPORTED','legacy remote merge fail closed');
 must(runtime,'SYNC_SERVER_ACK_INVALID','server ACK subset validation');
 must(runtime,'SYNC_SCOPE_MISMATCH','scope validation');
 must(runtime,"capabilities:['canonical-events-v11','scoped-ack','offline-outbox','fail-closed-remote-apply']",'transport capabilities');
-mustNot(runtime,'state.outbox','legacy mutable outbox must not drive canonical sync');
+mustNot(runtimeExecutable,'state.outbox','legacy mutable outbox must not drive canonical sync');
 
 let saved=0,rendered=0,headers=0,toasts=0,requestPayload=null,acked=[],failed=[];
 const scope={tenantId:'tenant-1',venueId:'venue-1',branchId:'branch-1'};
