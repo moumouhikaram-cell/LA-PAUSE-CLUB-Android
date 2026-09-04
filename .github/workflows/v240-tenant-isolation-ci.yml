@@ -8,7 +8,9 @@ on:
     paths:
       - "v16-original-source/app/src/main/java/com/lapauseclub/manager/core/CoreStore.java"
       - "v16-original-source/app/src/main/java/com/lapauseclub/manager/core/CoreTenantSchemaV10.java"
+      - "v16-original-source/app/src/main/java/com/lapauseclub/manager/core/CoreCommandSchemaV11.java"
       - "v16-original-source/tools/native-tenant-isolation-v240.js"
+      - "v16-original-source/tools/native-command-scope-v240.js"
       - ".github/workflows/v240-tenant-isolation-ci.yml"
 
 permissions:
@@ -23,7 +25,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Prove tenant venue branch isolation contract
+      - name: Prove tenant venue branch resource isolation
         working-directory: v16-original-source
         shell: bash
         run: |
@@ -31,11 +33,23 @@ jobs:
           node tools/native-tenant-isolation-v240.js | tee ../native-tenant-v10.txt
           grep -q 'NATIVE_TENANT_ISOLATION_V10_OK' ../native-tenant-v10.txt
           grep -q 'V10_LEGACY_RECOVERY_PRESERVED' ../native-tenant-v10.txt
-      - name: Upload isolation proof
+      - name: Prove scoped commands revisions audit and events
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          node tools/native-command-scope-v240.js | tee ../native-command-v11.txt
+          grep -q 'NATIVE_COMMAND_SCOPE_V11_OK' ../native-command-v11.txt
+          grep -q 'V11_IDEMPOTENCY_SCOPE_OK' ../native-command-v11.txt
+          grep -q 'V11_REVISION_SCOPE_OK' ../native-command-v11.txt
+          grep -q 'V11_AUDIT_SCOPE_OK' ../native-command-v11.txt
+      - name: Upload isolation proofs
         uses: actions/upload-artifact@v4
         with:
-          name: v240-native-tenant-v10-${{ github.run_number }}
-          path: native-tenant-v10.txt
+          name: v240-native-tenant-command-${{ github.run_number }}
+          path: |
+            native-tenant-v10.txt
+            native-command-v11.txt
           if-no-files-found: error
           retention-days: 30
 
@@ -65,12 +79,13 @@ jobs:
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
-      - name: Compile manager with CoreStore v10
+      - name: Compile manager with scoped CoreStore v11
         working-directory: v16-original-source
         shell: bash
         run: |
           set -euxo pipefail
           gradle --no-daemon --stacktrace :app:compileDebugJavaWithJavac
-          grep -q 'private static final int DB_VERSION=10;' app/src/main/java/com/lapauseclub/manager/core/CoreStore.java
+          grep -q 'private static final int DB_VERSION=11;' app/src/main/java/com/lapauseclub/manager/core/CoreStore.java
           grep -q 'PRIMARY KEY(tenant_id,venue_id,branch_id,id)' app/src/main/java/com/lapauseclub/manager/core/CoreTenantSchemaV10.java
-          echo NATIVE_TENANT_V10_ANDROID_COMPILE_OK
+          grep -q 'PRIMARY KEY(tenant_id,venue_id,branch_id,entity_type,entity_id)' app/src/main/java/com/lapauseclub/manager/core/CoreCommandSchemaV11.java
+          echo NATIVE_TENANT_COMMAND_V11_ANDROID_COMPILE_OK
