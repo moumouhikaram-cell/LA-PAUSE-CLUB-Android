@@ -32,7 +32,9 @@ jobs:
           node --check tools/sync-protocol-v240.js
       - name: Prove scoped canonical outbox sync and fail-closed remote apply
         working-directory: v16-original-source
-        run: node tools/sync-protocol-v240.js | tee sync-protocol-v240-proof.txt
+        run: |
+          set -o pipefail
+          node tools/sync-protocol-v240.js | tee sync-protocol-v240-proof.txt
       - name: Verify sync proof markers
         working-directory: v16-original-source
         run: |
