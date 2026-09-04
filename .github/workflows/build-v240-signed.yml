@@ -179,7 +179,7 @@ jobs:
           path: |
             LA-PAUSE-OS-Android-v2.4.0-SAAS-SIGNED.apk
             LA-PAUSE-OS-v2.4.0-SAAS-MANIFEST.txt
-            bootstrap-entitlement-proof.txt
+            v16-original-source/bootstrap-entitlement-proof.txt
             signed-v240-certificate.txt
             signed-v240-badging.txt
             signed-v240-sha256.txt
