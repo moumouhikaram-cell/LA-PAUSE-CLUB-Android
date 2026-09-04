@@ -51,7 +51,7 @@ jobs:
           set -euxo pipefail
           bash tools/prepare-client-media-v230.sh
 
-      - name: SaaS, Device Control and security structural contract
+      - name: SaaS, shell, Device Control and security structural contract
         shell: bash
         run: |
           set -euxo pipefail
@@ -60,9 +60,11 @@ jobs:
           node --check "$A/client-operator-ux-v240.js"
           node --check "$A/client-operator-ux-v240-hotfix.js"
           node --check "$A/saas-entitlement-rbac-v240.js"
+          node --check "$A/client-shell-next-v240.js"
           node --check v16-original-source/tools/client-v240-device-control.spec.js
           node --check v16-original-source/tools/client-v240-operator-ux.spec.js
           node --check v16-original-source/tools/saas-entitlement-rbac-v240.spec.js
+          node --check v16-original-source/tools/client-v240-next-shell.spec.js
 
           grep -q 'versionCode = 29' v16-original-source/app/build.gradle.kts
           grep -q 'versionName = "2.4.0"' v16-original-source/app/build.gradle.kts
@@ -92,15 +94,20 @@ jobs:
           grep -q 'ECDSA_P256_SHA256' contracts/security/entitlement.v1.schema.json
           grep -q 'la-pause-client/2' contracts/protocol/client-command-envelope.v2.schema.json
           grep -q 'saas-entitlement-rbac-v240.js' "$A/index.html"
+          grep -q 'client-shell-next-v240.css' "$A/index.html"
+          grep -q 'client-shell-next-v240.js' "$A/index.html"
+          grep -q '<body class="lp-next-booting">' "$A/index.html"
+          grep -q 'id="lpBootScreen"' "$A/index.html"
           python3 - <<'PY'
           from pathlib import Path
           s=Path('v16-original-source/app/src/main/assets/index.html').read_text()
           assert s.index('p5-platform.js') < s.index('saas-entitlement-rbac-v240.js') < s.index('master-v2-runtime.js')
-          assert s.index('client-product-render-dispatch.js') < s.index('p2-device-control-v240.js') < s.index('client-operator-ux-v240.js') < s.index('client-product-boot.js')
+          assert s.index('client-product-render-dispatch.js') < s.index('p2-device-control-v240.js') < s.index('client-operator-ux-v240.js') < s.index('client-shell-next-v240.js') < s.index('client-product-boot.js')
           print('V240_SAAS_RUNTIME_ORDER_OK')
+          print('V240_NEXT_SHELL_BOOT_ORDER_OK')
           PY
           python3 - <<'PY'
-          import json,re
+          import json
           from pathlib import Path
           catalog=json.loads(Path('contracts/saas/module-catalog.v1.json').read_text())
           src=Path('v16-original-source/app/src/main/assets/saas-entitlement-rbac-v240.js').read_text()
@@ -125,6 +132,7 @@ jobs:
           grep -q 'sha256(token)' v16-original-source/tvagent/src/main/java/com/lapauseclub/tvagent/AgentConfig.java
           grep -q 'idempotencyKey' v16-original-source/tvagent/src/main/java/com/lapauseclub/tvagent/AgentHttpServer.java
           echo V240_SAAS_SECURITY_STRUCTURE_OK
+          echo V240_NEXT_SHELL_STRUCTURE_OK
           echo V240_DEVICE_CONTROL_STRUCTURE_OK
 
       - name: Compile hardened manager and TV Agent
@@ -161,6 +169,19 @@ jobs:
           grep -q 'SAAS_RBAC_CASHIER_OK' ../e2e-v240-saas.txt
           grep -q 'SAAS_RBAC_BRANCH_SCOPE_OK' ../e2e-v240-saas.txt
           grep -q 'SAAS_ROUTE_MODULE_MAP_OK' ../e2e-v240-saas.txt
+
+      - name: Next SaaS shell and anti-flash E2E
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          LP_E2E_URL=http://127.0.0.1:4173/index.html npx playwright test tools/client-v240-next-shell.spec.js --reporter=line --workers=1 | tee ../e2e-v240-shell.txt
+          grep -q 'V240_FIRST_FRAME_BOOT_GUARD_OK' ../e2e-v240-shell.txt
+          grep -q 'V240_OLD_CHROME_ELIMINATED_OK' ../e2e-v240-shell.txt
+          grep -q 'V240_NEXT_SAAS_SHELL_OK' ../e2e-v240-shell.txt
+          grep -q 'V240_SAAS_MODULE_NAVIGATION_OK' ../e2e-v240-shell.txt
+          grep -q 'V240_MODULE_MARKETPLACE_OK' ../e2e-v240-shell.txt
+          grep -q 'V240_NEW_SETTINGS_HUB_OK' ../e2e-v240-shell.txt
 
       - name: Device Control browser E2E
         working-directory: v16-original-source
@@ -239,6 +260,7 @@ jobs:
           name: v240-saas-device-control-ci-${{ github.run_number }}
           path: |
             e2e-v240-saas.txt
+            e2e-v240-shell.txt
             e2e-v240-device.txt
             e2e-v240-operator-ux.txt
             e2e-v240-regression.txt
