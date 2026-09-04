@@ -72,7 +72,10 @@ jobs:
           name: v230-android-native-smoke-${{ github.run_number }}
           path: |
             android-native-smoke.txt
+            android-native-trace.txt
             android-launch.txt
+            android-focus.txt
+            android-focus-back.txt
             android-window-back.xml
             android-window-portrait.xml
             android-logcat.txt
