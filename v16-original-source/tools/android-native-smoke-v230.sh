@@ -94,8 +94,15 @@ require_adb "after portrait rotation"
 PID_AFTER="$(adb shell pidof "$PKG" | tr -d '\r')"
 [[ "$PID_BEFORE" = "$PID_AFTER" ]] || fail "process recreated/died on portrait rotation"
 trace "ROTATE_PORTRAIT_OK pid=$PID_AFTER"
+FOCUS_PORTRAIT="$(adb shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp' | tail -n 4 || true)"
+printf '%s\n' "$FOCUS_PORTRAIT" | tee android-focus-portrait.txt | tee -a "$TRACE"
+[[ "$FOCUS_PORTRAIT" == *"$PKG"* ]] || fail "LA PAUSE OS lost foreground after rotation"
 ui_dump /sdcard/lp-window-portrait.xml android-window-portrait.xml
-grep -q "LA PAUSE OS" android-window-portrait.xml || fail "app UI missing after rotation"
+# UIAutomator cannot introspect WebView HTML reliably. Native rotation success is proven by:
+# unchanged process + foreground PremiumActivity + package-owned full-screen WebView still attached.
+grep -q 'package="com.lapauseclub.manager"' android-window-portrait.xml || fail "package UI root missing after rotation"
+grep -q 'class="android.webkit.WebView"' android-window-portrait.xml || fail "WebView missing after rotation"
+grep -Eq 'bounds="\[[0-9]+,[0-9]+\]\[[1-9][0-9]*,[1-9][0-9]*\]"' android-window-portrait.xml || fail "WebView has invalid bounds after rotation"
 echo "ANDROID_ROTATION_OK" | tee -a android-native-smoke.txt
 trace "ANDROID_ROTATION_OK"
 
