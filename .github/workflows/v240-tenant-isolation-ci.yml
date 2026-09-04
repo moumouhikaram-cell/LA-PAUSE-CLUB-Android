@@ -1,0 +1,76 @@
+name: LA PAUSE OS 2.4 Native Tenant Isolation CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - android-device-control-v240
+    paths:
+      - "v16-original-source/app/src/main/java/com/lapauseclub/manager/core/CoreStore.java"
+      - "v16-original-source/app/src/main/java/com/lapauseclub/manager/core/CoreTenantSchemaV10.java"
+      - "v16-original-source/tools/native-tenant-isolation-v240.js"
+      - ".github/workflows/v240-tenant-isolation-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  tenant-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Prove tenant venue branch isolation contract
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          node tools/native-tenant-isolation-v240.js | tee ../native-tenant-v10.txt
+          grep -q 'NATIVE_TENANT_ISOLATION_V10_OK' ../native-tenant-v10.txt
+          grep -q 'V10_LEGACY_RECOVERY_PRESERVED' ../native-tenant-v10.txt
+      - name: Upload isolation proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: v240-native-tenant-v10-${{ github.run_number }}
+          path: native-tenant-v10.txt
+          if-no-files-found: error
+          retention-days: 30
+
+  android-compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.4.1"
+      - name: Configure Android SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/36.0.0:$PATH"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/build-tools/36.0.0" >> "$GITHUB_PATH"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+      - name: Compile manager with CoreStore v10
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          gradle --no-daemon --stacktrace :app:compileDebugJavaWithJavac
+          grep -q 'private static final int DB_VERSION=10;' app/src/main/java/com/lapauseclub/manager/core/CoreStore.java
+          grep -q 'PRIMARY KEY(tenant_id,venue_id,branch_id,id)' app/src/main/java/com/lapauseclub/manager/core/CoreTenantSchemaV10.java
+          echo NATIVE_TENANT_V10_ANDROID_COMPILE_OK

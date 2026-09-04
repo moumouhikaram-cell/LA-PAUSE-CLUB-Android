@@ -16,7 +16,7 @@ import java.util.UUID;
 
 public final class CoreStore extends SQLiteOpenHelper {
     public static final String DB_NAME="la_pause_core_v16.db";
-    private static final int DB_VERSION=9;
+    private static final int DB_VERSION=10;
     private static final int MAX_SNAPSHOTS=20;
 
     public CoreStore(Context c){super(c,DB_NAME,null,DB_VERSION);setWriteAheadLoggingEnabled(true);}
@@ -29,7 +29,7 @@ public final class CoreStore extends SQLiteOpenHelper {
         putMeta(db,"operating_mode","STANDALONE");
         putMeta(db,"authority_state","TABLET_PRIMARY");
         putMeta(db,"core_schema_version",String.valueOf(DB_VERSION));
-        putMeta(db,"master_contract_version","2026-09-02-v2-audited");
+        putMeta(db,"master_contract_version","2026-09-04-v10-tenant-scope");
     }
 
     @Override public void onUpgrade(SQLiteDatabase db,int oldVersion,int newVersion){
@@ -44,8 +44,9 @@ public final class CoreStore extends SQLiteOpenHelper {
             if(oldVersion<7)CoreSaasSchemaP5.create(db);
             if(oldVersion<8)CoreSyncSchemaV8.create(db);
             if(oldVersion<9)CoreCommandSchemaV9.create(db);
+            if(oldVersion<10){CoreTenantSchemaV10.create(db);CoreTenantSchemaV10.migrateLegacy(db,System.currentTimeMillis());}
             putMeta(db,"core_schema_version",String.valueOf(DB_VERSION));
-            putMeta(db,"master_contract_version","2026-09-02-v2-audited");
+            putMeta(db,"master_contract_version","2026-09-04-v10-tenant-scope");
             putMeta(db,"migration_mode","DOMAIN_DUAL_WRITE");
             db.setTransactionSuccessful();
         }finally{db.endTransaction();}
@@ -61,7 +62,7 @@ public final class CoreStore extends SQLiteOpenHelper {
     }
 
     private static void createAllSchemas(SQLiteDatabase db){
-        CoreDomainSchemaV2.create(db);CoreOperationalSchemaP1.create(db);CoreBusinessSchemaP1.create(db);CoreDeviceSchemaP2.create(db);CoreOwnerSchemaP3.create(db);CorePlayerSchemaP4.create(db);CoreSaasSchemaP5.create(db);CoreSyncSchemaV8.create(db);CoreCommandSchemaV9.create(db);
+        CoreDomainSchemaV2.create(db);CoreOperationalSchemaP1.create(db);CoreBusinessSchemaP1.create(db);CoreDeviceSchemaP2.create(db);CoreOwnerSchemaP3.create(db);CorePlayerSchemaP4.create(db);CoreSaasSchemaP5.create(db);CoreSyncSchemaV8.create(db);CoreCommandSchemaV9.create(db);CoreTenantSchemaV10.create(db);
     }
 
     public synchronized void bootstrapFromLegacy(String json){if(json==null||json.trim().isEmpty())return;mirror(json,"BOOTSTRAP");}
@@ -79,7 +80,7 @@ public final class CoreStore extends SQLiteOpenHelper {
         boolean snapshot=true;try(Cursor c=db.rawQuery("SELECT checksum_sha256 FROM state_snapshots ORDER BY created_at_ms DESC LIMIT 1",null)){if(c.moveToFirst()&&checksum.equals(c.getString(0)))snapshot=false;}
         if(snapshot){ContentValues v=new ContentValues();v.put("id","snapshot-"+UUID.randomUUID());v.put("checksum_sha256",checksum);v.put("state_json",json);v.put("source",source);v.put("legacy_schema_version",schema);v.put("data_revision",rev);v.put("created_at_ms",now);db.insertOrThrow("state_snapshots",null,v);db.execSQL("DELETE FROM state_snapshots WHERE id NOT IN (SELECT id FROM state_snapshots ORDER BY created_at_ms DESC LIMIT "+MAX_SNAPSHOTS+")");}
         mirrorStations(db,root.optJSONArray("stations"),now);importLegacyEvents(db,root.optJSONArray("outbox"),now);
-        CoreDomainSchemaV2.dualWrite(db,root,rev,checksum,now);CoreOperationalSchemaP1.dualWrite(db,root,rev,checksum,now);CoreBusinessSchemaP1.dualWrite(db,root,rev,now);CoreDeviceSchemaP2.dualWrite(db,root,rev,now);CoreOwnerSchemaP3.dualWrite(db,root,rev,now);CorePlayerSchemaP4.dualWrite(db,root,rev,now);CoreSaasSchemaP5.dualWrite(db,root,rev,now);CoreSyncSchemaV8.dualWrite(db,root,now);
+        CoreDomainSchemaV2.dualWrite(db,root,rev,checksum,now);CoreOperationalSchemaP1.dualWrite(db,root,rev,checksum,now);CoreBusinessSchemaP1.dualWrite(db,root,rev,now);CoreDeviceSchemaP2.dualWrite(db,root,rev,now);CoreOwnerSchemaP3.dualWrite(db,root,rev,now);CorePlayerSchemaP4.dualWrite(db,root,rev,now);CoreSaasSchemaP5.dualWrite(db,root,rev,now);CoreTenantSchemaV10.dualWrite(db,root,rev,now);CoreSyncSchemaV8.dualWrite(db,root,now);
         putMeta(db,"migration_mode","DOMAIN_DUAL_WRITE");putMeta(db,"legacy_schema_version",String.valueOf(schema));putMeta(db,"legacy_data_revision",String.valueOf(rev));putMeta(db,"last_mirror_checksum",checksum);putMeta(db,"last_mirror_at_ms",String.valueOf(now));
     }
 
@@ -167,7 +168,7 @@ public final class CoreStore extends SQLiteOpenHelper {
 
     public synchronized JSONObject getTimelineJson(){JSONObject out=new JSONObject();JSONArray ss=new JSONArray(),ev=new JSONArray();SQLiteDatabase db=getReadableDatabase();try(Cursor c=db.rawQuery("SELECT id,source,data_revision,created_at_ms,checksum_sha256 FROM state_snapshots ORDER BY created_at_ms DESC LIMIT 20",null)){while(c.moveToNext()){JSONObject x=new JSONObject();x.put("id",c.getString(0));x.put("source",c.getString(1));x.put("revision",c.getLong(2));x.put("createdAtMs",c.getLong(3));x.put("checksum",c.getString(4));ss.put(x);}}catch(Exception ignored){}try(Cursor c=db.rawQuery("SELECT event_id,event_type,entity_id,server_timestamp_ms FROM domain_events_v9 ORDER BY server_timestamp_ms DESC LIMIT 60",null)){while(c.moveToNext()){JSONObject x=new JSONObject();x.put("eventId",c.getString(0));x.put("eventType",c.getString(1));x.put("entityId",c.isNull(2)?JSONObject.NULL:c.getString(2));x.put("eventAtMs",c.getLong(3));ev.put(x);}}catch(Exception ignored){}try{out.put("snapshots",ss);out.put("events",ev);}catch(Exception ignored){}return out;}
 
-    public synchronized JSONObject getStatusJson(){SQLiteDatabase db=getReadableDatabase();JSONObject out=new JSONObject();try{JSONObject a2=CoreDomainSchemaV2.status(db),p1=CoreOperationalSchemaP1.status(db),biz=CoreBusinessSchemaP1.status(db),p2=CoreDeviceSchemaP2.status(db),p3=CoreOwnerSchemaP3.status(db),p4=CorePlayerSchemaP4.status(db),p5=CoreSaasSchemaP5.status(db),sync=CoreSyncSchemaV8.status(db),cmd=new JSONObject(CoreCommandSchemaV9.statusJson(db));JSONArray rr=a2.optJSONArray("resourceRegistry");out.put("coreVersion","master-v2-command-v9");out.put("dbSchemaVersion",DB_VERSION);out.put("masterContractVersion",getMeta(db,"master_contract_version",""));out.put("migrationMode",getMeta(db,"migration_mode","DOMAIN_DUAL_WRITE"));out.put("operatingMode",getMeta(db,"operating_mode","STANDALONE"));out.put("authorityState",getMeta(db,"authority_state","TABLET_PRIMARY"));out.put("legacySchemaVersion",parseLong(getMeta(db,"legacy_schema_version","0")));out.put("legacyDataRevision",parseLong(getMeta(db,"legacy_data_revision","0")));out.put("lastMirrorAtMs",parseLong(getMeta(db,"last_mirror_at_ms","0")));out.put("snapshotCount",scalar(db,"SELECT COUNT(*) FROM state_snapshots"));out.put("resourceCount",rr==null?0:rr.length());out.put("eventCount",scalar(db,"SELECT COUNT(*) FROM domain_events_v9"));out.put("pendingSyncCount",scalar(db,"SELECT COUNT(*) FROM outbox_events_v9 WHERE status='PENDING'"));out.put("checkpointCount",scalar(db,"SELECT COUNT(*) FROM migration_checkpoints"));out.put("venueProfile",a2.optJSONObject("venueProfile"));out.put("resourceRegistry",rr);out.put("domainAuthority",a2.optJSONArray("domainAuthority"));out.put("normalizedDomains",a2.optJSONArray("normalizedDomains"));out.put("p1Operational",p1);out.put("p1Business",biz);out.put("p2Device",p2);out.put("p3Owner",p3);out.put("p4Player",p4);out.put("p5Saas",p5);out.put("webParitySync",sync);out.put("commandCore",cmd);out.put("authorityProgress","MASTER_V2_PHASE_1_2_COMMAND_CORE_V9");out.put("legacyStillAuthoritative",true);out.put("networkRequired",false);}catch(Exception ignored){}return out;}
+    public synchronized JSONObject getStatusJson(){SQLiteDatabase db=getReadableDatabase();JSONObject out=new JSONObject();try{JSONObject a2=CoreDomainSchemaV2.status(db),tenant=CoreTenantSchemaV10.status(db),p1=CoreOperationalSchemaP1.status(db),biz=CoreBusinessSchemaP1.status(db),p2=CoreDeviceSchemaP2.status(db),p3=CoreOwnerSchemaP3.status(db),p4=CorePlayerSchemaP4.status(db),p5=CoreSaasSchemaP5.status(db),sync=CoreSyncSchemaV8.status(db),cmd=new JSONObject(CoreCommandSchemaV9.statusJson(db));JSONArray rr=tenant.optJSONArray("resourceRegistry");out.put("coreVersion","master-v2-tenant-v10");out.put("dbSchemaVersion",DB_VERSION);out.put("masterContractVersion",getMeta(db,"master_contract_version",""));out.put("migrationMode",getMeta(db,"migration_mode","DOMAIN_DUAL_WRITE"));out.put("operatingMode",getMeta(db,"operating_mode","STANDALONE"));out.put("authorityState",getMeta(db,"authority_state","TABLET_PRIMARY"));out.put("legacySchemaVersion",parseLong(getMeta(db,"legacy_schema_version","0")));out.put("legacyDataRevision",parseLong(getMeta(db,"legacy_data_revision","0")));out.put("lastMirrorAtMs",parseLong(getMeta(db,"last_mirror_at_ms","0")));out.put("snapshotCount",scalar(db,"SELECT COUNT(*) FROM state_snapshots"));out.put("resourceCount",rr==null?0:rr.length());out.put("eventCount",scalar(db,"SELECT COUNT(*) FROM domain_events_v9"));out.put("pendingSyncCount",scalar(db,"SELECT COUNT(*) FROM outbox_events_v9 WHERE status='PENDING'"));out.put("checkpointCount",scalar(db,"SELECT COUNT(*) FROM migration_checkpoints"));out.put("venueProfile",tenant.optJSONObject("venueProfile"));out.put("resourceRegistry",rr);out.put("tenantScopeV10",tenant);out.put("legacyDomainV2",a2);out.put("domainAuthority",a2.optJSONArray("domainAuthority"));out.put("normalizedDomains",tenant.optJSONArray("normalizedDomains"));out.put("p1Operational",p1);out.put("p1Business",biz);out.put("p2Device",p2);out.put("p3Owner",p3);out.put("p4Player",p4);out.put("p5Saas",p5);out.put("webParitySync",sync);out.put("commandCore",cmd);out.put("authorityProgress","MASTER_V2_TENANT_RESOURCE_SCOPE_V10");out.put("tenantIsolationStage","RESOURCE_REGISTRY_SCOPED");out.put("legacyStillAuthoritative",true);out.put("networkRequired",false);}catch(Exception ignored){}return out;}
 
     public synchronized String getOperatingMode(){return getMeta(getReadableDatabase(),"operating_mode","STANDALONE");}
     public synchronized void setOperatingMode(String mode){String x=mode==null?"":mode.trim().toUpperCase(Locale.ROOT);if(!"STANDALONE".equals(x)&&!"CONNECTED_LOCAL".equals(x))throw new IllegalArgumentException("Unsupported operating mode");SQLiteDatabase db=getWritableDatabase();putMeta(db,"operating_mode",x);putMeta(db,"authority_state","TABLET_PRIMARY");}
