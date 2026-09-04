@@ -5,6 +5,11 @@ const APP_URL = process.env.LP_E2E_URL || 'http://127.0.0.1:4173/index.html';
 const CONTROL_SELECTOR = '#view button:not([disabled]):visible,#view a[href]:visible,#view input[type="button"]:not([disabled]):visible,#view input[type="submit"]:not([disabled]):visible,#view input[type="checkbox"]:not([disabled]):visible,#view input[type="radio"]:not([disabled]):visible,#view select:not([disabled]):visible,#view summary:visible';
 test.setTimeout(600000);
 
+async function settle(page){
+  await page.waitForFunction(()=>!!window.LPClient&&document.body.classList.contains('nx-shell-ready')&&!document.body.classList.contains('lp-next-booting'));
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  await page.waitForTimeout(180);
+}
 async function boot(page){
   await page.setViewportSize({width:412,height:915});
   await page.addInitScript(()=>{
@@ -23,19 +28,20 @@ async function boot(page){
   page.on('dialog',async d=>{try{await d.dismiss();}catch(_){}});
   page.on('filechooser',async f=>{try{await f.setFiles([]);}catch(_){}});
   await page.goto(APP_URL,{waitUntil:'networkidle'});
-  await page.waitForFunction(()=>!!window.LPClient&&document.body.classList.contains('nx-shell-ready'));
+  await settle(page);
   return runtime;
 }
 async function captureStorage(page){return page.evaluate(()=>{const out={};for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);out[k]=localStorage.getItem(k);}return out;});}
 async function resetToBaseline(page,baseline){
   await page.evaluate(store=>{localStorage.clear();for(const [k,v] of Object.entries(store))localStorage.setItem(k,v);},baseline);
   await page.reload({waitUntil:'domcontentloaded'});
-  await page.waitForFunction(()=>!!window.LPClient&&document.body.classList.contains('nx-shell-ready'));
+  await settle(page);
 }
 async function go(page,route){
   await page.evaluate(r=>{try{window.closeOverlay&&window.closeOverlay();}catch(_){}try{window.closeModal&&window.closeModal();}catch(_){}window.LPClient.go(r);},route);
   await expect.poll(()=>page.evaluate(()=>window.LPClient.canonical(window.LPClient.lastRendered))).toBe(route);
   await expect(page.locator('#view')).not.toBeEmpty();
+  await settle(page);
 }
 async function controls(page){return page.locator(CONTROL_SELECTOR).evaluateAll(els=>els.map((el,i)=>({i,tag:el.tagName,type:el.getAttribute('type')||'',id:el.id||'',text:(el.innerText||el.getAttribute('aria-label')||el.getAttribute('title')||el.value||'').trim().replace(/\s+/g,' ').slice(0,120),name:el.getAttribute('name')||'',data:Array.from(el.attributes).filter(a=>a.name.startsWith('data-')).slice(0,4).map(a=>`${a.name}=${a.value}`).join('|')})));}
 async function activate(page,index){
@@ -70,7 +76,7 @@ test('all visible controls on every SaaS route survive isolated customer clicks'
     for(let i=0;i<list.length;i++){
       const c=list[i],beforeErrors=runtime.length;
       try{
-        await resetToBaseline(page,baseline); await go(page,route); const fresh=await controls(page); if(i>=fresh.length) throw new Error(`control missing from clean baseline at index ${i}`);
+        await resetToBaseline(page,baseline); await go(page,route); const fresh=await controls(page); if(i>=fresh.length) throw new Error(`control missing from settled clean baseline at index ${i}`);
         await activate(page,i); await page.waitForTimeout(90); const newErrors=runtime.slice(beforeErrors); if(newErrors.length) throw new Error(newErrors.join(' | ')); await assertHealthySurface(page);
       }catch(e){failures.push(`${route} :: #${i} ${c.tag}/${c.type} ${c.id||c.text||c.data||c.name||'unnamed'} => ${e.message}`);}
     }
