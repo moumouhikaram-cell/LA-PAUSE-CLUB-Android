@@ -95,6 +95,18 @@ jobs:
           grep -q 'V230_SIM_CLICK_FLOW_OK' ../e2e-v230.txt
           grep -q 'V230_CLIENT_E2E_OK' ../e2e-v230.txt
 
+      - name: Upload E2E diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v230-client-e2e-diagnostics-${{ github.run_number }}
+          path: |
+            e2e-v230.txt
+            e2e-server.log
+            v16-original-source/test-results/
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Cash and session behavior tests
         working-directory: v16-original-source
         shell: bash
