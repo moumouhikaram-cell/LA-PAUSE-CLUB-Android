@@ -5,6 +5,7 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 import org.json.JSONTokener;
 
@@ -24,7 +25,7 @@ public final class CoreSyncTransportV12 {
 
     private CoreSyncTransportV12() {}
 
-    public static JSONObject pendingBatch(SQLiteDatabase db, String tenantId, String venueId, String branchId, int requestedLimit, long now) {
+    public static JSONObject pendingBatch(SQLiteDatabase db, String tenantId, String venueId, String branchId, int requestedLimit, long now) throws JSONException {
         String tenant = required(tenantId, "tenantId");
         String venue = required(venueId, "venueId");
         String branch = required(branchId, "branchId");
@@ -136,7 +137,7 @@ public final class CoreSyncTransportV12 {
         }
     }
 
-    private static void putNullable(JSONObject target, String key, Cursor cursor, int index) {
+    private static void putNullable(JSONObject target, String key, Cursor cursor, int index) throws JSONException {
         if (cursor.isNull(index)) target.put(key, JSONObject.NULL);
         else target.put(key, cursor.getString(index));
     }
