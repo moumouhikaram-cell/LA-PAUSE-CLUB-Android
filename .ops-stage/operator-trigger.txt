@@ -2,3 +2,4 @@ patch legacy PS5 journey + assisted-revenue next-best-action proof
 retry direct QA contract application after checkpoint 1bfcfdc83ebad444d78b7f5d236242eef250751a
 workflow syntax fixed at 75905fd05660d7b399506853d21c6c2fe53f991f
 legacy Control Center KPI selector alignment requested at 461ea28d17b7f7f3df1faf2258a98b1212281422
+explicit ARCADE resource contract requested after operator QA review
