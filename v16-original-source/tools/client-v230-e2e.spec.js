@@ -371,6 +371,8 @@ test('arcade console has its own per-game operator journey', async ({page}) => {
   await card.locator('[data-ops-quick-id="qa-arcade"]').click();
   await expect(page.locator('#opsSessionForm')).toBeVisible();
   await expect(page.locator('#opsSessionForm')).toContainText('Par partie');
+  await expect(page.locator('#opsGameTitle')).toBeHidden();
+  await page.locator('details.ops-more > summary').click();
   await expect(page.locator('#opsGameTitle')).toBeVisible();
   await expect(page.locator('#opsGameTitle')).toHaveValue('Arcade');
   await page.locator('#startSessionBtn').click();

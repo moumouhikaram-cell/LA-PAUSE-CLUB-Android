@@ -23,7 +23,7 @@ async function boot(page){
 }
 
 const LEGACY={
-  CONSOLE:'PS5',SIM_RACING:'SIM',PC_GAMING:'PC',BILLIARD_TABLE:'BILLIARD',SNOOKER_TABLE:'SNOOKER',TABLE_TENNIS:'TABLE_TENNIS',PRIVATE_ROOM:'PRIVATE_ROOM',CUSTOM:'CUSTOM'
+  CONSOLE:'PS5',SIM_RACING:'SIM',PC_GAMING:'PC',BILLIARD_TABLE:'BILLIARD',SNOOKER_TABLE:'SNOOKER',TABLE_TENNIS:'TABLE_TENNIS',PRIVATE_ROOM:'PRIVATE_ROOM',ARCADE:'ARCADE',CUSTOM:'CUSTOM'
 };
 
 async function prepare(page,s){
@@ -213,6 +213,27 @@ test('PRIVATE_ROOM journey: fixed package, group capacity, no game fields',async
   expect(errors).toEqual([]);console.log('V230_JOURNEY_PRIVATE_ROOM_OK');
 });
 
+test('ARCADE journey: per-game sale, optional title, +1 game in one action',async({page})=>{
+  const errors=await boot(page);
+  const s={id:'qa-arcade-journey',name:'ARCADE QA',type:'ARCADE',maxPlayers:2,media:'media/premium/arcade.jpg',plan:{billingModel:'PER_GAME',pricingModel:'PER_GAME',unitPrice:5}};
+  await prepare(page,s);let actions=0;const card=await openJourney(page,s.id);actions++;
+  await expect(page.locator('#opsSessionForm')).toContainText('Par partie');
+  await expect(page.locator('[data-ops-units="1"]')).toBeVisible();
+  await expect(page.locator('[data-ops-players="2"]')).toBeVisible();
+  await expect(page.locator('[data-ops-mode="budget"]')).toHaveCount(0);
+  await expect(page.locator('#opsGameTitle')).toBeHidden();
+  await page.locator('details.ops-more > summary').click();
+  await expect(page.locator('#opsGameTitle')).toBeVisible();
+  await expect(page.locator('#opsGameTitle')).toHaveValue('Arcade');
+  await expect(page.locator('.ops-quote strong')).toContainText('5');
+  await page.locator('#startSessionBtn').click();actions++;expect(actions).toBeLessThanOrEqual(3);
+  let d=await assertStartPayment(page,s.id,5,'PER_GAME');expect(Number(d.s.units)).toBe(1);
+  await card.locator('[data-cs-manage]').click();await expect(page.locator('#opsAddUnit')).toBeVisible();
+  await page.locator('#opsAddUnit').click();
+  d=await activeData(page,s.id);expect(Number(d.s.units)).toBe(2);expect(Number(d.s.totalAmount)).toBe(10);
+  expect(errors).toEqual([]);console.log('V230_JOURNEY_ARCADE_OK');
+});
+
 test('CUSTOM journey: operator-entered amount becomes the exact payable amount',async({page})=>{
   const errors=await boot(page);
   const s={id:'qa-custom',name:'ACTIVITÉ QA',type:'CUSTOM',maxPlayers:6,media:'media/premium/arcade.jpg',plan:{billingModel:'CUSTOM_AMOUNT',pricingModel:'CUSTOM_AMOUNT',unitPrice:0}};
@@ -233,6 +254,6 @@ test('CUSTOM journey: operator-entered amount becomes the exact payable amount',
 test('all game/resource journeys are explicitly represented',async({page})=>{
   await boot(page);
   const types=await page.evaluate(()=>Object.keys(window.LPClient.opsProfiles||{}));
-  expect(types.sort()).toEqual(['BILLIARD_TABLE','CONSOLE','CUSTOM','PC_GAMING','PRIVATE_ROOM','SIM_RACING','SNOOKER_TABLE','TABLE_TENNIS'].sort());
+  expect(types.sort()).toEqual(['ARCADE','BILLIARD_TABLE','CONSOLE','CUSTOM','PC_GAMING','PRIVATE_ROOM','SIM_RACING','SNOOKER_TABLE','TABLE_TENNIS'].sort());
   console.log('V230_ALL_GAME_JOURNEYS_OK '+types.join(','));
 });
