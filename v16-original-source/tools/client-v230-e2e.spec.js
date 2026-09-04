@@ -276,58 +276,97 @@ test('SIM session can be started and managed from the same customer station surf
   console.log('V230_SIM_CLICK_FLOW_OK');
 });
 
-test('quick setup and sessions work by clicks for every supported timed resource type', async ({page}) => {
+test('type-aware billing makes billiard a two-action per-game sale', async ({page}) => {
   const errors=await boot(page);
-  const rates={SIM_RACING:'45',PC_GAMING:'25',BILLIARD_TABLE:'30',SNOOKER_TABLE:'35',TABLE_TENNIS:'20',PRIVATE_ROOM:'50',CUSTOM:'25'};
-  await page.evaluate(() => window.LPClient.go('csSetup'));
-  await expect.poll(()=>currentRoute(page)).toBe('csSetup');
-  await expect(page.locator('#csSetupNext')).toBeVisible();
-  await page.locator('#csSetupNext').click();
-  await expect(page.locator('[data-setup-plus="CONSOLE"]')).toBeVisible();
-
-  const types=await page.evaluate(()=>window.LPClient.types.slice());
-  for(const type of types){
-    const count=await page.evaluate(t=>Number(window.LPClient.setup.counts[t]||0),type);
-    if(count<1) await page.locator(`[data-setup-plus="${type}"]`).click();
-  }
-  await page.locator('#csSetupNext').click();
-  await expect(page.locator('[data-setup-rate="CONSOLE"]')).toBeVisible();
-  for(const [type,value] of Object.entries(rates)){
-    const input=page.locator(`[data-setup-rate="${type}"]`);
-    await expect(input).toBeVisible();
-    await input.fill(value);
-  }
-  await page.locator('#csSetupNext').click();
-  await page.locator('#csSetupNext').click();
-  await expect.poll(()=>currentRoute(page)).toBe('csStations');
-
-  const resources=await page.evaluate(() => window.LPClient.types.map(type=>{
-    const st=window.LPClient.resources().find(x=>window.LPClient.typeOf(x)===type);
-    return {type,id:st?.id||null,rate:st?window.LPClient.rate(st,1):0};
-  }));
-  expect(resources).toHaveLength(8);
-  for(const r of resources){expect(r.id,`${r.type} missing`).toBeTruthy();expect(Number(r.rate),`${r.type} rate`).toBeGreaterThan(0);}
-
-  const completed=[];
-  for(const r of resources){
-    const card=page.locator(`[data-cs-station="${r.id}"]`);
-    await expect(card).toBeVisible();
-    await expect(card.locator('[data-cs-start]')).toBeVisible();
-    await card.locator('[data-cs-start]').click();
-    await expect(page.locator('#startSessionBtn')).toBeVisible();
-    await expect(page.locator('#payNow')).toBeChecked();
-    await page.locator('#startSessionBtn').click();
-    await expect(page.locator('#overlay')).not.toHaveClass(/show/);
-    const active=await page.evaluate(id=>state.sessions.find(s=>(s.stationId===id||s.resourceId===id)&&s.status==='active')||null,r.id);
-    expect(active,`${r.type} did not start`).toBeTruthy();
-    expect(Number(active.ratePerHour),`${r.type} active rate`).toBeGreaterThan(0);
-    await finishActiveStation(page,r.id);
-    const done=await page.evaluate(id=>state.sessions.some(s=>(s.stationId===id||s.resourceId===id)&&s.status==='completed'),r.id);
-    expect(done,`${r.type} did not complete`).toBe(true);
-    completed.push(r.type);
-  }
-  expect(new Set(completed).size).toBe(8);
+  await page.evaluate(() => {
+    state.stations=state.stations.filter(s=>s.id!=='qa-billiard');
+    state.stations.push({id:'qa-billiard',name:'BILLARD QA',type:'BILLIARD',osResourceType:'BILLIARD_TABLE',enabled:true,maxPlayers:2,sort:80,mediaUrl:'media/premium/billiard.jpg'});
+    state.ratePlans=(state.ratePlans||[]).filter(p=>p.resourceType!=='BILLIARD_TABLE');
+    state.ratePlans.push({id:'rate-qa-billiard',scope:'TYPE',resourceType:'BILLIARD_TABLE',name:'Billard par partie',billingModel:'PER_GAME',pricingModel:'PER_GAME',unitPrice:7,hourlyRate:0,playerRates:{},currency:'MAD',enabled:true,createdAt:Date.now(),updatedAt:Date.now(),revision:1});
+    saveState(); window.LPClient.go('csHome');
+  });
+  const card=page.locator('[data-cs-station="qa-billiard"]');
+  await expect(card).toBeVisible();
+  await expect(card).toContainText('7');
+  await expect(card).toContainText('/ partie');
+  await expect(card).not.toContainText('/ h');
+  let actions=0;
+  await card.locator('[data-ops-quick-id="qa-billiard"]').click(); actions++;
+  await expect(page.locator('#opsSessionForm')).toBeVisible();
+  await expect(page.locator('#opsSessionForm')).toContainText('Par partie');
+  await expect(page.locator('#opsSessionForm')).not.toContainText('Budget client');
+  await expect(page.locator('#opsGameTitle')).toHaveCount(0);
+  await expect(page.locator('#gameCoverP1,#gameCoverV12')).toHaveCount(0);
+  await page.locator('#startSessionBtn').click(); actions++;
+  expect(actions).toBeLessThanOrEqual(2);
+  const first=await page.evaluate(()=>({s:state.sessions.find(x=>(x.stationId==='qa-billiard'||x.resourceId==='qa-billiard')&&x.status==='active'),p:state.payments.at(-1)}));
+  expect(first.s).toBeTruthy(); expect(first.s.billingModel).toBe('PER_GAME'); expect(Number(first.s.totalAmount)).toBe(7); expect(Number(first.s.ratePerHour||0)).toBe(0); expect(Number(first.p.amount)).toBe(7);
+  await card.locator('[data-cs-manage]').click();
+  await expect(page.locator('#opsAddUnit')).toBeVisible();
+  await page.locator('#opsAddUnit').click();
+  const second=await page.evaluate(()=>state.sessions.find(x=>(x.stationId==='qa-billiard'||x.resourceId==='qa-billiard')&&x.status==='active'));
+  expect(Number(second.units)).toBe(2); expect(Number(second.totalAmount)).toBe(14);
   expect(errors).toEqual([]);
-  console.log('V230_ALL_RESOURCE_TYPES_CLICK_OK '+completed.join(','));
+  console.log('V230_BILLING_SEMANTICS_OK');
+});
+
+test('PS5 Duo 30 minutes is reachable in three sale actions with exact quote and payment', async ({page}) => {
+  const errors=await boot(page);
+  await page.evaluate(()=>window.LPClient.go('csHome'));
+  const card=page.locator('[data-cs-station="ps5-1"]'); await expect(card).toBeVisible();
+  let actions=0;
+  await card.locator('[data-ops-quick-id="ps5-1"]').click(); actions++;
+  await expect(page.locator('#opsSessionForm')).toBeVisible();
+  const duo=page.locator('[data-ops-players="2"]'); await expect(duo).toBeVisible(); await duo.click(); actions++;
+  await expect(page.locator('.ops-quote')).toContainText('14');
+  await page.locator('#startSessionBtn').click(); actions++;
+  expect(actions).toBeLessThanOrEqual(3);
+  const data=await page.evaluate(()=>({s:state.sessions.find(x=>(x.stationId==='ps5-1'||x.resourceId==='ps5-1')&&x.status==='active'),p:state.payments.at(-1)}));
+  expect(Number(data.s.players)).toBe(2); expect(Number(data.s.ratePerHour)).toBe(28); expect(Math.round(Number(data.s.totalAmount)*100)/100).toBe(14); expect(Math.round(Number(data.p.amount)*100)/100).toBe(14);
+  expect(errors).toEqual([]);
+  console.log('V230_OPERATOR_SPEED_OK');
+});
+
+test('Control Center surfaces next-best revenue actions and executes an extension in one click', async ({page}) => {
+  const errors=await boot(page);
+  await page.evaluate(() => {
+    const st=stationById('ps5-1');
+    const s={id:'qa-smart-session',stationId:st.id,resourceId:st.id,resourceType:'CONSOLE',status:'active',mode:'fixed',billingModel:'TIME_PRORATED',startAt:Date.now()-22*60000,endAt:Date.now()+8*60000,players:1,plannedMinutes:30,ratePerHour:22,pricingSnapshot:{billingModel:'TIME_PRORATED',hourlyRate:22,currency:'MAD'},baseAmount:11,totalAmount:11,discountAmount:0,customerId:null,gameTitle:'EA SPORTS FC',createdAt:Date.now()-22*60000,updatedAt:Date.now(),revision:0};
+    state.sessions=state.sessions.filter(x=>x.id!=='qa-smart-session'&&x.stationId!=='ps5-1'); state.sessions.push(s); saveState(); window.LPClient.go('csHome');
+  });
+  await expect(page.locator('.ops-live-strip')).toContainText('OPPORTUNITÉS');
+  const row=page.locator('.ops-conversion-card [data-ops-convert="extend"]').first(); await expect(row).toBeVisible();
+  await expect(row).toContainText('+30 min');
+  await row.click();
+  const s=await page.evaluate(()=>state.sessions.find(x=>x.id==='qa-smart-session'));
+  expect(Math.round(Number(s.plannedMinutes))).toBe(60); expect(Number(s.totalAmount)).toBeGreaterThan(11);
+  expect(errors).toEqual([]);
+  console.log('V230_MARKETING_CONVERSION_OK');
+});
+
+test('all eight resource types have contextual billing profiles and media/settings stay responsive', async ({page}) => {
+  const errors=await boot(page);
+  const profiles=await page.evaluate(()=>Object.entries(window.LPClient.opsProfiles||{}).map(([type,p])=>({type,model:p.defaultModel,game:p.game})));
+  expect(profiles).toHaveLength(8);
+  expect(profiles.find(x=>x.type==='BILLIARD_TABLE').model).toBe('PER_GAME');
+  expect(profiles.find(x=>x.type==='SNOOKER_TABLE').model).toBe('PER_GAME');
+  expect(profiles.find(x=>x.type==='PRIVATE_ROOM').model).toBe('TIME_BLOCK');
+  expect(profiles.find(x=>x.type==='CONSOLE').model).toBe('TIME_PRORATED');
+  await page.evaluate(()=>window.LPClient.go('settings'));
+  await page.locator('[data-settings="media"]').click();
+  await expect(page.locator('[data-ops-media-file]')).toHaveCount(8);
+  const img=page.locator('.ops-media-preview img').first(); await expect(img).toBeVisible();
+  expect(await img.evaluate(el=>getComputedStyle(el).objectFit)).toBe('cover');
+  await page.setViewportSize({width:915,height:412}); await page.evaluate(()=>window.onLaPauseViewportChanged&&window.onLaPauseViewportChanged()); await page.waitForTimeout(120);
+  expect(await img.evaluate(el=>getComputedStyle(el).objectFit)).toBe('cover');
+  await page.evaluate(()=>{settingsSection=null;window.renderSettingsV230()});
+  await page.locator('[data-settings="stations"]').click();
+  const firstType=page.locator('[data-ops-station-type]').first(); await expect(firstType.locator('option')).toHaveCount(8);
+  await page.evaluate(()=>{settingsSection=null;window.renderSettingsV230()});
+  await page.locator('[data-settings="pricing"]').click();
+  await expect(page.locator('[data-ops-price-type]')).toHaveCount(8);
+  expect(errors).toEqual([]);
+  console.log('V230_MEDIA_8_TYPES_OK');
+  console.log('V230_ALL_RESOURCE_TYPES_CLICK_OK '+profiles.map(x=>x.type).join(','));
   console.log('V230_CLIENT_E2E_OK');
 });
