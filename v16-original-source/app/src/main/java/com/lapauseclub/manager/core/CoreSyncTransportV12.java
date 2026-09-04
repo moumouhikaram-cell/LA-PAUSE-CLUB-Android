@@ -21,7 +21,9 @@ public final class CoreSyncTransportV12 {
     public static final int SCHEMA_VERSION = 2;
     private static final int DEFAULT_LIMIT = 100;
     private static final int MAX_LIMIT = 250;
-    private static final long RETRY_DELAY_MS = 15_000L;
+    private static final long MIN_RETRY_DELAY_MS = 15_000L;
+    private static final long MAX_RETRY_DELAY_MS = 900_000L;
+    private static final int MAX_RETRY_EXPONENT = 6;
 
     private CoreSyncTransportV12() {}
 
@@ -115,9 +117,11 @@ public final class CoreSyncTransportV12 {
             for (int i = 0; i < eventIds.length(); i++) {
                 String eventId = eventIds.optString(i, "").trim();
                 if (eventId.isEmpty()) continue;
+                int attempts = currentAttempts(db, eventId, tenant, venue, branch);
+                long retryAt = now + retryDelayMs(attempts);
                 db.execSQL("UPDATE outbox_events_v11 SET attempts=attempts+1,last_error=?,next_attempt_at_ms=? " +
                                 "WHERE event_id=? AND tenant_id=? AND venue_id=? AND branch_id=? AND status='PENDING'",
-                        new Object[]{message, now + RETRY_DELAY_MS, eventId, tenant, venue, branch});
+                        new Object[]{message, retryAt, eventId, tenant, venue, branch});
                 changed += scalar(db, "SELECT changes()", null);
             }
             db.setTransactionSuccessful();
@@ -125,6 +129,20 @@ public final class CoreSyncTransportV12 {
             db.endTransaction();
         }
         return changed;
+    }
+
+    private static int currentAttempts(SQLiteDatabase db, String eventId, String tenant, String venue, String branch) {
+        try (Cursor c = db.rawQuery(
+                "SELECT attempts FROM outbox_events_v11 WHERE event_id=? AND tenant_id=? AND venue_id=? AND branch_id=? AND status='PENDING' LIMIT 1",
+                new String[]{eventId, tenant, venue, branch})) {
+            return c.moveToFirst() ? Math.max(0, c.getInt(0)) : 0;
+        }
+    }
+
+    private static long retryDelayMs(int previousAttempts) {
+        int exponent = Math.max(0, Math.min(previousAttempts, MAX_RETRY_EXPONENT));
+        long delay = MIN_RETRY_DELAY_MS << exponent;
+        return Math.min(delay, MAX_RETRY_DELAY_MS);
     }
 
     private static Object parseJsonValue(String raw) {
