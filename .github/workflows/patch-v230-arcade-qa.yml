@@ -26,28 +26,27 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          # Existing focused Arcade E2E: the game title is intentionally optional,
-          # so verify it through Plus d'options without slowing the primary sale path.
           p=Path('v16-original-source/tools/client-v230-e2e.spec.js')
           s=p.read_text()
-          old="""  await expect(page.locator('#opsSessionForm')).toContainText('Par partie');
-  await expect(page.locator('#opsGameTitle')).toBeVisible();
-  await expect(page.locator('#opsGameTitle')).toHaveValue('Arcade');
-  await page.locator('#startSessionBtn').click();
-"""
-          new="""  await expect(page.locator('#opsSessionForm')).toContainText('Par partie');
-  await expect(page.locator('#opsGameTitle')).toBeHidden();
-  await page.locator('details.ops-more > summary').click();
-  await expect(page.locator('#opsGameTitle')).toBeVisible();
-  await expect(page.locator('#opsGameTitle')).toHaveValue('Arcade');
-  await page.locator('#startSessionBtn').click();
-"""
+          old=(
+              "  await expect(page.locator('#opsSessionForm')).toContainText('Par partie');\n"
+              "  await expect(page.locator('#opsGameTitle')).toBeVisible();\n"
+              "  await expect(page.locator('#opsGameTitle')).toHaveValue('Arcade');\n"
+              "  await page.locator('#startSessionBtn').click();\n"
+          )
+          new=(
+              "  await expect(page.locator('#opsSessionForm')).toContainText('Par partie');\n"
+              "  await expect(page.locator('#opsGameTitle')).toBeHidden();\n"
+              "  await page.locator('details.ops-more > summary').click();\n"
+              "  await expect(page.locator('#opsGameTitle')).toBeVisible();\n"
+              "  await expect(page.locator('#opsGameTitle')).toHaveValue('Arcade');\n"
+              "  await page.locator('#startSessionBtn').click();\n"
+          )
           if new not in s:
               if old not in s: raise SystemExit('focused Arcade QA anchor not found')
               s=s.replace(old,new,1)
               p.write_text(s)
 
-          # Dedicated all-game journey contract: ARCADE must be a ninth first-class path.
           p=Path('v16-original-source/tools/client-v230-game-journeys.spec.js')
           s=p.read_text()
           legacy_old="  CONSOLE:'PS5',SIM_RACING:'SIM',PC_GAMING:'PC',BILLIARD_TABLE:'BILLIARD',SNOOKER_TABLE:'SNOOKER',TABLE_TENNIS:'TABLE_TENNIS',PRIVATE_ROOM:'PRIVATE_ROOM',CUSTOM:'CUSTOM'"
@@ -59,28 +58,28 @@ jobs:
           if 'V230_JOURNEY_ARCADE_OK' not in s:
               anchor="test('CUSTOM journey: operator-entered amount becomes the exact payable amount',async({page})=>{"
               if anchor not in s: raise SystemExit('CUSTOM journey anchor missing')
-              arcade="""test('ARCADE journey: per-game sale, optional title, +1 game in one action',async({page})=>{
-  const errors=await boot(page);
-  const s={id:'qa-arcade-journey',name:'ARCADE QA',type:'ARCADE',maxPlayers:2,media:'media/premium/arcade.jpg',plan:{billingModel:'PER_GAME',pricingModel:'PER_GAME',unitPrice:5}};
-  await prepare(page,s);let actions=0;const card=await openJourney(page,s.id);actions++;
-  await expect(page.locator('#opsSessionForm')).toContainText('Par partie');
-  await expect(page.locator('[data-ops-units="1"]')).toBeVisible();
-  await expect(page.locator('[data-ops-players="2"]')).toBeVisible();
-  await expect(page.locator('[data-ops-mode="budget"]')).toHaveCount(0);
-  await expect(page.locator('#opsGameTitle')).toBeHidden();
-  await page.locator('details.ops-more > summary').click();
-  await expect(page.locator('#opsGameTitle')).toBeVisible();
-  await expect(page.locator('#opsGameTitle')).toHaveValue('Arcade');
-  await expect(page.locator('.ops-quote strong')).toContainText('5');
-  await page.locator('#startSessionBtn').click();actions++;expect(actions).toBeLessThanOrEqual(3);
-  let d=await assertStartPayment(page,s.id,5,'PER_GAME');expect(Number(d.s.units)).toBe(1);
-  await card.locator('[data-cs-manage]').click();await expect(page.locator('#opsAddUnit')).toBeVisible();
-  await page.locator('#opsAddUnit').click();
-  d=await activeData(page,s.id);expect(Number(d.s.units)).toBe(2);expect(Number(d.s.totalAmount)).toBe(10);
-  expect(errors).toEqual([]);console.log('V230_JOURNEY_ARCADE_OK');
-});
-
-"""
+              arcade=(
+                  "test('ARCADE journey: per-game sale, optional title, +1 game in one action',async({page})=>{\n"
+                  "  const errors=await boot(page);\n"
+                  "  const s={id:'qa-arcade-journey',name:'ARCADE QA',type:'ARCADE',maxPlayers:2,media:'media/premium/arcade.jpg',plan:{billingModel:'PER_GAME',pricingModel:'PER_GAME',unitPrice:5}};\n"
+                  "  await prepare(page,s);let actions=0;const card=await openJourney(page,s.id);actions++;\n"
+                  "  await expect(page.locator('#opsSessionForm')).toContainText('Par partie');\n"
+                  "  await expect(page.locator('[data-ops-units=\"1\"]')).toBeVisible();\n"
+                  "  await expect(page.locator('[data-ops-players=\"2\"]')).toBeVisible();\n"
+                  "  await expect(page.locator('[data-ops-mode=\"budget\"]')).toHaveCount(0);\n"
+                  "  await expect(page.locator('#opsGameTitle')).toBeHidden();\n"
+                  "  await page.locator('details.ops-more > summary').click();\n"
+                  "  await expect(page.locator('#opsGameTitle')).toBeVisible();\n"
+                  "  await expect(page.locator('#opsGameTitle')).toHaveValue('Arcade');\n"
+                  "  await expect(page.locator('.ops-quote strong')).toContainText('5');\n"
+                  "  await page.locator('#startSessionBtn').click();actions++;expect(actions).toBeLessThanOrEqual(3);\n"
+                  "  let d=await assertStartPayment(page,s.id,5,'PER_GAME');expect(Number(d.s.units)).toBe(1);\n"
+                  "  await card.locator('[data-cs-manage]').click();await expect(page.locator('#opsAddUnit')).toBeVisible();\n"
+                  "  await page.locator('#opsAddUnit').click();\n"
+                  "  d=await activeData(page,s.id);expect(Number(d.s.units)).toBe(2);expect(Number(d.s.totalAmount)).toBe(10);\n"
+                  "  expect(errors).toEqual([]);console.log('V230_JOURNEY_ARCADE_OK');\n"
+                  "});\n\n"
+              )
               s=s.replace(anchor,arcade+anchor,1)
 
           expected_old="  expect(types.sort()).toEqual(['BILLIARD_TABLE','CONSOLE','CUSTOM','PC_GAMING','PRIVATE_ROOM','SIM_RACING','SNOOKER_TABLE','TABLE_TENNIS'].sort());"
@@ -90,7 +89,6 @@ jobs:
               s=s.replace(expected_old,expected_new,1)
           p.write_text(s)
 
-          # Product CI must explicitly demand the Arcade journey marker as part of the final contract.
           p=Path('.github/workflows/client-v230-ci.yml')
           y=p.read_text()
           if "grep -q 'V230_JOURNEY_ARCADE_OK'" not in y:
@@ -103,7 +101,7 @@ jobs:
           node --check v16-original-source/tools/client-v230-game-journeys.spec.js
           grep -q 'V230_JOURNEY_ARCADE_OK' v16-original-source/tools/client-v230-game-journeys.spec.js
           grep -q "'ARCADE','BILLIARD_TABLE'" v16-original-source/tools/client-v230-game-journeys.spec.js
-          grep -q "V230_JOURNEY_ARCADE_OK" .github/workflows/client-v230-ci.yml
+          grep -q 'V230_JOURNEY_ARCADE_OK' .github/workflows/client-v230-ci.yml
           git diff --check
 
       - name: Commit Arcade QA contract
