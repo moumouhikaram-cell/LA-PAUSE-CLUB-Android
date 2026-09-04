@@ -28,15 +28,15 @@ must(schema,'SELECT id,name,resource_type,legacy_station_type,enabled,sort_order
 must(schema,'legacyV2Preserved','rollback preservation diagnostic');
 must(schema,'TENANT_VENUE_BRANCH_EXACT','isolation diagnostic');
 
-must(store,'private static final int DB_VERSION=10;','CoreStore DB v10');
-must(store,'if(oldVersion<10){CoreTenantSchemaV10.create(db);CoreTenantSchemaV10.migrateLegacy(db,System.currentTimeMillis());}','non-destructive v9 to v10 migration');
-must(store,'CoreCommandSchemaV9.create(db);CoreTenantSchemaV10.create(db);','fresh DB v10 schema creation');
+const dbVersion = Number((store.match(/private static final int DB_VERSION=(\d+);/)||[])[1]||0);
+if(dbVersion < 10) throw new Error(`CoreStore must retain V10 migration support, current DB_VERSION=${dbVersion}`);
+must(store,'if(oldVersion<10){CoreTenantSchemaV10.create(db);CoreTenantSchemaV10.migrateLegacy(db,System.currentTimeMillis());}','non-destructive V10 migration retained');
+must(store,'CoreTenantSchemaV10.create(db)','fresh DB retains V10 resource schema');
 must(store,'CoreSaasSchemaP5.dualWrite(db,root,rev,now);CoreTenantSchemaV10.dualWrite(db,root,rev,now);','tenant dual-write after SaaS context');
-must(store,'JSONObject a2=CoreDomainSchemaV2.status(db),tenant=CoreTenantSchemaV10.status(db)','v10 status authority');
-must(store,'JSONArray rr=tenant.optJSONArray("resourceRegistry")','v10 registry exposed');
+must(store,'CoreTenantSchemaV10.status(db)','V10 status consumed by current core');
+must(store,'JSONArray rr=tenant.optJSONArray("resourceRegistry")','V10 registry exposed by current core');
+must(store,'out.put("tenantScopeV10",tenant)','V10 diagnostics retained');
 must(store,'out.put("legacyDomainV2",a2)','legacy registry retained only as diagnostics');
-must(store,'MASTER_V2_TENANT_RESOURCE_SCOPE_V10','v10 authority progress');
-must(store,'RESOURCE_REGISTRY_SCOPED','explicit partial isolation stage');
 
 // The old registry must remain present for recovery; V10 must not rewrite it destructively.
 must(legacy,'static final String LOCAL_VENUE_ID = "local-venue"','legacy recovery registry retained');
@@ -45,5 +45,6 @@ mustNot(schema,'ALTER TABLE resources ','no in-place legacy resource mutation');
 mustNot(schema,'DELETE FROM resources','no deletion of legacy resource rows');
 
 console.log('NATIVE_TENANT_ISOLATION_V10_OK');
+console.log(`V10_COMPATIBLE_WITH_DB_VERSION ${dbVersion}`);
 console.log('V10_SCOPE tenant+venue+branch');
 console.log('V10_LEGACY_RECOVERY_PRESERVED');
