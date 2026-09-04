@@ -94,7 +94,8 @@ test('every SaaS menu destination opens by real click and returns through the ne
   await page.locator('#nxMenuOpen').click();
   await expect(page.locator('#nxMenuLayer')).toHaveClass(/show/);
   const routes=await page.locator('#nxMenuSections [data-nx-menu-route]').evaluateAll(els=>Array.from(new Set(els.map(e=>e.dataset.nxMenuRoute).filter(Boolean))));
-  await page.locator('[data-nx-close]').first().click();
+  await page.locator('.nx-menu-close').click();
+  await expect(page.locator('#nxMenuLayer')).not.toHaveClass(/show/);
   expect(routes.length).toBeGreaterThanOrEqual(15);
   const failures=[];
   for(const route of routes){
