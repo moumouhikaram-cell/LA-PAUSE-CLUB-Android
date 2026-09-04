@@ -18,56 +18,70 @@ jobs:
         with:
           ref: android-client-final-v230
           fetch-depth: 0
+
       - name: Align legacy journey with operator UX and prove assisted revenue
         shell: bash
         run: |
           set -euxo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          p=Path('v16-original-source/tools/client-v230-e2e.spec.js')
-          s=p.read_text()
-          old="""  await expect(page.locator('#startSessionBtn')).toBeVisible();
-  await expect(page.locator('#payNow')).toBeChecked();
-  const duration30=page.locator('[data-duration=\"30\"]');
-  if(await duration30.count()) await duration30.click();
-  const duo=page.locator('[data-players=\"2\"]');
-"""
-          new="""  await expect(page.locator('#startSessionBtn')).toBeVisible();
-  await expect(page.locator('.ops-payment-line')).toContainText('Paiement au démarrage');
-  await expect(page.locator('#startSessionBtn')).toContainText('Encaisser');
-  const duration30=page.locator('[data-ops-duration=\"30\"]');
-  if(await duration30.count()) await duration30.click();
-  const duo=page.locator('[data-ops-players=\"2\"]');
-"""
-          if old not in s: raise SystemExit('legacy PS5 assertion block not found')
-          s=s.replace(old,new,1)
-          old2="""  await expect(row).toContainText('+30 min');
-  await row.click();
-  const s=await page.evaluate(()=>state.sessions.find(x=>x.id==='qa-smart-session'));
-  expect(Math.round(Number(s.plannedMinutes))).toBe(60); expect(Number(s.totalAmount)).toBeGreaterThan(11);
-  expect(errors).toEqual([]);
-  console.log('V230_MARKETING_CONVERSION_OK');
-"""
-          new2="""  await expect(row).toContainText('+30 min');
-  await row.click();
-  await expect.poll(()=>currentRoute(page)).toBe('csHome');
-  await expect(page.locator('#overlay')).not.toHaveClass(/show/);
-  const data=await page.evaluate(()=>({s:state.sessions.find(x=>x.id==='qa-smart-session'),metrics:state.operatorMetrics||{}}));
-  expect(Math.round(Number(data.s.plannedMinutes))).toBe(60); expect(Number(data.s.totalAmount)).toBeGreaterThan(11);
-  expect(Number(data.metrics.assistedRevenue||0)).toBeGreaterThan(0);
-  expect(Number(data.metrics.acceptedActions||0)).toBe(1);
-  await expect(page.locator('.ops-live-assisted')).toContainText('CA ASSISTÉ');
-  expect(errors).toEqual([]);
-  console.log('V230_ASSISTED_REVENUE_OK');
-  console.log('V230_MARKETING_CONVERSION_OK');
-"""
-          if old2 not in s: raise SystemExit('marketing assertion block not found')
-          s=s.replace(old2,new2,1)
+
+          p = Path('v16-original-source/tools/client-v230-e2e.spec.js')
+          s = p.read_text()
+
+          legacy_payment = "  await expect(page.locator('#payNow')).toBeChecked();\n"
+          operator_payment = (
+              "  await expect(page.locator('.ops-payment-line')).toContainText('Paiement au démarrage');\n"
+              "  await expect(page.locator('#startSessionBtn')).toContainText('Encaisser');\n"
+          )
+          if legacy_payment in s:
+              s = s.replace(legacy_payment, operator_payment, 1)
+          s = s.replace('[data-duration="30"]', '[data-ops-duration="30"]', 1)
+          s = s.replace('[data-players="2"]', '[data-ops-players="2"]', 1)
+
+          old_nba = (
+              "  await expect(row).toContainText('+30 min');\n"
+              "  await row.click();\n"
+              "  const s=await page.evaluate(()=>state.sessions.find(x=>x.id==='qa-smart-session'));\n"
+              "  expect(Math.round(Number(s.plannedMinutes))).toBe(60); expect(Number(s.totalAmount)).toBeGreaterThan(11);\n"
+              "  expect(errors).toEqual([]);\n"
+              "  console.log('V230_MARKETING_CONVERSION_OK');\n"
+          )
+          new_nba = (
+              "  await expect(row).toContainText('+30 min');\n"
+              "  const before=await page.evaluate(()=>({total:Number(state.sessions.find(x=>x.id==='qa-smart-session')?.totalAmount||0),assisted:Number(state.operatorMetrics?.assistedRevenue||0),accepted:Number(state.operatorMetrics?.acceptedActions||0)}));\n"
+              "  await row.click();\n"
+              "  await expect.poll(()=>currentRoute(page)).toBe('csHome');\n"
+              "  await expect(page.locator('#overlay')).not.toHaveClass(/show/);\n"
+              "  const data=await page.evaluate(()=>({s:state.sessions.find(x=>x.id==='qa-smart-session'),metrics:state.operatorMetrics||{}}));\n"
+              "  expect(Math.round(Number(data.s.plannedMinutes))).toBe(60); expect(Number(data.s.totalAmount)).toBeGreaterThan(before.total);\n"
+              "  const incremental=Number(data.s.totalAmount)-before.total;\n"
+              "  expect(Number(data.metrics.assistedRevenue||0)-before.assisted).toBeCloseTo(incremental,5);\n"
+              "  expect(Number(data.metrics.acceptedActions||0)-before.accepted).toBe(1);\n"
+              "  await expect(page.locator('.ops-live-assisted')).toContainText('CA ASSISTÉ');\n"
+              "  await expect(page.locator('.ops-live-assisted')).toContainText(String(Number(data.metrics.acceptedActions||0)));\n"
+              "  expect(errors).toEqual([]);\n"
+              "  console.log('V230_ASSISTED_REVENUE_OK');\n"
+              "  console.log('V230_MARKETING_CONVERSION_OK');\n"
+          )
+          if 'V230_ASSISTED_REVENUE_OK' not in s:
+              if old_nba not in s:
+                  raise SystemExit('marketing assertion block not found')
+              s = s.replace(old_nba, new_nba, 1)
+
+          if '#payNow' in s[s.find("test('real customer PS5 session flow"):s.find("test('SIM session")]:
+              raise SystemExit('legacy #payNow assertion still present in PS5 journey')
+          if '[data-duration="30"]' in s or '[data-players="2"]' in s:
+              raise SystemExit('legacy PS5 selectors still present')
+
           p.write_text(s)
           PY
           node --check v16-original-source/tools/client-v230-e2e.spec.js
+          grep -q 'data-ops-duration="30"' v16-original-source/tools/client-v230-e2e.spec.js
+          grep -q 'data-ops-players="2"' v16-original-source/tools/client-v230-e2e.spec.js
           grep -q 'V230_ASSISTED_REVENUE_OK' v16-original-source/tools/client-v230-e2e.spec.js
           git diff --check
+
       - name: Commit journey contract
         shell: bash
         run: |
@@ -75,5 +89,6 @@ jobs:
           git config user.name "moumouhikaram-cell"
           git config user.email "moumouhi.karam@gmail.com"
           git add v16-original-source/tools/client-v230-e2e.spec.js
+          git diff --cached --quiet && exit 0
           git commit -m "test(v230): enforce operator payment and assisted revenue journeys"
           git push origin HEAD:android-client-final-v230
