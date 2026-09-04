@@ -11,6 +11,7 @@ on:
       - "v16-original-source/app/src/main/assets/sync-v240-runtime.js"
       - "v16-original-source/app/src/main/assets/index.html"
       - "v16-original-source/tools/sync-protocol-v240.js"
+      - "v16-original-source/tools/sync-retry-policy-v240.js"
       - ".github/workflows/v240-sync-protocol-ci.yml"
   workflow_dispatch:
 
@@ -30,11 +31,13 @@ jobs:
         run: |
           node --check app/src/main/assets/sync-v240-runtime.js
           node --check tools/sync-protocol-v240.js
+          node --check tools/sync-retry-policy-v240.js
       - name: Prove scoped canonical outbox sync and fail-closed remote apply
         working-directory: v16-original-source
         run: |
           set -o pipefail
           node tools/sync-protocol-v240.js | tee sync-protocol-v240-proof.txt
+          node tools/sync-retry-policy-v240.js | tee -a sync-protocol-v240-proof.txt
       - name: Verify sync proof markers
         working-directory: v16-original-source
         run: |
@@ -43,6 +46,9 @@ jobs:
           grep -q "SYNC_SCOPE_ACK_FAIL_CLOSED_OK" sync-protocol-v240-proof.txt
           grep -q "SYNC_SINGLE_FLIGHT_OK" sync-protocol-v240-proof.txt
           grep -q "SYNC_TOKEN_KEYSTORE_OK" sync-protocol-v240-proof.txt
+          grep -q "SYNC_RETRY_EXPONENTIAL_OK" sync-protocol-v240-proof.txt
+          grep -q "SYNC_RETRY_CAP_15_MIN_OK" sync-protocol-v240-proof.txt
+          grep -q "SYNC_RETRY_NO_AUTO_DROP_OK" sync-protocol-v240-proof.txt
           grep -q "SYNC_REMOTE_LEGACY_MERGE_BLOCKED_OK" sync-protocol-v240-proof.txt
           grep -q "SYNC_OFFLINE_RETRY_BOOKKEEPING_OK" sync-protocol-v240-proof.txt
       - name: Upload canonical sync proof
