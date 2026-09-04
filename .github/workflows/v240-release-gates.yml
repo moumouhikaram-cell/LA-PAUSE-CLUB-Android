@@ -6,6 +6,7 @@ on:
     branches:
       - android-device-control-v240
     paths:
+      - "v16-original-source/RELEASE-V240.txt"
       - "v16-original-source/app/**"
       - "v16-original-source/tvagent/**"
       - "v16-original-source/tools/**"
