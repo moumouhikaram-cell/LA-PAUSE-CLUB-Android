@@ -1,0 +1,3 @@
+Apply dedicated end-to-end journeys for every supported game/resource type.
+Canonical scope: CONSOLE, SIM_RACING, PC_GAMING, BILLIARD_TABLE, SNOOKER_TABLE, TABLE_TENNIS, PRIVATE_ROOM, CUSTOM.
+Also load variable-amount session coherence fix for PC budget and CUSTOM_AMOUNT.
