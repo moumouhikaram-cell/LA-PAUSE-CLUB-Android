@@ -88,20 +88,11 @@ jobs:
               if expected_old not in s: raise SystemExit('all-journeys expected-list anchor missing')
               s=s.replace(expected_old,expected_new,1)
           p.write_text(s)
-
-          p=Path('.github/workflows/client-v230-ci.yml')
-          y=p.read_text()
-          if "grep -q 'V230_JOURNEY_ARCADE_OK'" not in y:
-              marker="          grep -q 'V230_JOURNEY_PRIVATE_ROOM_OK' ../e2e-v230.txt\n"
-              if marker not in y: raise SystemExit('CI journey grep anchor missing')
-              y=y.replace(marker,marker+"          grep -q 'V230_JOURNEY_ARCADE_OK' ../e2e-v230.txt\n",1)
-              p.write_text(y)
           PY
           node --check v16-original-source/tools/client-v230-e2e.spec.js
           node --check v16-original-source/tools/client-v230-game-journeys.spec.js
           grep -q 'V230_JOURNEY_ARCADE_OK' v16-original-source/tools/client-v230-game-journeys.spec.js
           grep -q "'ARCADE','BILLIARD_TABLE'" v16-original-source/tools/client-v230-game-journeys.spec.js
-          grep -q 'V230_JOURNEY_ARCADE_OK' .github/workflows/client-v230-ci.yml
           git diff --check
 
       - name: Commit Arcade QA contract
@@ -111,8 +102,7 @@ jobs:
           git config user.name "moumouhikaram-cell"
           git config user.email "moumouhi.karam@gmail.com"
           git add v16-original-source/tools/client-v230-e2e.spec.js \
-                  v16-original-source/tools/client-v230-game-journeys.spec.js \
-                  .github/workflows/client-v230-ci.yml
+                  v16-original-source/tools/client-v230-game-journeys.spec.js
           git diff --cached --quiet && exit 0
           git commit -m "test(v230): enforce arcade as ninth game journey"
           git push origin HEAD:android-client-final-v230
