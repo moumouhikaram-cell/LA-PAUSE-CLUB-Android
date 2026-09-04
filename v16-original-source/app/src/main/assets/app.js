@@ -475,6 +475,9 @@ window.addEventListener('beforeunload',()=>saveState());
 window.nativeImportedText=(text)=>handleImportedText(text);
 window.nativeBack=()=>{if($('modalBackdrop').classList.contains('show')){closeModal();return true}if($('overlay').classList.contains('show')){closeSheet();return true}if($('drawer').classList.contains('show')){closeDrawer();return true}if(currentView!=='floor'){setView('floor');return true}return false};
 
+// v2.3 boot guard: legacy app.js renders before the modern Settings layers are loaded.
+// Never let that historical first render enter a persisted modern Settings subsection.
+if(currentView==='settings'&&settingsSection){settingsSection=null;state.ui.settingsSection=null;}
 renderView();tick();setInterval(tick,1000);
 
 /* ========================================================================== */
