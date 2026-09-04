@@ -60,6 +60,12 @@ jobs:
           grep -q 'versionName = "2.4.0"' app/build.gradle.kts
           grep -q 'p2-device-control-v240.css' "$A/index.html"
           grep -q 'p2-device-control-v240.js' "$A/index.html"
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('app/src/main/assets/index.html').read_text()
+          assert s.index('client-product-render-dispatch.js') < s.index('p2-device-control-v240.js') < s.index('client-product-boot.js')
+          print('V240_RENDER_ORDER_OK')
+          PY
           grep -q 'LA_PAUSE_DEVICE_AGENT_V1' "$A/p2-device-control-v240.js"
           grep -q 'discoverLaPauseAgents' app/src/main/java/com/lapauseclub/manager/PremiumActivity.java
           grep -q 'DEVICE_AGENT_PROTOCOL' app/src/main/java/com/lapauseclub/manager/PremiumActivity.java
@@ -79,7 +85,7 @@ jobs:
           gradle --no-daemon --stacktrace :app:compileReleaseJavaWithJavac
           echo V240_NATIVE_DISCOVERY_COMPILE_OK
 
-      - name: Browser E2E device discovery plus v2.3 non-regression
+      - name: Install browser test runtime
         working-directory: v16-original-source
         shell: bash
         run: |
@@ -87,18 +93,30 @@ jobs:
           npm install --no-save @playwright/test@1.55.0
           npx playwright install --with-deps chromium
           python3 -m http.server 4173 --directory app/src/main/assets >../e2e-v240-server.log 2>&1 &
-          SERVER_PID=$!
-          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          echo $! > ../e2e-v240-server.pid
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:4173/index.html >/dev/null && break; sleep 1; done
-          LP_E2E_URL=http://127.0.0.1:4173/index.html npx playwright test tools/client-v240-device-control.spec.js tools/client-v230-e2e.spec.js tools/client-v230-click-matrix.spec.js tools/client-v230-persistence.spec.js tools/client-v230-game-journeys.spec.js --reporter=line --workers=1 | tee ../e2e-v240.txt
-          grep -q 'V240_LAN_DISCOVERY_OK' ../e2e-v240.txt
-          grep -q 'V240_DEVICE_PAIRING_OK' ../e2e-v240.txt
-          grep -q 'V240_DEVICE_COMMAND_OK' ../e2e-v240.txt
-          grep -q 'V240_HOME_DEVICE_PULSE_OK' ../e2e-v240.txt
-          grep -q 'V240_DEVICE_CONTROL_E2E_OK' ../e2e-v240.txt
-          grep -q 'V240_DISCOVERY_REQUIRES_OPERATOR_PAIR_OK' ../e2e-v240.txt
-          grep -q 'V230_ALL_GAME_JOURNEYS_OK' ../e2e-v240.txt
-          grep -q 'V230_OPERATIONAL_PERSISTENCE_OK' ../e2e-v240.txt
+
+      - name: Device Control browser E2E first
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          LP_E2E_URL=http://127.0.0.1:4173/index.html npx playwright test tools/client-v240-device-control.spec.js --reporter=line --workers=1 | tee ../e2e-v240-device.txt
+          grep -q 'V240_LAN_DISCOVERY_OK' ../e2e-v240-device.txt
+          grep -q 'V240_DEVICE_PAIRING_OK' ../e2e-v240-device.txt
+          grep -q 'V240_DEVICE_COMMAND_OK' ../e2e-v240-device.txt
+          grep -q 'V240_HOME_DEVICE_PULSE_OK' ../e2e-v240-device.txt
+          grep -q 'V240_DEVICE_CONTROL_E2E_OK' ../e2e-v240-device.txt
+          grep -q 'V240_DISCOVERY_REQUIRES_OPERATOR_PAIR_OK' ../e2e-v240-device.txt
+
+      - name: Full v2.3 browser non-regression
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          LP_E2E_URL=http://127.0.0.1:4173/index.html npx playwright test tools/client-v230-e2e.spec.js tools/client-v230-click-matrix.spec.js tools/client-v230-persistence.spec.js tools/client-v230-game-journeys.spec.js --reporter=line --workers=1 | tee ../e2e-v240-regression.txt
+          grep -q 'V230_ALL_GAME_JOURNEYS_OK' ../e2e-v240-regression.txt
+          grep -q 'V230_OPERATIONAL_PERSISTENCE_OK' ../e2e-v240-regression.txt
 
       - name: Business regression gates
         working-directory: v16-original-source
@@ -119,13 +137,20 @@ jobs:
           gradle --no-daemon --stacktrace :app:assembleDebug
           test -f app/build/outputs/apk/debug/app-debug.apk
 
+      - name: Stop local E2E server
+        if: always()
+        shell: bash
+        run: |
+          if [ -f e2e-v240-server.pid ]; then kill "$(cat e2e-v240-server.pid)" 2>/dev/null || true; fi
+
       - name: Upload v2.4 diagnostics and debug APK
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: v240-device-control-ci-${{ github.run_number }}
           path: |
-            e2e-v240.txt
+            e2e-v240-device.txt
+            e2e-v240-regression.txt
             e2e-v240-server.log
             policy-v240.txt
             domain-v240.txt
