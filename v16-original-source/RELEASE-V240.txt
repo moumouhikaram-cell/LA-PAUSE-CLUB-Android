@@ -1,0 +1,30 @@
+LA PAUSE OS 2.4.0 — FINAL RELEASE CHECKPOINT
+
+Release line: android-device-control-v240
+Validated parent: 9be5f9aae7ed192cfd98a5bca2466aef06a077e2
+Cut date: 2026-09-04
+
+Validated before cut:
+- Canonical Release Gates: PASS
+- Parallel browser regression: PASS
+- SaaS + Device Control CI: PASS
+- SaaS entitlement + RBAC: PASS
+- Next shell / anti-flash: PASS
+- Device Control E2E: PASS
+- Operator UX cumulative regression: PASS
+- Core E2E: PASS
+- Click matrix: PASS
+- Persistence: PASS
+- Métier journeys: PASS
+- Business/domain regression: PASS
+- Android hardened compile + QA package: PASS
+
+Commercial release contract:
+- versionName 2.4.0 / versionCode 29
+- R8 minification + resource shrinking
+- permanent Android release signer authority
+- entitlement public key prod-v1 pinned in build
+- production private entitlement key never embedded
+- signed APK workflow must verify signer, package, version and APK hash
+
+This marker intentionally triggers the exact signed commercial build for this release checkpoint.
