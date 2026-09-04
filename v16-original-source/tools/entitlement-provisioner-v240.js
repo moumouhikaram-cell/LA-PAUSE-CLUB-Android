@@ -25,6 +25,7 @@ const base={
   features:['OFFLINE_CORE','NEXT_BEST_ACTION'],
   limits:{venues:1,branches:1,devices:10},
   deviceBindings:['device-ci'],
+  bootstrapIdentity:{accountId:'account-ci-owner',roleId:'OWNER',displayName:'CI Owner',venueIds:['venue-ci'],branchIds:['branch-ci']},
   issuedAt:now,
   periodStart:now,
   periodEnd:now+30*24*60*60*1000,
@@ -43,11 +44,16 @@ assert.strictEqual(canonical,direct.canonicalPayload,'canonical payload drift');
 assert.ok(crypto.verify('sha256',Buffer.from(canonical),pair.publicKey,Buffer.from(direct.signed.signature,'base64url')),'signature should verify');
 const tampered={...unsigned,tenantId:'tenant-evil'};
 assert.ok(!crypto.verify('sha256',Buffer.from(signer.canonical(tampered)),pair.publicKey,Buffer.from(direct.signed.signature,'base64url')),'tampering must invalidate signature');
+const roleTampered={...unsigned,bootstrapIdentity:{...unsigned.bootstrapIdentity,roleId:'VIEWER'}};
+assert.ok(!crypto.verify('sha256',Buffer.from(signer.canonical(roleTampered)),pair.publicKey,Buffer.from(direct.signed.signature,'base64url')),'bootstrap role tampering must invalidate signature');
 
 assert.throws(()=>signer.validate({...base,modules:['M06_MARKETING']},catalog),/requires M05_CRM/);
 assert.throws(()=>signer.validate({...base,modules:['M99_UNKNOWN']},catalog),/unknown module/);
 assert.throws(()=>signer.validate({...base,deviceBindings:['dup','dup']},catalog),/duplicates/);
 assert.throws(()=>signer.validate({...base,rogueField:true},catalog),/unsupported entitlement field/);
+assert.throws(()=>signer.validate({...base,bootstrapIdentity:{...base.bootstrapIdentity,roleId:'PLATFORM_ADMIN'}},catalog),/unsupported bootstrapIdentity roleId/);
+assert.throws(()=>signer.validate({...base,bootstrapIdentity:{...base.bootstrapIdentity,venueIds:['venue-evil']}},catalog),/exceeds entitlement scope/);
+assert.throws(()=>signer.validate({...base,bootstrapIdentity:{...base.bootstrapIdentity,branchIds:[]}},catalog),/branchIds required for scoped entitlement/);
 assert.throws(()=>signer.loadPrivateKey({LA_PAUSE_ENTITLEMENT_PRIVATE_KEY_B64:privateDer.toString('base64'),LA_PAUSE_ENTITLEMENT_PRIVATE_KEY_PEM:pair.privateKey.export({format:'pem',type:'pkcs8'})}),/exactly one/);
 
 const fromB64=signer.loadPrivateKey({LA_PAUSE_ENTITLEMENT_PRIVATE_KEY_B64:privateDer.toString('base64')});
@@ -67,6 +73,7 @@ try{
   assert.ok(!run.stdout.includes(privateDer.toString('base64').slice(0,32)),'private key leaked to stdout');
   assert.ok(!run.stderr.includes(privateDer.toString('base64').slice(0,32)),'private key leaked to stderr');
   const signed=JSON.parse(fs.readFileSync(output,'utf8'));
+  assert.deepStrictEqual(signed.bootstrapIdentity,base.bootstrapIdentity,'signed bootstrap identity claim drifted');
   const unsignedCli={...signed};delete unsignedCli.signature;
   assert.ok(crypto.verify('sha256',Buffer.from(signer.canonical(unsignedCli)),pair.publicKey,Buffer.from(signed.signature,'base64url')),'CLI signature invalid');
   const encoded=fs.readFileSync(outputB64,'utf8').trim();
@@ -80,5 +87,7 @@ try{
 console.log('ENTITLEMENT_PROVISIONER_V240_OK');
 console.log('ENTITLEMENT_EPHEMERAL_P256_OK');
 console.log('ENTITLEMENT_TAMPER_REJECTED_OK');
+console.log('ENTITLEMENT_SIGNED_IDENTITY_BOOTSTRAP_OK');
+console.log('ENTITLEMENT_BOOTSTRAP_SCOPE_GUARD_OK');
 console.log('ENTITLEMENT_CATALOG_DEPENDENCIES_OK');
 console.log('ENTITLEMENT_PRIVATE_KEY_NOT_LOGGED_OK');
