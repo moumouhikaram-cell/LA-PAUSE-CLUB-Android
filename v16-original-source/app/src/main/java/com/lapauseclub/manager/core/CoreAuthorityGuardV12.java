@@ -155,6 +155,12 @@ final class CoreAuthorityGuardV12 {
             return Decision.deny("RBAC_SCOPE_MISMATCH", "Actor cannot access this branch", moduleId, permission);
         }
         String roleId = upper(membership.optString("roleId", membership.optString("role", "VIEWER")));
+        JSONObject signedBootstrap = entitlement.optJSONObject("bootstrapIdentity");
+        if (signedBootstrap != null && isBootstrapRootRole(roleId)
+                && !signedBootstrapRootMatches(signedBootstrap, membership, roleId)) {
+            return Decision.deny("RBAC_SIGNED_BOOTSTRAP_ROOT_MISMATCH",
+                    "Root membership does not match signed bootstrap identity", moduleId, permission);
+        }
         if (!roleAllows(previousState, roleId, permission)) {
             return Decision.deny("RBAC_PERMISSION_DENIED", roleId + " cannot " + permission, moduleId, permission);
         }
@@ -218,6 +224,31 @@ final class CoreAuthorityGuardV12 {
             return m;
         }
         return null;
+    }
+
+    private static boolean isBootstrapRootRole(String roleId) {
+        return "OWNER".equals(roleId) || "TENANT_ADMIN".equals(roleId);
+    }
+
+    private static boolean signedBootstrapRootMatches(JSONObject claim, JSONObject membership, String roleId) {
+        if (!text(claim, "accountId").equals(text(membership, "accountId"))) return false;
+        if (!upper(claim.optString("roleId", "")).equals(roleId)) return false;
+        if (!scopeArraysEqual(claim.optJSONArray("venueIds"), membership.optJSONArray("venueIds"))) return false;
+        return scopeArraysEqual(claim.optJSONArray("branchIds"), membership.optJSONArray("branchIds"));
+    }
+
+    private static boolean scopeArraysEqual(JSONArray left, JSONArray right) {
+        return scopeSet(left).equals(scopeSet(right));
+    }
+
+    private static Set<String> scopeSet(JSONArray values) {
+        Set<String> out = new HashSet<>();
+        if (values == null) return out;
+        for (int i = 0; i < values.length(); i++) {
+            String value = values.optString(i, "").trim();
+            if (!value.isEmpty()) out.add(value);
+        }
+        return out;
     }
 
     private static boolean roleAllows(JSONObject state, String roleId, String permission) {
