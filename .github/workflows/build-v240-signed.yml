@@ -7,6 +7,8 @@ on:
       - android-device-control-v240
     paths:
       - "v16-original-source/RELEASE-V240.txt"
+      - "v16-original-source/app/build.gradle.kts"
+      - "contracts/security/entitlement-prod-v1-public.der.b64"
       - ".github/workflows/build-v240-signed.yml"
 
 permissions:
@@ -41,18 +43,21 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
 
-      - name: Require production SaaS entitlement verifier key
+      - name: Load pinned production SaaS entitlement verifier key
         shell: bash
         env:
-          ENT_PUB: ${{ secrets.LA_PAUSE_ENTITLEMENT_PUBLIC_KEY_B64 }}
-          ENT_KID: ${{ secrets.LA_PAUSE_ENTITLEMENT_KEY_ID }}
+          ENT_KID_SECRET: ${{ secrets.LA_PAUSE_ENTITLEMENT_KEY_ID }}
         run: |
           set -euo pipefail
+          PUB_FILE="contracts/security/entitlement-prod-v1-public.der.b64"
+          test -s "$PUB_FILE"
+          ENT_PUB="$(tr -d '\r\n ' < "$PUB_FILE")"
           test -n "$ENT_PUB"
-          test -n "$ENT_KID"
+          ENT_KID="${ENT_KID_SECRET:-prod-v1}"
           echo "LA_PAUSE_ENTITLEMENT_PUBLIC_KEY_B64=$ENT_PUB" >> "$GITHUB_ENV"
           echo "LA_PAUSE_ENTITLEMENT_KEY_ID=$ENT_KID" >> "$GITHUB_ENV"
-          echo SAAS_ENTITLEMENT_PUBLIC_KEY_PRESENT_OK
+          printf '%s' "$ENT_PUB" | base64 -d >/dev/null
+          echo SAAS_ENTITLEMENT_PUBLIC_KEY_PINNED_OK
 
       - name: Restore permanent LA PAUSE Android signing key
         shell: bash
@@ -87,6 +92,7 @@ jobs:
           grep -q 'client-session-semantic-guard-v240.js' app/src/main/assets/index.html
           test -f ../contracts/saas/module-catalog.v1.json
           test -f ../contracts/security/entitlement.v1.schema.json
+          test -s ../contracts/security/entitlement-prod-v1-public.der.b64
 
       - name: Build R8 hardened release
         working-directory: v16-original-source
@@ -134,7 +140,8 @@ jobs:
             echo 'LA PAUSE OS Android 2.4.0 SaaS'
             echo "Commit: $GITHUB_SHA"
             echo 'R8: enabled'
-            echo 'Signed entitlement verifier: required and embedded as public verification key'
+            echo 'Signed entitlement verifier: ECDSA P-256 SHA-256 / keyId prod-v1'
+            echo 'Entitlement verifier public key: contracts/security/entitlement-prod-v1-public.der.b64'
             cat signer-v240.txt
             cat signed-v240-sha256.txt
             cat signed-v240-size.txt
