@@ -15,7 +15,7 @@ const schema=read('../contracts/security/entitlement.v1.schema.json');
 // The UI is not the authority: the native guard verifies the signed entitlement itself.
 must(guard,'EntitlementVerifier.verify(entitlement.toString())','native cryptographic verifier wiring');
 must(verifier,'SHA256withECDSA','ECDSA SHA-256 verification');
-must(verifier,'BuildConfig.ENTITLEMENT_P256_PUBLIC_KEY_B64','build-bound public key');
+must(verifier,'BuildConfig.ENTITLEMENT_PUBLIC_KEY_B64','build-bound public key');
 must(verifier,'BuildConfig.ENTITLEMENT_KEY_ID','key-id binding');
 must(schema,'"algorithm"','entitlement algorithm contract');
 must(schema,'"signature"','entitlement signature contract');
