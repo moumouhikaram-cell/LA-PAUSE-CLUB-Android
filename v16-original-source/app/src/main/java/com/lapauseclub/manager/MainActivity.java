@@ -60,6 +60,7 @@ public class MainActivity extends Activity {
     private static final int REQ_FILE_CHOOSER = 4002;
     private static final int REQ_SAVE_FILE = 4003;
     private static final String TRUSTED_ASSET_PREFIX = "file:///android_asset/";
+    private static final String SYNC_TOKEN_KEY_V2 = "sync.api.token.v2";
 
     private WebView webView;
     private ValueCallback<Uri[]> fileChooserCallback;
@@ -86,7 +87,17 @@ public class MainActivity extends Activity {
         coreStore = new CoreStore(getApplicationContext());
         secureStore = new SecureStore(getApplicationContext());
         SharedPreferences legacyPrefs = getSharedPreferences("gaming_floor_store", MODE_PRIVATE);
-        coreStore.bootstrapFromLegacy(legacyPrefs.getString("state_json", ""));
+        String legacyPrimaryRaw = legacyPrefs.getString("state_json", "");
+        String legacyBackupRaw = legacyPrefs.getString("state_json_backup", "");
+        String legacyPrimary = sanitizeSyncToken(legacyPrimaryRaw, true);
+        String legacyBackup = sanitizeSyncToken(legacyBackupRaw, true);
+        if (!legacyPrimary.equals(legacyPrimaryRaw) || !legacyBackup.equals(legacyBackupRaw)) {
+            SharedPreferences.Editor migration = legacyPrefs.edit();
+            if (!legacyPrimary.equals(legacyPrimaryRaw)) migration.putString("state_json", legacyPrimary);
+            if (!legacyBackup.equals(legacyBackupRaw)) migration.putString("state_json_backup", legacyBackup);
+            migration.apply();
+        }
+        coreStore.bootstrapFromLegacy(legacyPrimary);
 
         webView = new WebView(this);
         setContentView(webView);
@@ -170,6 +181,27 @@ public class MainActivity extends Activity {
         if (value == null) return false;
         String url = value.trim();
         return url.startsWith(TRUSTED_ASSET_PREFIX) || "about:blank".equals(url);
+    }
+
+    private String sanitizeSyncToken(String json, boolean preserveExistingSecret) {
+        if (json == null || json.trim().isEmpty()) return json == null ? "" : json;
+        try {
+            JSONObject root = new JSONObject(json);
+            JSONObject sync = root.optJSONObject("sync");
+            if (sync == null) return root.toString();
+            String token = sync.optString("token", "").trim();
+            if (token.isEmpty()) return root.toString();
+            boolean protectedSecret = false;
+            if (secureStore != null) {
+                if (preserveExistingSecret && secureStore.contains(SYNC_TOKEN_KEY_V2)) protectedSecret = true;
+                else protectedSecret = secureStore.put(SYNC_TOKEN_KEY_V2, token);
+            }
+            if (!protectedSecret) return json;
+            sync.put("token", "");
+            return root.toString();
+        } catch (Exception ignored) {
+            return json;
+        }
     }
 
     private void createNotificationChannel() {
@@ -272,6 +304,7 @@ public class MainActivity extends Activity {
             String primary = prefs.getString("state_json", "");
             try {
                 if (!primary.isEmpty()) {
+                    primary = sanitizeSyncToken(primary, true);
                     new JSONObject(primary);
                     if (coreStore != null) coreStore.bootstrapFromLegacy(primary);
                     return primary;
@@ -280,12 +313,13 @@ public class MainActivity extends Activity {
             String backup = prefs.getString("state_json_backup", "");
             try {
                 if (!backup.isEmpty()) {
+                    backup = sanitizeSyncToken(backup, true);
                     new JSONObject(backup);
                     if (coreStore != null) coreStore.bootstrapFromLegacy(backup);
                     return backup;
                 }
             } catch (Exception ignored) {}
-            return coreStore == null ? "" : coreStore.recoverLatestValidStateJson();
+            return coreStore == null ? "" : sanitizeSyncToken(coreStore.recoverLatestValidStateJson(), true);
         }
 
         @JavascriptInterface public String getClientsBackupJson() { return prefs.getString("critical_clients_json", ""); }
@@ -295,8 +329,8 @@ public class MainActivity extends Activity {
             if (json == null || json.isEmpty()) return;
             try {
                 JSONObject incoming = new JSONObject(json);
-                persistLegacyCache(incoming, json);
-                if (coreStore != null) coreStore.mirrorLegacyState(json);
+                String safeJson = persistLegacyCache(incoming, json);
+                if (coreStore != null) coreStore.mirrorLegacyState(safeJson);
             } catch (Exception ignored) {}
         }
 
@@ -314,13 +348,18 @@ public class MainActivity extends Activity {
             return result;
         }
 
-        private void persistLegacyCache(JSONObject incoming, String json) {
+        private String persistLegacyCache(JSONObject incoming, String json) {
+            String safeJson = sanitizeSyncToken(json, false);
+            JSONObject safeIncoming = incoming;
+            try { safeIncoming = new JSONObject(safeJson); } catch (Exception ignored) {}
             String previous = prefs.getString("state_json", "");
+            String safePrevious = sanitizeSyncToken(previous, true);
             SharedPreferences.Editor editor = prefs.edit();
-            try { if (!previous.isEmpty()) new JSONObject(previous); editor.putString("state_json_backup", previous); } catch (Exception ignored) {}
-            editor.putString("state_json", json);
-            if (incoming.has("clients") && incoming.optJSONArray("clients") != null) editor.putString("critical_clients_json", incoming.optJSONArray("clients").toString());
+            try { if (!safePrevious.isEmpty()) new JSONObject(safePrevious); editor.putString("state_json_backup", safePrevious); } catch (Exception ignored) {}
+            editor.putString("state_json", safeJson);
+            if (safeIncoming.has("clients") && safeIncoming.optJSONArray("clients") != null) editor.putString("critical_clients_json", safeIncoming.optJSONArray("clients").toString());
             editor.apply();
+            return safeJson;
         }
 
         @JavascriptInterface public String getCoreStatusJson() { return coreStore == null ? "{}" : coreStore.getStatusJson().toString(); }
