@@ -1,0 +1,16 @@
+/* LA PAUSE OS 2.4 — operational interaction layering guard.
+ * Persistent SaaS chrome must never intercept taps intended for an active sheet,
+ * modal or toast. Keep operational actions above the shell on every viewport.
+ */
+body.nx-shell-ready .overlay{z-index:800!important}
+body.nx-shell-ready .modal-backdrop{z-index:820!important}
+body.nx-shell-ready .toast{z-index:850!important}
+
+/* CUSTOM_AMOUNT has one meaningful card action. The legacy operator card emits
+ * "Montant" followed by a generic "Démarrer" button; expose only the explicit
+ * amount action so mobile operators never see a duplicate or a hidden first CTA.
+ */
+.ops-resource-actions>button[data-cs-start]:first-child:not(.primary)+button.primary[data-cs-start]{display:none!important}
+@media(max-width:679px) and (orientation:portrait){
+  .ops-resource-actions>button[data-cs-start]:first-child:not(.primary){display:block!important}
+}
