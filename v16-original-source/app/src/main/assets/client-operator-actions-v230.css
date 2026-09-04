@@ -1,0 +1,6 @@
+/* LA PAUSE OS v2.3 — assisted conversion outcome surface */
+.ops-live-strip{grid-template-columns:repeat(auto-fit,minmax(108px,1fr))}
+.ops-live-strip .ops-live-active{border-color:#285844;background:linear-gradient(180deg,#0b1d18,#08131b)}
+.ops-live-strip .ops-live-active b{color:#58e7a7}
+.ops-live-strip .ops-live-assisted{box-shadow:inset 0 0 0 1px rgba(160,93,255,.08),0 12px 30px rgba(0,0,0,.12)}
+@media(max-width:679px){.ops-live-strip{grid-template-columns:repeat(2,minmax(0,1fr))}}
