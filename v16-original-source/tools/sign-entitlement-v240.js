@@ -7,9 +7,11 @@ const ALGORITHM='ECDSA_P256_SHA256';
 const DEFAULT_CATALOG=path.join(__dirname,'..','..','contracts','saas','module-catalog.v1.json');
 const ALLOWED_KEYS=new Set([
   'schemaVersion','entitlementId','catalogVersion','tenantId','venueIds','branchIds','status','modules','features','limits',
-  'deviceBindings','issuedAt','periodStart','periodEnd','offlineValidUntil','revocationEpoch','keyId','algorithm','signature'
+  'deviceBindings','bootstrapIdentity','issuedAt','periodStart','periodEnd','offlineValidUntil','revocationEpoch','keyId','algorithm','signature'
 ]);
 const REQUIRED_KEYS=['schemaVersion','entitlementId','catalogVersion','tenantId','status','modules','features','limits','issuedAt','periodStart','periodEnd','offlineValidUntil','keyId','algorithm'];
+const BOOTSTRAP_ROLES=new Set(['OWNER','TENANT_ADMIN','VENUE_MANAGER','CASHIER','FLOOR_STAFF','ACCOUNTANT','MARKETING','TECHNICIAN','VIEWER']);
+const BOOTSTRAP_KEYS=new Set(['accountId','roleId','displayName','venueIds','branchIds']);
 
 function canonical(value){
   if(value===null)return 'null';
@@ -32,6 +34,27 @@ function uniqueStrings(value,name){
   return out;
 }
 
+function scopeSubset(child,parent,name){
+  if(parent.length===0||parent.includes('*'))return;
+  if(child.length===0)throw new Error(`bootstrapIdentity ${name} required for scoped entitlement`);
+  for(const id of child)if(!parent.includes(id))throw new Error(`bootstrapIdentity ${name} exceeds entitlement scope: ${id}`);
+}
+
+function validateBootstrapIdentity(value,venueIds,branchIds){
+  if(value===undefined)return;
+  if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('bootstrapIdentity must be an object');
+  for(const key of Object.keys(value))if(!BOOTSTRAP_KEYS.has(key))throw new Error(`unsupported bootstrapIdentity field: ${key}`);
+  const accountId=String(value.accountId||'').trim();
+  const roleId=String(value.roleId||'').trim();
+  if(accountId.length<8)throw new Error('bootstrapIdentity accountId must be at least 8 characters');
+  if(!BOOTSTRAP_ROLES.has(roleId))throw new Error(`unsupported bootstrapIdentity roleId: ${roleId}`);
+  if(value.displayName!==undefined){const label=String(value.displayName||'').trim();if(!label||label.length>120)throw new Error('bootstrapIdentity displayName must be 1..120 characters')}
+  const bootstrapVenues=uniqueStrings(value.venueIds||[],'bootstrapIdentity.venueIds');
+  const bootstrapBranches=uniqueStrings(value.branchIds||[],'bootstrapIdentity.branchIds');
+  scopeSubset(bootstrapVenues,venueIds,'venueIds');
+  scopeSubset(bootstrapBranches,branchIds,'branchIds');
+}
+
 function validate(ent,catalog){
   if(!ent||typeof ent!=='object'||Array.isArray(ent))throw new Error('entitlement must be an object');
   for(const key of Object.keys(ent))if(!ALLOWED_KEYS.has(key))throw new Error(`unsupported entitlement field: ${key}`);
@@ -45,9 +68,10 @@ function validate(ent,catalog){
   if(catalog&&ent.catalogVersion!==catalog.catalogVersion)throw new Error(`catalogVersion mismatch: expected ${catalog.catalogVersion}`);
   const moduleIds=uniqueStrings(ent.modules,'modules');
   uniqueStrings(ent.features,'features');
-  uniqueStrings(ent.venueIds||[],'venueIds');
-  uniqueStrings(ent.branchIds||[],'branchIds');
+  const venueIds=uniqueStrings(ent.venueIds||[],'venueIds');
+  const branchIds=uniqueStrings(ent.branchIds||[],'branchIds');
   uniqueStrings(ent.deviceBindings||[],'deviceBindings');
+  validateBootstrapIdentity(ent.bootstrapIdentity,venueIds,branchIds);
   if(!ent.limits||typeof ent.limits!=='object'||Array.isArray(ent.limits))throw new Error('limits must be an object');
   const validStatus=new Set(['ACTIVE','TRIAL','PAST_DUE_GRACE','SUSPENDED','EXPIRED','REVOKED']);
   if(!validStatus.has(ent.status))throw new Error(`unsupported status: ${ent.status}`);
@@ -116,4 +140,4 @@ if(require.main===module){
   try{main()}catch(err){console.error(`ENTITLEMENT_SIGN_ERROR ${String(err&&err.message||err)}`);process.exit(1)}
 }
 
-module.exports={ALGORITHM,canonical,validate,loadPrivateKey,signEntitlement};
+module.exports={ALGORITHM,canonical,validate,validateBootstrapIdentity,loadPrivateKey,signEntitlement};
