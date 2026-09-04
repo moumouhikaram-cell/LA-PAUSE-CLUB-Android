@@ -18,7 +18,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check production entitlement private authority
+      - name: Require production entitlement private secret
+        shell: bash
+        env:
+          ENT_PRIVATE_B64: ${{ secrets.LA_PAUSE_ENTITLEMENT_PRIVATE_KEY_B64 }}
+          ENT_PRIVATE_PEM: ${{ secrets.LA_PAUSE_ENTITLEMENT_PRIVATE_KEY_PEM }}
+        run: |
+          set -euo pipefail
+          if [ -z "$ENT_PRIVATE_B64" ] && [ -z "$ENT_PRIVATE_PEM" ]; then
+            echo PROD_ENTITLEMENT_PRIVATE_KEY_ABSENT
+            exit 20
+          fi
+          if [ -n "$ENT_PRIVATE_B64" ] && [ -n "$ENT_PRIVATE_PEM" ]; then
+            echo PROD_ENTITLEMENT_PRIVATE_KEY_AMBIGUOUS
+            exit 21
+          fi
+          echo PROD_ENTITLEMENT_PRIVATE_KEY_PRESENT_OK
+
+      - name: Verify production entitlement private key matches pinned public key
         shell: bash
         env:
           ENT_PRIVATE_B64: ${{ secrets.LA_PAUSE_ENTITLEMENT_PRIVATE_KEY_B64 }}
@@ -30,14 +47,6 @@ jobs:
           const fs=require('fs');
           const b64=String(process.env.ENT_PRIVATE_B64||'').trim();
           const pem=String(process.env.ENT_PRIVATE_PEM||'').trim();
-          if(!b64&&!pem){
-            console.log('PROD_ENTITLEMENT_PRIVATE_KEY_ABSENT');
-            process.exit(20);
-          }
-          if(b64&&pem){
-            console.log('PROD_ENTITLEMENT_PRIVATE_KEY_AMBIGUOUS');
-            process.exit(21);
-          }
           let privateKey;
           try{
             privateKey=b64
