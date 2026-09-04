@@ -207,10 +207,11 @@ test('real customer PS5 session flow auto-opens cash shift and updates dashboard
   await expect(start).toBeVisible();
   await start.click();
   await expect(page.locator('#startSessionBtn')).toBeVisible();
-  await expect(page.locator('#payNow')).toBeChecked();
-  const duration30=page.locator('[data-duration="30"]');
+  await expect(page.locator('.ops-payment-line')).toContainText('Paiement au démarrage');
+  await expect(page.locator('#startSessionBtn')).toContainText('Encaisser');
+  const duration30=page.locator('[data-ops-duration="30"]');
   if(await duration30.count()) await duration30.click();
-  const duo=page.locator('[data-players="2"]');
+  const duo=page.locator('[data-ops-players="2"]');
   const duoAvailable=(await duo.count())>0;
   if(duoAvailable) await duo.click();
   await page.locator('#startSessionBtn').click();
@@ -337,10 +338,19 @@ test('Control Center surfaces next-best revenue actions and executes an extensio
   await expect(page.locator('.ops-live-strip')).toContainText('OPPORTUNITÉS');
   const row=page.locator('.ops-conversion-card [data-ops-convert="extend"]').first(); await expect(row).toBeVisible();
   await expect(row).toContainText('+30 min');
+  const before=await page.evaluate(()=>({total:Number(state.sessions.find(x=>x.id==='qa-smart-session')?.totalAmount||0),assisted:Number(state.operatorMetrics?.assistedRevenue||0),accepted:Number(state.operatorMetrics?.acceptedActions||0)}));
   await row.click();
-  const s=await page.evaluate(()=>state.sessions.find(x=>x.id==='qa-smart-session'));
-  expect(Math.round(Number(s.plannedMinutes))).toBe(60); expect(Number(s.totalAmount)).toBeGreaterThan(11);
+  await expect.poll(()=>currentRoute(page)).toBe('csHome');
+  await expect(page.locator('#overlay')).not.toHaveClass(/show/);
+  const data=await page.evaluate(()=>({s:state.sessions.find(x=>x.id==='qa-smart-session'),metrics:state.operatorMetrics||{}}));
+  expect(Math.round(Number(data.s.plannedMinutes))).toBe(60); expect(Number(data.s.totalAmount)).toBeGreaterThan(before.total);
+  const incremental=Number(data.s.totalAmount)-before.total;
+  expect(Number(data.metrics.assistedRevenue||0)-before.assisted).toBeCloseTo(incremental,5);
+  expect(Number(data.metrics.acceptedActions||0)-before.accepted).toBe(1);
+  await expect(page.locator('.ops-live-assisted')).toContainText('CA ASSISTÉ');
+  await expect(page.locator('.ops-live-assisted')).toContainText(String(Number(data.metrics.acceptedActions||0)));
   expect(errors).toEqual([]);
+  console.log('V230_ASSISTED_REVENUE_OK');
   console.log('V230_MARKETING_CONVERSION_OK');
 });
 
