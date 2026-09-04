@@ -12,6 +12,7 @@ on:
       - "v16-original-source/app/src/main/assets/entitlement-offline-v240.js"
       - "v16-original-source/app/src/main/assets/index.html"
       - "v16-original-source/tools/native-entitlement-offline-v240.js"
+      - "v16-original-source/tools/release-identity-bootstrap-v240.js"
       - "v16-original-source/tools/verify-bootstrap-entitlement-v240.js"
       - ".github/workflows/build-v240-signed.yml"
       - ".github/workflows/v240-entitlement-offline-ci.yml"
@@ -31,13 +32,31 @@ jobs:
       - name: Validate offline entitlement JavaScript syntax
         working-directory: v16-original-source
         run: |
+          set -euo pipefail
           node --check app/src/main/assets/bootstrap-entitlement-v240.js
           node --check app/src/main/assets/entitlement-offline-v240.js
           node --check tools/verify-bootstrap-entitlement-v240.js
           node --check tools/native-entitlement-offline-v240.js
+          node --check tools/release-identity-bootstrap-v240.js
       - name: Prove secure cache, anti-rollback and signed release bootstrap
         working-directory: v16-original-source
         run: node tools/native-entitlement-offline-v240.js
+      - name: Prove signed release identity bootstrap runtime
+        working-directory: v16-original-source
+        run: |
+          set -euo pipefail
+          node tools/release-identity-bootstrap-v240.js | tee release-identity-bootstrap-proof.txt
+          grep -q 'RELEASE_IDENTITY_BOOTSTRAP_V240_OK' release-identity-bootstrap-proof.txt
+          grep -q 'RELEASE_IDENTITY_SIGNED_CLAIM_ONLY_OK' release-identity-bootstrap-proof.txt
+          grep -q 'RELEASE_IDENTITY_DEVICE_SCOPE_OK' release-identity-bootstrap-proof.txt
+          grep -q 'RELEASE_IDENTITY_EXISTING_MEMBERSHIP_PRESERVED_OK' release-identity-bootstrap-proof.txt
+          grep -q 'RELEASE_IDENTITY_DISABLED_NOT_REACTIVATED_OK' release-identity-bootstrap-proof.txt
+      - name: Upload offline identity proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-identity-bootstrap-v240-proof
+          path: v16-original-source/release-identity-bootstrap-proof.txt
+          if-no-files-found: error
 
   android-compile:
     runs-on: ubuntu-latest
