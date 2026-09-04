@@ -57,8 +57,72 @@ async function go(page,route){
   await expect(page.locator('#view')).not.toBeEmpty();
   await settle(page);
 }
-async function controls(page){return page.locator(CONTROL_SELECTOR).evaluateAll(els=>els.map((el,i)=>({i,tag:el.tagName,type:el.getAttribute('type')||'',id:el.id||'',text:(el.innerText||el.getAttribute('aria-label')||el.getAttribute('title')||el.value||'').trim().replace(/\s+/g,' ').slice(0,120),name:el.getAttribute('name')||'',data:Array.from(el.attributes).filter(a=>a.name.startsWith('data-')).slice(0,4).map(a=>`${a.name}=${a.value}`).join('|')})));}
-async function activate(page,index){
+async function controls(page){
+  return page.locator(CONTROL_SELECTOR).evaluateAll(els=>{
+    const identity=el=>{
+      const tag=el.tagName;
+      const type=el.getAttribute('type')||'';
+      const id=el.id||'';
+      const text=(el.innerText||el.getAttribute('aria-label')||el.getAttribute('title')||el.value||'').trim().replace(/\s+/g,' ').slice(0,120);
+      const name=el.getAttribute('name')||'';
+      const value=el.getAttribute('value')||'';
+      const aria=el.getAttribute('aria-label')||'';
+      const href=el.getAttribute('href')||'';
+      const stableData=Array.from(el.attributes)
+        .filter(a=>a.name.startsWith('data-')&&/(route|action|command|module|resource|device|session|client|product|target|key|code|tab|view|testid|id)$/i.test(a.name))
+        .sort((a,b)=>a.name.localeCompare(b.name))
+        .map(a=>`${a.name}=${a.value}`);
+      let key='';
+      let basis='';
+      if(id){basis='id';key=`id:${id}`;}
+      else if(stableData.length){basis='data';key=`data:${tag}|${stableData.join('|')}`;}
+      else if(name||value){basis='form';key=`form:${tag}|name=${name}|type=${type}|value=${value}`;}
+      else if(href){basis='href';key=`href:${tag}|${href}`;}
+      else {basis='text';key=`text:${tag}|type=${type}|aria=${aria}|text=${text}`;}
+      return {tag,type,id,text,name,value,aria,href,data:stableData.join('|'),key,basis};
+    };
+    const seen=new Map();
+    return els.map(el=>{
+      const meta=identity(el);
+      const occurrence=seen.get(meta.key)||0;
+      seen.set(meta.key,occurrence+1);
+      return {...meta,occurrence};
+    });
+  });
+}
+async function findControlIndex(page,target){
+  return page.locator(CONTROL_SELECTOR).evaluateAll((els,t)=>{
+    const keyFor=el=>{
+      const tag=el.tagName;
+      const type=el.getAttribute('type')||'';
+      const id=el.id||'';
+      const text=(el.innerText||el.getAttribute('aria-label')||el.getAttribute('title')||el.value||'').trim().replace(/\s+/g,' ').slice(0,120);
+      const name=el.getAttribute('name')||'';
+      const value=el.getAttribute('value')||'';
+      const aria=el.getAttribute('aria-label')||'';
+      const href=el.getAttribute('href')||'';
+      const stableData=Array.from(el.attributes)
+        .filter(a=>a.name.startsWith('data-')&&/(route|action|command|module|resource|device|session|client|product|target|key|code|tab|view|testid|id)$/i.test(a.name))
+        .sort((a,b)=>a.name.localeCompare(b.name))
+        .map(a=>`${a.name}=${a.value}`);
+      if(id)return `id:${id}`;
+      if(stableData.length)return `data:${tag}|${stableData.join('|')}`;
+      if(name||value)return `form:${tag}|name=${name}|type=${type}|value=${value}`;
+      if(href)return `href:${tag}|${href}`;
+      return `text:${tag}|type=${type}|aria=${aria}|text=${text}`;
+    };
+    let occurrence=0;
+    for(let i=0;i<els.length;i++){
+      if(keyFor(els[i])!==t.key)continue;
+      if(occurrence===t.occurrence)return i;
+      occurrence++;
+    }
+    return -1;
+  },target);
+}
+async function activate(page,target){
+  const index=await findControlIndex(page,target);
+  if(index<0)throw new Error(`control missing after reset: ${target.key} occurrence ${target.occurrence}`);
   const loc=page.locator(CONTROL_SELECTOR).nth(index); const tag=await loc.evaluate(el=>el.tagName);
   if(tag==='SELECT'){
     const vals=await loc.locator('option').evaluateAll(os=>os.filter(o=>!o.disabled).map(o=>o.value));
@@ -87,12 +151,11 @@ test('all visible controls on every SaaS route survive isolated customer clicks'
   expect(routes.length).toBeGreaterThanOrEqual(15);
   for(const route of routes){
     await resetToBaseline(page,baseline); await go(page,route); const list=await controls(page); coverage.push({route,total:list.length});
-    for(let i=0;i<list.length;i++){
-      const c=list[i],beforeErrors=runtime.length;
+    for(const c of list){
+      const beforeErrors=runtime.length;
       try{
-        await resetToBaseline(page,baseline); await go(page,route); const fresh=await controls(page); if(i>=fresh.length) throw new Error(`control missing from full runtime baseline at index ${i}`);
-        await activate(page,i); await page.waitForTimeout(90); const newErrors=runtime.slice(beforeErrors); if(newErrors.length) throw new Error(newErrors.join(' | ')); await assertHealthySurface(page);
-      }catch(e){failures.push(`${route} :: #${i} ${c.tag}/${c.type} ${c.id||c.text||c.data||c.name||'unnamed'} => ${e.message}`);}
+        await resetToBaseline(page,baseline); await go(page,route); await activate(page,c); await page.waitForTimeout(90); const newErrors=runtime.slice(beforeErrors); if(newErrors.length) throw new Error(newErrors.join(' | ')); await assertHealthySurface(page);
+      }catch(e){failures.push(`${route} :: ${c.basis} ${c.key} [${c.occurrence}] => ${e.message}`);}
     }
   }
   const total=coverage.reduce((n,r)=>n+r.total,0);
