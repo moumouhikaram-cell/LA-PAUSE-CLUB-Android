@@ -4,6 +4,7 @@ import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlarmManager;
+import android.app.AlertDialog;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -11,6 +12,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
 import android.media.AudioManager;
 import android.media.ToneGenerator;
 import android.net.Uri;
@@ -19,22 +21,24 @@ import android.os.Bundle;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.provider.Settings;
+import android.util.Base64;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.graphics.Bitmap;
-import android.util.Base64;
 
 import com.google.zxing.BarcodeFormat;
-import com.lapauseclub.manager.core.CoreStore;
-import com.lapauseclub.manager.security.SecureStore;
 import com.google.zxing.WriterException;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
+import com.lapauseclub.manager.core.CoreStore;
+import com.lapauseclub.manager.security.AppIntegrity;
+import com.lapauseclub.manager.security.EntitlementVerifier;
+import com.lapauseclub.manager.security.SecureStore;
 
 import org.json.JSONObject;
 
@@ -46,6 +50,7 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -54,6 +59,7 @@ public class MainActivity extends Activity {
     private static final int REQ_NOTIFICATIONS = 4001;
     private static final int REQ_FILE_CHOOSER = 4002;
     private static final int REQ_SAVE_FILE = 4003;
+    private static final String TRUSTED_ASSET_PREFIX = "file:///android_asset/";
 
     private WebView webView;
     private ValueCallback<Uri[]> fileChooserCallback;
@@ -67,6 +73,12 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        if (!AppIntegrity.isAllowedToBoot(this)) {
+            showIntegrityBlock();
+            return;
+        }
+
         createNotificationChannel();
         requestNotificationPermissionIfNeeded();
         requestExactAlarmPermissionIfNeeded();
@@ -78,20 +90,44 @@ public class MainActivity extends Activity {
 
         webView = new WebView(this);
         setContentView(webView);
+        WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG);
 
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
         settings.setAllowFileAccess(true);
-        settings.setAllowContentAccess(true);
+        settings.setAllowContentAccess(false);
+        settings.setAllowFileAccessFromFileURLs(false);
+        settings.setAllowUniversalAccessFromFileURLs(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setSupportZoom(false);
         settings.setBuiltInZoomControls(false);
         settings.setDisplayZoomControls(false);
         settings.setMediaPlaybackRequiresUserGesture(false);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) settings.setSafeBrowsingEnabled(true);
 
-        webView.setWebViewClient(new WebViewClient());
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                return !isTrustedWebViewUrl(request == null || request.getUrl() == null ? "" : request.getUrl().toString());
+            }
+
+            @SuppressWarnings("deprecation")
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                return !isTrustedWebViewUrl(url);
+            }
+
+            @Override
+            public void onPageStarted(WebView view, String url, Bitmap favicon) {
+                if (!isTrustedWebViewUrl(url)) {
+                    view.stopLoading();
+                    return;
+                }
+                super.onPageStarted(view, url, favicon);
+            }
+        });
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
             public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
@@ -117,13 +153,28 @@ public class MainActivity extends Activity {
             }
         });
         webView.addJavascriptInterface(new AndroidBridge(), "Android");
-        webView.loadUrl("file:///android_asset/index.html");
+        webView.loadUrl(TRUSTED_ASSET_PREFIX + "index.html");
+    }
+
+    private void showIntegrityBlock() {
+        new AlertDialog.Builder(this)
+                .setTitle("LA PAUSE OS · Intégrité")
+                .setMessage("Cette installation ne correspond pas à une build LA PAUSE OS autorisée.")
+                .setCancelable(false)
+                .setPositiveButton("Fermer", (d, which) -> finishAndRemoveTask())
+                .show();
+    }
+
+    private static boolean isTrustedWebViewUrl(String value) {
+        if (value == null) return false;
+        String url = value.trim();
+        return url.startsWith(TRUSTED_ASSET_PREFIX) || "about:blank".equals(url);
     }
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Fin des sessions", NotificationManager.IMPORTANCE_HIGH);
-            channel.setDescription("Alertes de fin de session LA PAUSE CLUB");
+            channel.setDescription("Alertes de fin de session LA PAUSE OS");
             channel.enableVibration(true);
             NotificationManager manager = getSystemService(NotificationManager.class);
             manager.createNotificationChannel(channel);
@@ -200,7 +251,7 @@ public class MainActivity extends Activity {
     private static void scheduleOne(Context context, AlarmManager am, String sessionId, String stationName, String type, long at, int requestCode) {
         if (at <= System.currentTimeMillis()) return;
         Intent intent = new Intent(context, SessionAlarmReceiver.class);
-        intent.setAction("com.lapauseclub.manager.SESSION_" + type.toUpperCase());
+        intent.setAction("com.lapauseclub.manager.SESSION_" + type.toUpperCase(Locale.US));
         intent.putExtra("sessionId", sessionId); intent.putExtra("stationName", stationName); intent.putExtra("alertType", type);
         PendingIntent pi = PendingIntent.getBroadcast(context, requestCode, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         try {
@@ -277,6 +328,8 @@ public class MainActivity extends Activity {
         @JavascriptInterface public boolean setSecureValue(String key, String value) { return secureStore != null && secureStore.put(key, value); }
         @JavascriptInterface public boolean deleteSecureValue(String key) { return secureStore != null && secureStore.delete(key); }
         @JavascriptInterface public boolean hasSecureValue(String key) { return secureStore != null && secureStore.contains(key); }
+        @JavascriptInterface public String getAppSecurityInfoJson() { return AppIntegrity.inspect(MainActivity.this).toString(); }
+        @JavascriptInterface public String verifyEntitlementJson(String json) { return EntitlementVerifier.verify(json); }
 
         @JavascriptInterface public String getOperatingMode() { return coreStore == null ? "STANDALONE" : coreStore.getOperatingMode(); }
         @JavascriptInterface public boolean setOperatingMode(String mode) { try { if (coreStore == null) return false; coreStore.setOperatingMode(mode); return true; } catch (Exception ignored) { return false; } }
@@ -339,7 +392,7 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public void showTestNotification(String title, String text) {
-            SessionAlarmReceiver.showNotification(MainActivity.this, 999991, title == null ? "LA PAUSE CLUB" : title, text == null ? "Alerte de test" : text);
+            SessionAlarmReceiver.showNotification(MainActivity.this, 999991, title == null ? "LA PAUSE OS" : title, text == null ? "Alerte de test" : text);
         }
 
         @JavascriptInterface
@@ -350,7 +403,7 @@ public class MainActivity extends Activity {
                 Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
                 intent.addCategory(Intent.CATEGORY_OPENABLE);
                 intent.setType(pendingSaveMime);
-                intent.putExtra(Intent.EXTRA_TITLE, filename == null ? "gaming-floor-export.txt" : filename);
+                intent.putExtra(Intent.EXTRA_TITLE, filename == null ? "la-pause-os-export.txt" : filename);
                 try { startActivityForResult(intent, REQ_SAVE_FILE); } catch (Exception ignored) {}
             });
         }
@@ -376,13 +429,15 @@ public class MainActivity extends Activity {
                     URL target = new URL(url);
                     String scheme = target.getProtocol();
                     if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) throw new IllegalArgumentException("URL non supportée");
+                    if ("http".equalsIgnoreCase(scheme) && !isPrivateLanHost(target.getHost())) throw new SecurityException("HTTP clair interdit hors réseau local");
                     conn = (HttpURLConnection) target.openConnection();
-                    conn.setRequestMethod(method == null ? "GET" : method.toUpperCase());
+                    conn.setRequestMethod(method == null ? "GET" : method.toUpperCase(Locale.US));
                     conn.setConnectTimeout(8000);
                     conn.setReadTimeout(12000);
+                    conn.setInstanceFollowRedirects(false);
                     conn.setRequestProperty("Accept", "application/json");
                     conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-                    conn.setRequestProperty("X-GamingFloor-Client", "android/" + APP_VERSION_SAFE);
+                    conn.setRequestProperty("X-LA-PAUSE-Client", "android/" + BuildConfig.VERSION_NAME);
                     if (token != null && !token.isEmpty()) conn.setRequestProperty("Authorization", "Bearer " + token);
                     if (body != null && !body.isEmpty() && !"GET".equalsIgnoreCase(method)) {
                         conn.setDoOutput(true);
@@ -402,7 +457,23 @@ public class MainActivity extends Activity {
         }
     }
 
-    private static final String APP_VERSION_SAFE = "2.0.0-beta1";
+    private static boolean isPrivateLanHost(String host) {
+        if (host == null) return false;
+        String h = host.trim().toLowerCase(Locale.US);
+        if (h.equals("localhost") || h.equals("::1")) return true;
+        if (h.startsWith("127.")) return true;
+        if (h.startsWith("10.")) return true;
+        if (h.startsWith("192.168.")) return true;
+        if (h.startsWith("169.254.")) return true;
+        if (h.startsWith("172.")) {
+            String[] p = h.split("\\.");
+            if (p.length == 4) {
+                try { int second = Integer.parseInt(p[1]); return second >= 16 && second <= 31; }
+                catch (Exception ignored) {}
+            }
+        }
+        return false;
+    }
 
     private static String readAll(InputStream input) throws Exception {
         if (input == null) return "";
