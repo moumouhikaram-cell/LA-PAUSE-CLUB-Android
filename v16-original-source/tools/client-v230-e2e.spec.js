@@ -28,6 +28,7 @@ async function boot(page, viewport={width:412,height:915}) {
       showTestNotification(){ return true; },
       setStateJson(){ return true; }
     };
+    window.Android=window.ClientAndroid;
   });
   const errors=[];
   page.on('pageerror', e => errors.push(`pageerror: ${e.stack||e.message}`));
@@ -62,6 +63,18 @@ async function sessionDiagnostic(page){
     shifts:(state.shifts||[]).map(s=>({id:s.id,status:s.status,openingCash:s.openingCash,autoOpened:s.autoOpened})).slice(-5),
     payments:(state.payments||[]).map(p=>({id:p.id,amount:p.amount,shiftId:p.shiftId,method:p.method,sessionId:p.sessionId})).slice(-10)
   }));
+}
+
+async function finishActiveStation(page,stationId){
+  const card=page.locator(`[data-cs-station="${stationId}"]`);
+  await card.locator('[data-cs-manage]').click();
+  await expect(page.locator('#finishBtn')).toBeVisible();
+  await page.locator('#finishBtn').click();
+  if(await page.locator('#modalOk').count()){
+    await expect(page.locator('#modalOk')).toBeVisible();
+    await page.locator('#modalOk').click();
+  }
+  await expect.poll(()=>page.evaluate(id=>state.sessions.some(s=>(s.stationId===id||s.resourceId===id)&&['active','paused'].includes(s.status)),stationId)).toBe(false);
 }
 
 test('boot has a single customer shell and no client-visible developer language', async ({page}) => {
@@ -229,13 +242,7 @@ test('real customer PS5 session flow auto-opens cash shift and updates dashboard
   expect(revenue).toBeGreaterThan(0);
 
   await page.locator('#csDock [data-cs-go="csStations"]').click();
-  await page.locator('[data-cs-manage]').first().click();
-  await expect(page.locator('#finishBtn')).toBeVisible();
-  const extend=page.locator('[data-extend="15"]').first();
-  if(await extend.count()) await extend.click();
-  await page.locator('#finishBtn').click();
-  await expect(page.locator('#modalOk')).toBeVisible();
-  await page.locator('#modalOk').click();
+  await finishActiveStation(page,state1.activeSession.stationId||state1.activeSession.resourceId);
   const state2=await page.evaluate(() => ({active:state.sessions.filter(s=>s.status==='active'||s.status==='paused').length,completed:state.sessions.filter(s=>s.status==='completed').length,payments:state.payments.length,shifts:state.shifts.filter(s=>s.status==='open').length}));
   expect(state2.active).toBe(0);
   expect(state2.completed).toBeGreaterThanOrEqual(1);
@@ -264,9 +271,63 @@ test('SIM session can be started and managed from the same customer station surf
   const sim=await page.evaluate(()=>state.sessions.find(s=>(s.stationId==='sim-1'||s.resourceId==='sim-1')&&s.status==='active'));
   expect(sim).toBeTruthy();
   expect(Number(sim.ratePerHour)).toBe(45);
-  await simCard.locator('[data-cs-manage]').click();
-  await expect(page.locator('#finishBtn')).toBeVisible();
+  await finishActiveStation(page,'sim-1');
   expect(errors).toEqual([]);
   console.log('V230_SIM_CLICK_FLOW_OK');
+});
+
+test('quick setup and sessions work by clicks for every supported timed resource type', async ({page}) => {
+  const errors=await boot(page);
+  const rates={SIM_RACING:'45',PC_GAMING:'25',BILLIARD_TABLE:'30',SNOOKER_TABLE:'35',TABLE_TENNIS:'20',PRIVATE_ROOM:'50',CUSTOM:'25'};
+  await page.evaluate(() => window.LPClient.go('csSetup'));
+  await expect.poll(()=>currentRoute(page)).toBe('csSetup');
+  await expect(page.locator('#csSetupNext')).toBeVisible();
+  await page.locator('#csSetupNext').click();
+  await expect(page.locator('[data-setup-plus="CONSOLE"]')).toBeVisible();
+
+  const types=await page.evaluate(()=>window.LPClient.types.slice());
+  for(const type of types){
+    const count=await page.evaluate(t=>Number(window.LPClient.setup.counts[t]||0),type);
+    if(count<1) await page.locator(`[data-setup-plus="${type}"]`).click();
+  }
+  await page.locator('#csSetupNext').click();
+  await expect(page.locator('[data-setup-rate="CONSOLE"]')).toBeVisible();
+  for(const [type,value] of Object.entries(rates)){
+    const input=page.locator(`[data-setup-rate="${type}"]`);
+    await expect(input).toBeVisible();
+    await input.fill(value);
+  }
+  await page.locator('#csSetupNext').click();
+  await page.locator('#csSetupNext').click();
+  await expect.poll(()=>currentRoute(page)).toBe('csStations');
+
+  const resources=await page.evaluate(() => window.LPClient.types.map(type=>{
+    const st=window.LPClient.resources().find(x=>window.LPClient.typeOf(x)===type);
+    return {type,id:st?.id||null,rate:st?window.LPClient.rate(st,1):0};
+  }));
+  expect(resources).toHaveLength(8);
+  for(const r of resources){expect(r.id,`${r.type} missing`).toBeTruthy();expect(Number(r.rate),`${r.type} rate`).toBeGreaterThan(0);}
+
+  const completed=[];
+  for(const r of resources){
+    const card=page.locator(`[data-cs-station="${r.id}"]`);
+    await expect(card).toBeVisible();
+    await expect(card.locator('[data-cs-start]')).toBeVisible();
+    await card.locator('[data-cs-start]').click();
+    await expect(page.locator('#startSessionBtn')).toBeVisible();
+    await expect(page.locator('#payNow')).toBeChecked();
+    await page.locator('#startSessionBtn').click();
+    await expect(page.locator('#overlay')).not.toHaveClass(/show/);
+    const active=await page.evaluate(id=>state.sessions.find(s=>(s.stationId===id||s.resourceId===id)&&s.status==='active')||null,r.id);
+    expect(active,`${r.type} did not start`).toBeTruthy();
+    expect(Number(active.ratePerHour),`${r.type} active rate`).toBeGreaterThan(0);
+    await finishActiveStation(page,r.id);
+    const done=await page.evaluate(id=>state.sessions.some(s=>(s.stationId===id||s.resourceId===id)&&s.status==='completed'),r.id);
+    expect(done,`${r.type} did not complete`).toBe(true);
+    completed.push(r.type);
+  }
+  expect(new Set(completed).size).toBe(8);
+  expect(errors).toEqual([]);
+  console.log('V230_ALL_RESOURCE_TYPES_CLICK_OK '+completed.join(','));
   console.log('V230_CLIENT_E2E_OK');
 });
