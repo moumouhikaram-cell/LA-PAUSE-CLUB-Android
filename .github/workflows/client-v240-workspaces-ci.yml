@@ -1,0 +1,78 @@
+name: LA PAUSE OS 2.4 SaaS Workspaces CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - android-device-control-v240
+    paths:
+      - "v16-original-source/app/src/main/assets/client-saas-workspaces-v240.js"
+      - "v16-original-source/app/src/main/assets/client-saas-workspaces-v240.css"
+      - "v16-original-source/app/src/main/assets/index.html"
+      - "v16-original-source/tools/client-v240-saas-workspaces.spec.js"
+      - ".github/workflows/client-v240-workspaces-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  workspaces:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Structural gate
+        shell: bash
+        run: |
+          set -euxo pipefail
+          A=v16-original-source/app/src/main/assets
+          node --check "$A/client-saas-workspaces-v240.js"
+          node --check v16-original-source/tools/client-v240-saas-workspaces.spec.js
+          grep -q 'client-saas-workspaces-v240.css' "$A/index.html"
+          grep -q 'client-saas-workspaces-v240.js' "$A/index.html"
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('v16-original-source/app/src/main/assets/index.html').read_text()
+          assert s.index('client-shell-next-v240.js') < s.index('client-saas-workspaces-v240.js') < s.index('client-product-boot.js')
+          print('V240_SAAS_WORKSPACE_BOOT_ORDER_OK')
+          PY
+      - name: Install Playwright
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          npm install --no-save @playwright/test@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Run workspace E2E
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 -m http.server 4173 --directory app/src/main/assets >../workspace-server.log 2>&1 &
+          echo $! > ../workspace-server.pid
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:4173/index.html >/dev/null && break; sleep 1; done
+          LP_E2E_URL=http://127.0.0.1:4173/index.html npx playwright test tools/client-v240-saas-workspaces.spec.js --reporter=line --workers=1 | tee ../workspace-e2e.txt
+          grep -q 'V240_DEVICE_WORKSPACE_OK' ../workspace-e2e.txt
+          grep -q 'V240_FINANCE_WORKSPACE_OK' ../workspace-e2e.txt
+          grep -q 'V240_OWNER_WORKSPACE_OK' ../workspace-e2e.txt
+          grep -q 'V240_PLATFORM_WORKSPACES_OK' ../workspace-e2e.txt
+          grep -q 'V240_CROSS_PLATFORM_SYNC_WORKSPACE_OK' ../workspace-e2e.txt
+      - name: Stop server
+        if: always()
+        shell: bash
+        run: |
+          if [ -f workspace-server.pid ]; then kill "$(cat workspace-server.pid)" 2>/dev/null || true; fi
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v240-saas-workspaces-${{ github.run_number }}
+          path: |
+            workspace-e2e.txt
+            workspace-server.log
+            v16-original-source/test-results/
+          if-no-files-found: warn
+          retention-days: 14
