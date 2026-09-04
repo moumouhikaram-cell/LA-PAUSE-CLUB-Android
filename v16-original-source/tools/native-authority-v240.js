@@ -22,6 +22,7 @@ must(schema,'"signature"','entitlement signature contract');
 must(schema,'"tenantId"','entitlement tenant scope');
 must(schema,'"modules"','entitlement module list');
 must(schema,'"offlineValidUntil"','offline validity window');
+must(schema,'"bootstrapIdentity"','signed offline identity bootstrap contract');
 
 // Release must fail closed if security context, entitlement, module or RBAC do not authorize the command.
 must(guard,'if (BuildConfig.DEBUG) return Decision.allow','debug-only authority bypass');
@@ -39,6 +40,17 @@ must(guard,'MODULE_DEPENDENCY_MISSING','module dependency denial');
 must(guard,'RBAC_MEMBERSHIP_MISSING','membership denial');
 must(guard,'RBAC_SCOPE_MISMATCH','actor scope denial');
 must(guard,'RBAC_PERMISSION_DENIED','role permission denial');
+
+// Offline tenant-root authority must be bound to the signed bootstrap claim, not mutable local state.
+must(guard,'JSONObject signedBootstrap = entitlement.optJSONObject("bootstrapIdentity")','signed bootstrap claim read after entitlement verification');
+must(guard,'isBootstrapRootRole(roleId)','root-role bootstrap binding');
+must(guard,'signedBootstrapRootMatches(signedBootstrap, membership, roleId)','root membership must match signed claim');
+must(guard,'RBAC_SIGNED_BOOTSTRAP_ROOT_MISMATCH','tampered root membership denial');
+must(guard,'text(claim, "accountId").equals(text(membership, "accountId"))','bootstrap account binding');
+must(guard,'upper(claim.optString("roleId", "")).equals(roleId)','bootstrap role binding');
+must(guard,'scopeArraysEqual(claim.optJSONArray("venueIds"), membership.optJSONArray("venueIds"))','bootstrap venue-scope binding');
+must(guard,'scopeArraysEqual(claim.optJSONArray("branchIds"), membership.optJSONArray("branchIds"))','bootstrap branch-scope binding');
+must(guard,'return "OWNER".equals(roleId) || "TENANT_ADMIN".equals(roleId);','only tenant root roles require signed bootstrap identity equivalence');
 
 // Canonical commercial modules remain bound to native command families.
 must(guard,'"M01_OPERATIONS"','operations authority mapping');
@@ -65,5 +77,6 @@ must(store,'MASTER_V2_NATIVE_ENTITLEMENT_RBAC_V12','native authority diagnostic'
 console.log('NATIVE_AUTHORITY_V12_OK');
 console.log('V12_SIGNED_ENTITLEMENT_OK');
 console.log('V12_MODULE_RBAC_FAIL_CLOSED_OK');
+console.log('V12_SIGNED_BOOTSTRAP_ROOT_BOUND_OK');
 console.log('V12_AUTH_BEFORE_MUTATION_OK');
 console.log('V12_DEBUG_ONLY_BYPASS_OK');
