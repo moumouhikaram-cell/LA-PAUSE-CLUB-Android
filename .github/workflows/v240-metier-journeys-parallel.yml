@@ -1,0 +1,98 @@
+name: LA PAUSE OS 2.4 Métier Journeys Parallel
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - android-device-control-v240
+    paths:
+      - "v16-original-source/app/src/main/assets/**"
+      - "v16-original-source/tools/client-v240-game-journeys.spec.js"
+      - ".github/workflows/v240-metier-journeys-parallel.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  journey:
+    name: journey-${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: console
+            grep: "^CONSOLE journey"
+            marker: V240_JOURNEY_CONSOLE_OK
+          - name: sim-racing
+            grep: "^SIM_RACING journey"
+            marker: V240_JOURNEY_SIM_RACING_OK
+          - name: pc-gaming
+            grep: "^PC_GAMING journey"
+            marker: V240_JOURNEY_PC_GAMING_OK
+          - name: billiard
+            grep: "^BILLIARD_TABLE journey"
+            marker: V240_JOURNEY_BILLIARD_OK
+          - name: snooker
+            grep: "^SNOOKER_TABLE journey"
+            marker: V240_JOURNEY_SNOOKER_OK
+          - name: table-tennis
+            grep: "^TABLE_TENNIS journey"
+            marker: V240_JOURNEY_TABLE_TENNIS_OK
+          - name: private-room
+            grep: "^PRIVATE_ROOM journey"
+            marker: V240_JOURNEY_PRIVATE_ROOM_OK
+          - name: arcade
+            grep: "^ARCADE journey"
+            marker: V240_JOURNEY_ARCADE_OK
+          - name: custom
+            grep: "^CUSTOM journey"
+            marker: V240_JOURNEY_CUSTOM_OK
+          - name: coverage
+            grep: "^all game/resource journeys"
+            marker: V240_METIER_FIRST_GAME_JOURNEYS_OK
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Prepare media
+        working-directory: v16-original-source
+        run: bash tools/prepare-client-media-v230.sh
+      - name: Install Chromium
+        working-directory: v16-original-source
+        run: |
+          set -euxo pipefail
+          npm install --no-save @playwright/test@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Start app
+        working-directory: v16-original-source
+        run: |
+          set -euxo pipefail
+          python3 -m http.server 4173 --directory app/src/main/assets >"../journey-${{ matrix.name }}-server.log" 2>&1 &
+          echo $! > "../journey-${{ matrix.name }}-server.pid"
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:4173/index.html >/dev/null && exit 0; sleep 1; done
+          exit 1
+      - name: Validate ${{ matrix.name }} journey
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -o pipefail
+          timeout --signal=TERM --kill-after=20s 7m env LP_E2E_URL=http://127.0.0.1:4173/index.html npx playwright test tools/client-v240-game-journeys.spec.js --grep "${{ matrix.grep }}" --reporter=line --workers=1 | tee "../journey-${{ matrix.name }}.txt"
+          grep -q "${{ matrix.marker }}" "../journey-${{ matrix.name }}.txt"
+      - name: Stop app
+        if: always()
+        run: |
+          if [ -f "journey-${{ matrix.name }}-server.pid" ]; then kill "$(cat "journey-${{ matrix.name }}-server.pid")" 2>/dev/null || true; fi
+      - name: Upload result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v240-journey-${{ matrix.name }}-${{ github.run_number }}
+          path: |
+            journey-${{ matrix.name }}.txt
+            journey-${{ matrix.name }}-server.log
+            v16-original-source/test-results/
+          if-no-files-found: warn
+          retention-days: 7
