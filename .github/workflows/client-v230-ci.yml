@@ -109,6 +109,7 @@ jobs:
           grep -q 'V230_JOURNEY_SNOOKER_OK' ../e2e-v230.txt
           grep -q 'V230_JOURNEY_TABLE_TENNIS_OK' ../e2e-v230.txt
           grep -q 'V230_JOURNEY_PRIVATE_ROOM_OK' ../e2e-v230.txt
+          grep -q 'V230_JOURNEY_ARCADE_OK' ../e2e-v230.txt
           grep -q 'V230_JOURNEY_CUSTOM_OK' ../e2e-v230.txt
           grep -q 'V230_ALL_GAME_JOURNEYS_OK' ../e2e-v230.txt
           grep -q 'V230_ALL_RESOURCE_TYPES_CLICK_OK' ../e2e-v230.txt
