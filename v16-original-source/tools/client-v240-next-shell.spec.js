@@ -35,18 +35,17 @@ test('next SaaS shell owns visible chrome and old chrome is gone',async({page})=
 test('new navigation is SaaS module-oriented, not PS-only',async({page})=>{
   await boot(page);
   await page.locator('#nxMore').click();
-  await expect(page.locator('#nxMenuLayer')).toHaveClass(/show/);
-  await expect(page.getByText('Centre de navigation',{exact:true})).toBeVisible();
-  await expect(page.getByText('Exploiter',{exact:true})).toBeVisible();
-  await expect(page.getByText('Vendre',{exact:true})).toBeVisible();
-  await expect(page.getByText('Piloter',{exact:true})).toBeVisible();
-  await expect(page.getByText('Plateforme',{exact:true})).toBeVisible();
-  await expect(page.getByText('Caisse',{exact:true}).first()).toBeVisible();
-  await expect(page.getByText('Compta & finance',{exact:true})).toBeVisible();
-  await expect(page.getByText('CRM & fidélité',{exact:true})).toBeVisible();
-  await expect(page.getByText('Device Control',{exact:true})).toBeVisible();
-  await expect(page.getByText('API & intégrations',{exact:true})).toBeVisible();
-  await expect(page.getByText('AI Operator',{exact:true})).toBeVisible();
+  const menu=page.locator('#nxMenuLayer');
+  const sections=page.locator('#nxMenuSections');
+  await expect(menu).toHaveClass(/show/);
+  await expect(menu.getByText('Centre de navigation',{exact:true})).toBeVisible();
+  await expect(sections.getByRole('heading',{name:'Exploiter',exact:true})).toBeVisible();
+  await expect(sections.getByRole('heading',{name:'Vendre',exact:true})).toBeVisible();
+  await expect(sections.getByRole('heading',{name:'Piloter',exact:true})).toBeVisible();
+  await expect(sections.getByRole('heading',{name:'Plateforme',exact:true})).toBeVisible();
+  for(const label of ['Caisse','Compta & finance','CRM & fidélité','Device Control','API & intégrations','AI Operator']){
+    await expect(sections.getByText(label,{exact:true}).first()).toBeVisible();
+  }
   console.log('V240_SAAS_MODULE_NAVIGATION_OK');
 });
 
@@ -55,8 +54,9 @@ test('module marketplace exposes modular commercial architecture',async({page})=
   await page.evaluate(()=>LPClient.go('nxModules'));
   await expect(page.getByRole('heading',{name:'Modules LA PAUSE OS'})).toBeVisible();
   for(const [id,name] of [['M01_OPERATIONS','Gestion'],['M02_POS','Caisse'],['M03_INVENTORY','Stock & Snacks'],['M04_FINANCE','Compta & Finance'],['M05_CRM','CRM & Fidélité'],['M06_MARKETING','Marketing & Growth'],['M09_DEVICE_CONTROL','Device Control'],['M10_ANALYTICS','Owner Analytics'],['M11_PLAYER_PORTAL','Espace Joueur'],['M13_MULTI_SITE','Multi-site'],['M14_API_INTEGRATIONS','API & Intégrations'],['M15_AI_OPERATOR','AI Operator']]){
-    await expect(page.locator(`[data-module-card="${id}"]`)).toBeVisible();
-    await expect(page.getByText(name,{exact:true}).first()).toBeVisible();
+    const card=page.locator(`[data-module-card="${id}"]`);
+    await expect(card).toBeVisible();
+    await expect(card).toContainText(name);
   }
   expect(await page.locator('[data-module-card]').count()).toBe(15);
   console.log('V240_MODULE_MARKETPLACE_OK');
