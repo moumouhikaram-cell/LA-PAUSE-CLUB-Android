@@ -54,11 +54,11 @@ test('module marketplace exposes modular commercial architecture',async({page})=
   await boot(page);
   await page.evaluate(()=>LPClient.go('nxModules'));
   await expect(page.getByRole('heading',{name:'Modules LA PAUSE OS'})).toBeVisible();
-  for(const name of ['Gestion','Caisse','Stock & Snacks','Compta & Finance','CRM & Fidélité','Marketing & Growth','Device Control','Owner Analytics','Espace Joueur','Multi-site','API & Intégrations','AI Operator']){
+  for(const [id,name] of [['M01_OPERATIONS','Gestion'],['M02_POS','Caisse'],['M03_INVENTORY','Stock & Snacks'],['M04_FINANCE','Compta & Finance'],['M05_CRM','CRM & Fidélité'],['M06_MARKETING','Marketing & Growth'],['M09_DEVICE_CONTROL','Device Control'],['M10_ANALYTICS','Owner Analytics'],['M11_PLAYER_PORTAL','Espace Joueur'],['M13_MULTI_SITE','Multi-site'],['M14_API_INTEGRATIONS','API & Intégrations'],['M15_AI_OPERATOR','AI Operator']]){
+    await expect(page.locator(`[data-module-card="${id}"]`)).toBeVisible();
     await expect(page.getByText(name,{exact:true}).first()).toBeVisible();
   }
-  await expect(page.getByText(/149 MAD \/ mois/).first()).toBeVisible();
-  await expect(page.getByText(/99 MAD \/ mois/).first()).toBeVisible();
+  expect(await page.locator('[data-module-card]').count()).toBe(15);
   console.log('V240_MODULE_MARKETPLACE_OK');
 });
 
