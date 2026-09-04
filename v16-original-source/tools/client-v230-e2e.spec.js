@@ -238,7 +238,8 @@ test('real customer PS5 session flow auto-opens cash shift and updates dashboard
   expect(state1.toasts).not.toContain('Ouvre d’abord un shift de caisse');
 
   await page.locator('#csDock [data-cs-go="csHome"]').click();
-  await expect(page.locator('.cs-kpi').filter({hasText:'SESSIONS ACTIVES'})).toContainText('1');
+  await expect(page.locator('.ops-live-active')).toContainText('SESSIONS ACTIVES');
+  await expect(page.locator('.ops-live-active')).toContainText('1');
   const revenue=await page.evaluate(() => window.LPClient.revenue());
   expect(revenue).toBeGreaterThan(0);
 
