@@ -6,6 +6,7 @@ on:
     branches:
       - android-device-control-v240
     paths:
+      - "v16-original-source/RELEASE-V240.txt"
       - "v16-original-source/app/src/main/assets/**"
       - "v16-original-source/tools/client-v230-*.spec.js"
       - "v16-original-source/tools/client-v240-game-journeys.spec.js"
