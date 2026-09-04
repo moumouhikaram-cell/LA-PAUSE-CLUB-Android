@@ -8,7 +8,7 @@
 const P1_ENGINE_VERSION = 'P1-dev.1';
 const P1_TIMED_RESOURCE_TYPES = new Set([
   'CONSOLE','SIM_RACING','PC_GAMING','BILLIARD_TABLE',
-  'SNOOKER_TABLE','TABLE_TENNIS','PRIVATE_ROOM','CUSTOM'
+  'SNOOKER_TABLE','TABLE_TENNIS','PRIVATE_ROOM','ARCADE','CUSTOM'
 ]);
 
 function p1ResourceType(st){
@@ -129,7 +129,7 @@ function p1RateLabel(st,players){
 }
 function p1ResourceActivityLabel(st){
   const type=p1ResourceType(st);
-  return ({CONSOLE:'Jeu console',SIM_RACING:'Sim Racing',PC_GAMING:'PC Gaming',BILLIARD_TABLE:'Billard',SNOOKER_TABLE:'Snooker',TABLE_TENNIS:'Tennis de table',PRIVATE_ROOM:'Salle privée',CUSTOM:'Activité'})[type]||'Activité';
+  return ({CONSOLE:'Jeu console',SIM_RACING:'Sim Racing',PC_GAMING:'PC Gaming',BILLIARD_TABLE:'Billard',SNOOKER_TABLE:'Snooker',TABLE_TENNIS:'Tennis de table',PRIVATE_ROOM:'Salle privée',ARCADE:'Console Arcade',CUSTOM:'Activité'})[type]||'Activité';
 }
 function p1PlayersChips(st,d){
   const max=p1ResourceMaxPlayers(st);
@@ -151,7 +151,7 @@ function p1ModeQuote(st,d){
 }
 function p1GameFields(st,d){
   const type=p1ResourceType(st);
-  if(!['CONSOLE','SIM_RACING','PC_GAMING'].includes(type)) return '';
+  if(!['CONSOLE','SIM_RACING','PC_GAMING','ARCADE'].includes(type)) return '';
   const media=d.coverUrl||gameInfo(d.gameCategory).media;
   const filter=(g)=>type==='SIM_RACING'?(g.id==='sim'||g.id==='racing'):g.id!=='sim';
   return `<div class="media-preview" style="--media-bg:${cssUrl(media)}"></div><div class="grid-2"><div class="field"><label>Catégorie jeu</label><select id="gameCategoryP1">${GAME_LIBRARY_V12.filter(filter).map(g=>`<option value="${g.id}" ${d.gameCategory===g.id?'selected':''}>${esc(g.label)}</option>`).join('')}</select></div><div class="field"><label>Jeu</label><input id="gameTitleP1" value="${esc(d.gameTitle||'')}"></div></div><div class="field"><label>Image personnalisée (URL, optionnel)</label><input id="gameCoverP1" value="${esc(d.coverUrl||'')}" placeholder="https://..."></div>`;
@@ -171,7 +171,7 @@ function p1EnhanceResourceManager(){
 }
 try{const prevVenueRender=window.renderVenueResourcesV172;if(typeof prevVenueRender==='function'){window.renderVenueResourcesV172=function(){const out=prevVenueRender();p1EnhanceResourceManager();return out;};}}catch(_e){}
 
-window.openStation=function(stationId){selectedStationId=stationId;const active=activeSessionFor(stationId);if(active)return drawActiveSheet(active);const st=stationById(stationId);if(!st)return;const type=p1ResourceType(st);sheetDraft={mode:'fixed',duration:num(state.sessionRules?.defaultDuration,60),budget:20,players:1,customerId:'',note:'',discountAmount:0,payNow:state.sessionRules?.defaultPaymentTiming==='start',gameCategory:type==='SIM_RACING'?'sim':'football',gameTitle:type==='SIM_RACING'?'Sim Racing':type==='PC_GAMING'?'PC Gaming':'EA SPORTS FC',coverUrl:''};drawStartSheet();};
+window.openStation=function(stationId){selectedStationId=stationId;const active=activeSessionFor(stationId);if(active)return drawActiveSheet(active);const st=stationById(stationId);if(!st)return;const type=p1ResourceType(st);sheetDraft={mode:'fixed',duration:num(state.sessionRules?.defaultDuration,60),budget:20,players:1,customerId:'',note:'',discountAmount:0,payNow:state.sessionRules?.defaultPaymentTiming==='start',gameCategory:type==='SIM_RACING'?'sim':'football',gameTitle:type==='SIM_RACING'?'Sim Racing':type==='PC_GAMING'?'PC Gaming':type==='ARCADE'?'Arcade':'EA SPORTS FC',coverUrl:''};drawStartSheet();};
 window.drawStartSheet=function(){
   const st=stationById(selectedStationId),d=sheetDraft;if(!st||!d)return;const type=p1ResourceType(st),rate=p1RateFor(st,d.players),quote=p1ModeQuote(st,d);const clients=(state.clients||[]).slice().sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));const rateMissing=rate<=0;
   showSheet(`<div class="sheet-handle"></div><div class="sheet-head"><div><div class="eyebrow">VENUE OS · NOUVELLE SESSION</div><h3>${esc(st.name)}</h3><div class="small">${esc(p1ResourceActivityLabel(st))} · ${esc(type)}</div></div><button class="sheet-close" id="sheetClose">×</button></div>${p1GameFields(st,d)}<div class="seg-label">Mode</div><div class="chips"><button class="chip ${d.mode==='fixed'?'sel':''}" data-p1-mode="fixed">Durée</button><button class="chip ${d.mode==='budget'?'sel':''}" data-p1-mode="budget">Budget</button>${state.sessionRules?.allowOpenSession?`<button class="chip ${d.mode==='open'?'sel':''}" data-p1-mode="open">Libre</button>`:''}</div>${d.mode==='fixed'?`<div class="seg-label">Durée</div><div class="chips">${state.sessionRules.quickDurations.map(x=>`<button class="chip ${d.duration===x?'sel':''}" data-p1-duration="${x}">${fmtDuration(x)}</button>`).join('')}<button class="chip" id="p1CustomDuration">Autre</button></div>`:''}${d.mode==='budget'?`<div class="field"><label>Budget client (DH)</label><input id="p1Budget" type="number" min="0.5" step="0.5" value="${num(d.budget,20)}"></div>`:''}${p1PlayersChips(st,d)}<div class="field"><label>Client</label><select id="sessionClient"><option value="">Client passage</option>${clients.map(c=>`<option value="${c.id}" ${d.customerId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div><div class="field"><label>Note</label><input id="sessionNote" value="${esc(d.note)}" placeholder="Note optionnelle"></div>${rateMissing?`<div class="info-card"><b>Tarif manquant.</b> Configure le tarif de cette ressource avant de démarrer.<br><button class="secondary" id="p1ConfigureRate">Configurer le tarif</button></div>`:d.mode==='budget'?`<div class="quote"><div><small>Budget</small><div class="small">${fmtMoney(rate)}/h · environ ${fmtDuration(quote.minutes)}</div></div><strong>${fmtMoney(quote.amount)}</strong></div>`:d.mode==='fixed'?`<div class="quote"><div><small>Montant prévu</small><div class="small">${fmtDuration(d.duration)} · ${d.players} joueur(s) · ${fmtMoney(rate)}/h</div></div><strong>${fmtMoney(quote.amount)}</strong></div>`:`<div class="info-card">Session libre · ${fmtMoney(rate)}/h. Le montant est calculé selon le temps réellement joué.</div>`}<label class="switch-row"><div class="switch-copy"><b>Encaisser au démarrage</b><small>${d.mode==='open'?'Indisponible en session libre : montant calculé à la fin.':'Politique par défaut LA PAUSE : paiement upfront.'}</small></div><span class="switch"><input id="payNow" type="checkbox" ${d.mode!=='open'&&d.payNow?'checked':''} ${d.mode==='open'?'disabled':''}><i></i></span></label><button class="primary full" id="startSessionBtn" ${rateMissing?'disabled':''}>Démarrer ${esc(st.name)}</button>`);

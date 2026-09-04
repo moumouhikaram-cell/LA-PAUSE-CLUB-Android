@@ -355,29 +355,60 @@ test('Control Center surfaces next-best revenue actions and executes an extensio
   console.log('V230_MARKETING_CONVERSION_OK');
 });
 
-test('all eight resource types have contextual billing profiles and media/settings stay responsive', async ({page}) => {
+test('arcade console has its own per-game operator journey', async ({page}) => {
+  const errors=await boot(page);
+  await page.evaluate(() => {
+    state.stations=state.stations.filter(s=>s.id!=='qa-arcade');
+    state.stations.push({id:'qa-arcade',name:'ARCADE QA',type:'ARCADE',osResourceType:'ARCADE',enabled:true,maxPlayers:2,sort:81,mediaUrl:'media/premium/arcade.jpg'});
+    state.ratePlans=(state.ratePlans||[]).filter(p=>p.resourceType!=='ARCADE');
+    state.ratePlans.push({id:'rate-qa-arcade',scope:'TYPE',resourceType:'ARCADE',name:'Arcade par partie',billingModel:'PER_GAME',pricingModel:'PER_GAME',unitPrice:5,hourlyRate:0,playerRates:{},currency:'MAD',enabled:true,createdAt:Date.now(),updatedAt:Date.now(),revision:1});
+    saveState(); window.LPClient.go('csHome');
+  });
+  const card=page.locator('[data-cs-station="qa-arcade"]');
+  await expect(card).toBeVisible();
+  await expect(card).toContainText('/ partie');
+  await expect(card).not.toContainText('/ h');
+  await card.locator('[data-ops-quick-id="qa-arcade"]').click();
+  await expect(page.locator('#opsSessionForm')).toBeVisible();
+  await expect(page.locator('#opsSessionForm')).toContainText('Par partie');
+  await expect(page.locator('#opsGameTitle')).toBeVisible();
+  await expect(page.locator('#opsGameTitle')).toHaveValue('Arcade');
+  await page.locator('#startSessionBtn').click();
+  const first=await page.evaluate(()=>({s:state.sessions.find(x=>(x.stationId==='qa-arcade'||x.resourceId==='qa-arcade')&&x.status==='active'),p:state.payments.at(-1)}));
+  expect(first.s).toBeTruthy(); expect(first.s.billingModel).toBe('PER_GAME'); expect(Number(first.s.totalAmount)).toBe(5); expect(Number(first.p.amount)).toBe(5);
+  await card.locator('[data-cs-manage]').click();
+  await expect(page.locator('#opsAddUnit')).toBeVisible();
+  await page.locator('#opsAddUnit').click();
+  const second=await page.evaluate(()=>state.sessions.find(x=>(x.stationId==='qa-arcade'||x.resourceId==='qa-arcade')&&x.status==='active'));
+  expect(Number(second.units)).toBe(2); expect(Number(second.totalAmount)).toBe(10);
+  expect(errors).toEqual([]);
+  console.log('V230_ARCADE_JOURNEY_OK');
+});
+
+test('all nine resource types have contextual billing profiles and media/settings stay responsive', async ({page}) => {
   const errors=await boot(page);
   const profiles=await page.evaluate(()=>Object.entries(window.LPClient.opsProfiles||{}).map(([type,p])=>({type,model:p.defaultModel,game:p.game})));
-  expect(profiles).toHaveLength(8);
+  expect(profiles).toHaveLength(9);
   expect(profiles.find(x=>x.type==='BILLIARD_TABLE').model).toBe('PER_GAME');
   expect(profiles.find(x=>x.type==='SNOOKER_TABLE').model).toBe('PER_GAME');
   expect(profiles.find(x=>x.type==='PRIVATE_ROOM').model).toBe('TIME_BLOCK');
   expect(profiles.find(x=>x.type==='CONSOLE').model).toBe('TIME_PRORATED');
+  expect(profiles.find(x=>x.type==='ARCADE').model).toBe('PER_GAME');
   await page.evaluate(()=>window.LPClient.go('settings'));
   await page.locator('[data-settings="media"]').click();
-  await expect(page.locator('[data-ops-media-file]')).toHaveCount(8);
+  await expect(page.locator('[data-ops-media-file]')).toHaveCount(9);
   const img=page.locator('.ops-media-preview img').first(); await expect(img).toBeVisible();
   expect(await img.evaluate(el=>getComputedStyle(el).objectFit)).toBe('cover');
   await page.setViewportSize({width:915,height:412}); await page.evaluate(()=>window.onLaPauseViewportChanged&&window.onLaPauseViewportChanged()); await page.waitForTimeout(120);
   expect(await img.evaluate(el=>getComputedStyle(el).objectFit)).toBe('cover');
   await page.evaluate(()=>{settingsSection=null;window.renderSettingsV230()});
   await page.locator('[data-settings="stations"]').click();
-  const firstType=page.locator('[data-ops-station-type]').first(); await expect(firstType.locator('option')).toHaveCount(8);
+  const firstType=page.locator('[data-ops-station-type]').first(); await expect(firstType.locator('option')).toHaveCount(9);
   await page.evaluate(()=>{settingsSection=null;window.renderSettingsV230()});
   await page.locator('[data-settings="pricing"]').click();
-  await expect(page.locator('[data-ops-price-type]')).toHaveCount(8);
+  await expect(page.locator('[data-ops-price-type]')).toHaveCount(9);
   expect(errors).toEqual([]);
-  console.log('V230_MEDIA_8_TYPES_OK');
+  console.log('V230_MEDIA_9_TYPES_OK');
   console.log('V230_ALL_RESOURCE_TYPES_CLICK_OK '+profiles.map(x=>x.type).join(','));
   console.log('V230_CLIENT_E2E_OK');
 });

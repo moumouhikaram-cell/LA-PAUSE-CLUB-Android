@@ -6,10 +6,10 @@ LP.legacyRender=window.renderView;
 LP.$=id=>document.getElementById(id);
 LP.n=(v,d=0)=>Number.isFinite(+v)?+v:d;
 LP.h=(v='')=>{try{return esc(String(v??''))}catch(_){return String(v??'')}};
-LP.typeLabel={CONSOLE:'PS5',SIM_RACING:'SIM RACING',PC_GAMING:'PC GAMING',BILLIARD_TABLE:'BILLARD',SNOOKER_TABLE:'SNOOKER',TABLE_TENNIS:'TENNIS DE TABLE',PRIVATE_ROOM:'SALLE PRIVÉE',CUSTOM:'AUTRE'};
-LP.typePrefix={CONSOLE:'PS5',SIM_RACING:'SIM',PC_GAMING:'PC',BILLIARD_TABLE:'BILLARD',SNOOKER_TABLE:'SNOOKER',TABLE_TENNIS:'PING-PONG',PRIVATE_ROOM:'SALLE',CUSTOM:'POSTE'};
-LP.types=['CONSOLE','SIM_RACING','PC_GAMING','BILLIARD_TABLE','SNOOKER_TABLE','TABLE_TENNIS','PRIVATE_ROOM','CUSTOM'];
-LP.media={CONSOLE:'media/premium/ps5.jpg',SIM_RACING:'media/premium/sim.jpg',PC_GAMING:'media/premium/pc.jpg',BILLIARD_TABLE:'media/premium/billiard.jpg',SNOOKER_TABLE:'media/premium/snooker.jpg',TABLE_TENNIS:'media/premium/table-tennis.jpg',PRIVATE_ROOM:'media/premium/lounge.jpg',CUSTOM:'media/premium/arcade.jpg'};
+LP.typeLabel={CONSOLE:'PS5',SIM_RACING:'SIM RACING',PC_GAMING:'PC GAMING',BILLIARD_TABLE:'BILLARD',SNOOKER_TABLE:'SNOOKER',TABLE_TENNIS:'TENNIS DE TABLE',PRIVATE_ROOM:'SALLE PRIVÉE',ARCADE:'CONSOLE ARCADE',CUSTOM:'AUTRE'};
+LP.typePrefix={CONSOLE:'PS5',SIM_RACING:'SIM',PC_GAMING:'PC',BILLIARD_TABLE:'BILLARD',SNOOKER_TABLE:'SNOOKER',TABLE_TENNIS:'PING-PONG',PRIVATE_ROOM:'SALLE',ARCADE:'ARCADE',CUSTOM:'POSTE'};
+LP.types=['CONSOLE','SIM_RACING','PC_GAMING','BILLIARD_TABLE','SNOOKER_TABLE','TABLE_TENNIS','PRIVATE_ROOM','ARCADE','CUSTOM'];
+LP.media={CONSOLE:'media/premium/ps5.jpg',SIM_RACING:'media/premium/sim.jpg',PC_GAMING:'media/premium/pc.jpg',BILLIARD_TABLE:'media/premium/billiard.jpg',SNOOKER_TABLE:'media/premium/snooker.jpg',TABLE_TENNIS:'media/premium/table-tennis.jpg',PRIVATE_ROOM:'media/premium/lounge.jpg',ARCADE:'media/premium/arcade.jpg',CUSTOM:'media/premium/arcade.jpg'};
 LP.alias={floor:'csHome',dashboard:'csHome',veDashboard:'csHome',veStations:'csStations',overview:'csOverview',veOverview:'csOverview',veBilliards:'csBilliards',veSetup:'csSetup',venueResources:'csSetup'};
 LP.menuGroups=[
 {id:'operate',icon:'▦',title:'Exploitation',sub:'La salle au quotidien',items:[['csStations','Salle & stations','Toutes les ressources en temps réel','▦'],['sessions','Sessions','En cours, terminées et impayées','◴'],['reservations','Réservations','Planning et arrivées','▤'],['queue','File d’attente','Clients à placer','♙'],['history','Historique','Retrouver une session','◔']]},

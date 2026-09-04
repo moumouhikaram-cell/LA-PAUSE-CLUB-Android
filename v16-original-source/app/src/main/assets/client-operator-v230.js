@@ -7,9 +7,9 @@
   const TYPE_MEDIA={
     CONSOLE:'media/premium/ps5.jpg',SIM_RACING:'media/premium/sim.jpg',PC_GAMING:'media/premium/pc.jpg',
     BILLIARD_TABLE:'media/premium/billiard.jpg',SNOOKER_TABLE:'media/premium/snooker.jpg',TABLE_TENNIS:'media/premium/table-tennis.jpg',
-    PRIVATE_ROOM:'media/premium/lounge.jpg',CUSTOM:'media/premium/arcade.jpg'
+    PRIVATE_ROOM:'media/premium/lounge.jpg',ARCADE:'media/premium/arcade.jpg',CUSTOM:'media/premium/arcade.jpg'
   };
-  const LEGACY_TYPE={CONSOLE:'PS5',SIM_RACING:'SIM',PC_GAMING:'PC',BILLIARD_TABLE:'BILLIARD',SNOOKER_TABLE:'SNOOKER',TABLE_TENNIS:'TABLE_TENNIS',PRIVATE_ROOM:'PRIVATE_ROOM',CUSTOM:'CUSTOM'};
+  const LEGACY_TYPE={CONSOLE:'PS5',SIM_RACING:'SIM',PC_GAMING:'PC',BILLIARD_TABLE:'BILLIARD',SNOOKER_TABLE:'SNOOKER',TABLE_TENNIS:'TABLE_TENNIS',PRIVATE_ROOM:'PRIVATE_ROOM',ARCADE:'ARCADE',CUSTOM:'CUSTOM'};
   const MODEL={TIME:'TIME_PRORATED',BLOCK:'TIME_BLOCK',FIXED:'FIXED_SESSION',GAME:'PER_GAME',PLAYER_GAME:'PER_PLAYER_GAME',CUSTOM:'CUSTOM_AMOUNT'};
   const PROFILE={
     CONSOLE:{label:'Console / PS5',defaultModel:MODEL.TIME,models:[MODEL.TIME],players:true,game:true,presets:[30,60,120],open:true,budget:true},
@@ -19,6 +19,7 @@
     SNOOKER_TABLE:{label:'Snooker',defaultModel:MODEL.GAME,models:[MODEL.GAME,MODEL.PLAYER_GAME,MODEL.TIME,MODEL.BLOCK],players:true,game:false,presets:[1,2,3],open:true,budget:false},
     TABLE_TENNIS:{label:'Tennis de table',defaultModel:MODEL.TIME,models:[MODEL.TIME,MODEL.BLOCK,MODEL.FIXED],players:true,game:false,presets:[30,60,90],open:true,budget:false},
     PRIVATE_ROOM:{label:'Salle privée',defaultModel:MODEL.BLOCK,models:[MODEL.BLOCK,MODEL.TIME,MODEL.FIXED],players:true,game:false,presets:[60,120,180],open:false,budget:false},
+    ARCADE:{label:'Console Arcade',defaultModel:MODEL.GAME,models:[MODEL.GAME,MODEL.TIME,MODEL.BLOCK,MODEL.FIXED,MODEL.CUSTOM],players:true,game:true,presets:[1,3,5],open:false,budget:false},
     CUSTOM:{label:'Activité',defaultModel:MODEL.FIXED,models:[MODEL.FIXED,MODEL.TIME,MODEL.BLOCK,MODEL.GAME,MODEL.CUSTOM],players:true,game:false,presets:[1],open:false,budget:false}
   };
   const MODEL_LABEL={
@@ -122,7 +123,7 @@
     if(m===MODEL.GAME||m===MODEL.PLAYER_GAME)units=1;
     if(preset?.kind==='duration')duration=preset.value;
     if(preset?.kind==='units')units=preset.value;
-    return {billingModel:m,mode:m===MODEL.TIME?'fixed':m===MODEL.BLOCK?'fixed':m===MODEL.CUSTOM?'custom':'unit',duration,units,budget:20,customAmount:0,players:1,customerId:'',note:'',discountAmount:0,payNow:state.sessionRules?.defaultPaymentTiming==='start',gameTitle:typeOf(st)==='SIM_RACING'?'Sim Racing':typeOf(st)==='PC_GAMING'?'PC Gaming':'EA SPORTS FC'};
+    return {billingModel:m,mode:m===MODEL.TIME?'fixed':m===MODEL.BLOCK?'fixed':m===MODEL.CUSTOM?'custom':'unit',duration,units,budget:20,customAmount:0,players:1,customerId:'',note:'',discountAmount:0,payNow:state.sessionRules?.defaultPaymentTiming==='start',gameTitle:typeOf(st)==='SIM_RACING'?'Sim Racing':typeOf(st)==='PC_GAMING'?'PC Gaming':typeOf(st)==='ARCADE'?'Arcade':'EA SPORTS FC'};
   }
 
   function gameField(st,d){if(!resourceSupportsGame(st))return '';return `<div class="ops-more-field"><label>Jeu / activité <small>optionnel</small></label><input id="opsGameTitle" value="${LP.h(d.gameTitle||'')}" placeholder="Ex. EA SPORTS FC 26"></div>`;}
