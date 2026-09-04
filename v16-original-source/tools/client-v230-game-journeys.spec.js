@@ -85,14 +85,38 @@ async function assertStartPayment(page,id,amount,model){
   return d;
 }
 
-async function assertHistorySurface(page,name){
+async function settleFinishAndHistory(page,id,name,expectedTotal,semantic){
+  const d=await activeData(page,id);
+  const sid=d.s.id;
+  if(!(await page.locator('.ops-active').count())){
+    const card=page.locator(`[data-cs-station="${id}"]`);
+    await card.locator('[data-cs-manage]').click();
+  }
+  await expect(page.locator('#finishBtn')).toBeVisible();
+  const due=await page.evaluate(x=>{const s=state.sessions.find(v=>v.id===x),paid=(state.payments||[]).filter(p=>p.sessionId===x).reduce((n,p)=>n+Number(p.amount||0),0);return Math.max(0,Number(s?.totalAmount||0)-paid)},sid);
+  if(due>0.009){
+    await page.locator('#paymentBtn').click();
+    await expect(page.locator('#payConfirm')).toBeVisible();
+    expect(Number(await page.locator('#payAmount').inputValue())).toBeCloseTo(due,5);
+    await page.locator('#payConfirm').click();
+    await expect(page.locator('#finishBtn')).toBeVisible();
+  }
+  await page.locator('#finishBtn').click();
+  await expect(page.locator('#modalOk')).toBeVisible();
+  await expect(page.locator('#modalBackdrop')).not.toContainText('reste');
+  await page.locator('#modalOk').click();
+  await expect.poll(()=>page.evaluate(x=>state.sessions.find(v=>v.id===x)?.status,sid)).toBe('completed');
+  const settled=await page.evaluate(x=>{const s=state.sessions.find(v=>v.id===x),paid=(state.payments||[]).filter(p=>p.sessionId===x).reduce((n,p)=>n+Number(p.amount||0),0);return {total:Number(s?.totalAmount||0),paid}},sid);
+  expect(settled.total).toBeCloseTo(expectedTotal,5);
+  expect(settled.paid).toBeCloseTo(expectedTotal,5);
   await page.evaluate(()=>window.LPClient.go('history'));
-  await expect(page.locator('#view')).not.toBeEmpty();
-  const txt=await page.locator('#view').innerText();
-  expect(txt.length).toBeGreaterThan(10);
+  const row=page.locator(`[data-session-row="${sid}"]`);
+  await expect(row).toBeVisible();
+  await expect(row).toContainText(name);
+  await expect(row).toContainText('PAYÉE');
+  if(semantic)await expect(row).toContainText(semantic);
   await page.evaluate(()=>window.LPClient.go('csHome'));
-  await expect(page.locator(`[data-cs-station]`).first()).toBeVisible();
-  return txt.includes(name);
+  return sid;
 }
 
 test('CONSOLE journey: timed Duo preset, optional game, exact quote/payment',async({page})=>{
@@ -110,7 +134,7 @@ test('CONSOLE journey: timed Duo preset, optional game, exact quote/payment',asy
   expect(actions).toBeLessThanOrEqual(4);
   const d=await assertStartPayment(page,s.id,14,'TIME_PRORATED');
   expect(Number(d.s.players)).toBe(2);expect(Math.round(Number(d.s.plannedMinutes))).toBe(30);expect(Number(d.s.ratePerHour)).toBe(28);
-  await assertHistorySurface(page,s.name);
+  await settleFinishAndHistory(page,s.id,s.name,14,'Duo');
   expect(errors).toEqual([]);console.log('V230_JOURNEY_CONSOLE_OK');
 });
 
@@ -129,6 +153,7 @@ test('SIM_RACING journey: block package, no player selector, +1 block action',as
   await card.locator('[data-cs-manage]').click();await expect(page.locator('#opsAddBlock')).toBeVisible();
   await page.locator('#opsAddBlock').click();
   d=await activeData(page,s.id);expect(Math.round(Number(d.s.plannedMinutes))).toBe(60);expect(Number(d.s.totalAmount)).toBe(50);
+  await settleFinishAndHistory(page,s.id,s.name,50,'1 joueur');
   expect(errors).toEqual([]);console.log('V230_JOURNEY_SIM_RACING_OK');
 });
 
@@ -145,6 +170,7 @@ test('PC_GAMING journey: budget sale converts amount to minutes and keeps game o
   await expect(page.locator('#startSessionBtn')).toContainText('33');
   await page.locator('#startSessionBtn').click();actions++;expect(actions).toBeLessThanOrEqual(3);
   const d=await assertStartPayment(page,s.id,33,'TIME_PRORATED');expect(d.s.mode).toBe('budget');expect(Math.round(Number(d.s.plannedMinutes))).toBe(66);
+  await settleFinishAndHistory(page,s.id,s.name,33,'1 joueur');
   expect(errors).toEqual([]);console.log('V230_JOURNEY_PC_GAMING_OK');
 });
 
@@ -163,6 +189,7 @@ test('BILLIARD_TABLE journey: one game sale, no console fields, +1 game in one a
   await card.locator('[data-cs-manage]').click();await expect(page.locator('#opsAddUnit')).toBeVisible();
   await page.locator('#opsAddUnit').click();
   d=await activeData(page,s.id);expect(Number(d.s.units)).toBe(2);expect(Number(d.s.totalAmount)).toBe(14);
+  await settleFinishAndHistory(page,s.id,s.name,14,'2 parties');
   expect(errors).toEqual([]);console.log('V230_JOURNEY_BILLIARD_OK');
 });
 
@@ -178,6 +205,7 @@ test('SNOOKER_TABLE journey: per-player game pricing changes quote before start'
   await expect(page.locator('#startSessionBtn')).toContainText('42');
   await page.locator('#startSessionBtn').click();actions++;expect(actions).toBeLessThanOrEqual(4);
   const d=await assertStartPayment(page,s.id,42,'PER_PLAYER_GAME');expect(Number(d.s.players)).toBe(2);expect(Number(d.s.units)).toBe(3);expect(Number(d.s.unitPrice)).toBe(14);
+  await settleFinishAndHistory(page,s.id,s.name,42,'3 parties');
   expect(errors).toEqual([]);console.log('V230_JOURNEY_SNOOKER_OK');
 });
 
@@ -194,6 +222,7 @@ test('TABLE_TENNIS journey: timed group session without game/console noise',asyn
   await expect(page.locator('.ops-quote strong')).toContainText('20');
   await page.locator('#startSessionBtn').click();actions++;expect(actions).toBeLessThanOrEqual(4);
   const d=await assertStartPayment(page,s.id,20,'TIME_PRORATED');expect(Number(d.s.players)).toBe(2);expect(Math.round(Number(d.s.plannedMinutes))).toBe(60);
+  await settleFinishAndHistory(page,s.id,s.name,20,'2 joueurs');
   expect(errors).toEqual([]);console.log('V230_JOURNEY_TABLE_TENNIS_OK');
 });
 
@@ -210,6 +239,7 @@ test('PRIVATE_ROOM journey: fixed package, group capacity, no game fields',async
   await expect(page.locator('.ops-quote strong')).toContainText('120');
   await page.locator('#startSessionBtn').click();actions++;expect(actions).toBeLessThanOrEqual(3);
   const d=await assertStartPayment(page,s.id,120,'FIXED_SESSION');expect(Number(d.s.players)).toBe(4);expect(Math.round(Number(d.s.plannedMinutes))).toBe(120);
+  await settleFinishAndHistory(page,s.id,s.name,120,'4 joueurs');
   expect(errors).toEqual([]);console.log('V230_JOURNEY_PRIVATE_ROOM_OK');
 });
 
@@ -248,6 +278,7 @@ test('CUSTOM journey: operator-entered amount becomes the exact payable amount',
   await expect(page.locator('#startSessionBtn')).toContainText('37');
   await page.locator('#startSessionBtn').click();actions++;expect(actions).toBeLessThanOrEqual(3);
   const d=await assertStartPayment(page,s.id,37.5,'CUSTOM_AMOUNT');expect(Number(d.s.players)).toBe(1);
+  await settleFinishAndHistory(page,s.id,s.name,37.5,'Montant libre');
   expect(errors).toEqual([]);console.log('V230_JOURNEY_CUSTOM_OK');
 });
 
