@@ -2,7 +2,15 @@
 set -euo pipefail
 A="app/src/main/assets/media/premium"
 mkdir -p "$A"
-get(){ local id="$1" out="$2"; curl -fL --retry 4 --retry-delay 2 "https://images.pexels.com/photos/${id}/pexels-photo-${id}.jpeg?auto=compress&cs=tinysrgb&w=2400&h=1350&fit=crop" -o "$A/$out"; }
+get(){
+  local id="$1" out="$2" url tmp
+  url="https://images.pexels.com/photos/${id}/pexels-photo-${id}.jpeg?auto=compress&cs=tinysrgb&w=2400&h=1350&fit=crop"
+  tmp="$A/$out.part"
+  rm -f "$tmp"
+  curl -fL --retry 8 --retry-all-errors --retry-delay 2 --connect-timeout 15 --max-time 120 "$url" -o "$tmp"
+  test -s "$tmp"
+  mv -f "$tmp" "$A/$out"
+}
 # Context-first free-to-use Pexels imagery. Every file is embedded in the APK.
 # Premium neon gaming venue used for console station cards
 get 9072386 ps5.jpg
