@@ -8,6 +8,7 @@ on:
     paths:
       - "v16-original-source/app/src/main/assets/**"
       - "v16-original-source/tools/client-v230-*.spec.js"
+      - "v16-original-source/tools/client-v240-game-journeys.spec.js"
       - "v16-original-source/tools/client-v230-policy-tests.js"
       - "v16-original-source/tools/master-v2-domain-tests.js"
       - ".github/workflows/v240-browser-regression-parallel.yml"
@@ -34,8 +35,8 @@ jobs:
             spec: tools/client-v230-persistence.spec.js
             marker: V230_OPERATIONAL_PERSISTENCE_OK
           - name: game-journeys
-            spec: tools/client-v230-game-journeys.spec.js
-            marker: V230_ALL_GAME_JOURNEYS_OK
+            spec: tools/client-v240-game-journeys.spec.js
+            marker: V240_METIER_FIRST_GAME_JOURNEYS_OK
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
