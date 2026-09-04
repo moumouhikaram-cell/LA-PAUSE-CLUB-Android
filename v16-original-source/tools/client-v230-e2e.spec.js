@@ -13,7 +13,20 @@ async function boot(page, viewport={width:412,height:915}) {
     window.ClientAndroid = {
       requestExitConfirmation(){ window.__lpExitRequests += 1; },
       exitApp(){ window.__lpExitRequests += 1; },
-      getSafeInsetsJson(){ return JSON.stringify({left:0,top:24,right:0,bottom:24}); }
+      getSafeInsetsJson(){ return JSON.stringify({left:0,top:24,right:0,bottom:24}); },
+      commitCoreCommand(commandJson,nextStateJson,eventJson){
+        try{
+          const next=JSON.parse(nextStateJson||'{}');
+          const event=JSON.parse(eventJson||'{}');
+          const command=JSON.parse(commandJson||'{}');
+          return JSON.stringify({ok:true,state:next,event,commandId:command.commandId||null});
+        }catch(e){return JSON.stringify({ok:false,message:e.message||String(e)});}
+      },
+      scheduleSessionAlarm(){ return true; },
+      cancelSessionAlarm(){ return true; },
+      keepScreenOn(){ return true; },
+      showTestNotification(){ return true; },
+      setStateJson(){ return true; }
     };
   });
   const errors=[];
@@ -185,7 +198,8 @@ test('real customer PS5 session flow auto-opens cash shift and updates dashboard
   const duration30=page.locator('[data-duration="30"]');
   if(await duration30.count()) await duration30.click();
   const duo=page.locator('[data-players="2"]');
-  if(await duo.count()) await duo.click();
+  const duoAvailable=(await duo.count())>0;
+  if(duoAvailable) await duo.click();
   await page.locator('#startSessionBtn').click();
   const postStart=await sessionDiagnostic(page);
   console.log('PS5_POST_START_DIAGNOSTIC '+JSON.stringify(postStart));
@@ -193,12 +207,15 @@ test('real customer PS5 session flow auto-opens cash shift and updates dashboard
   await expect(page.locator('#overlay')).not.toHaveClass(/show/);
   const state1=await page.evaluate(() => ({
     active:state.sessions.filter(s=>s.status==='active').length,
+    activeSession:state.sessions.find(s=>s.status==='active')||null,
     payments:state.payments.length,
     shifts:state.shifts.filter(s=>s.status==='open').map(s=>({id:s.id,openingCash:s.openingCash,autoOpened:s.autoOpened})),
     paymentShift:state.payments.at(-1)?.shiftId||null,
     toasts:document.querySelector('#toast')?.textContent||''
   }));
   expect(state1.active).toBe(1);
+  expect(state1.activeSession).toBeTruthy();
+  if(duoAvailable){expect(Number(state1.activeSession.ratePerHour)).toBe(28);expect(Number(state1.activeSession.players)).toBe(2);}
   expect(state1.payments).toBe(1);
   expect(state1.shifts).toHaveLength(1);
   expect(state1.shifts[0].openingCash).toBe(0);
@@ -246,7 +263,7 @@ test('SIM session can be started and managed from the same customer station surf
   if(errors.length) console.error('SIM_RUNTIME_ERRORS\n'+errors.join('\n'));
   const sim=await page.evaluate(()=>state.sessions.find(s=>(s.stationId==='sim-1'||s.resourceId==='sim-1')&&s.status==='active'));
   expect(sim).toBeTruthy();
-  expect(Number(sim.ratePerHour||45)).toBe(45);
+  expect(Number(sim.ratePerHour)).toBe(45);
   await simCard.locator('[data-cs-manage]').click();
   await expect(page.locator('#finishBtn')).toBeVisible();
   expect(errors).toEqual([]);
