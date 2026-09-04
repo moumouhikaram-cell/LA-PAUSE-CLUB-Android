@@ -1,0 +1,5 @@
+LA PAUSE OS 2.3.0 FINAL RETEST
+Canonical branch: android-client-final-v230
+Source repair parent: 1c1ea7b3cd2f2de987872d698cabdadb017f8ea3
+QA scope: exhaustive customer click matrix, business/domain tests, Android native smoke, permanent signed release APK smoke.
+This file is a QA trigger/ledger only and is not loaded by the Android application.
