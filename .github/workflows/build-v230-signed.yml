@@ -129,7 +129,7 @@ jobs:
           trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:4173/index.html >/dev/null && break; sleep 1; done
           curl -fsS http://127.0.0.1:4173/index.html >/dev/null
-          LP_E2E_URL=http://127.0.0.1:4173/index.html npx playwright test tools/client-v230-e2e.spec.js --reporter=line --workers=1 | tee ../e2e-v230.txt
+          LP_E2E_URL=http://127.0.0.1:4173/index.html npx playwright test tools/client-v230-e2e.spec.js tools/client-v230-click-matrix.spec.js --reporter=line --workers=1 | tee ../e2e-v230.txt
           grep -q 'V230_SINGLE_RUNTIME_E2E_OK' ../e2e-v230.txt
           grep -q 'V230_ALL_ROUTES_CLICK_OK' ../e2e-v230.txt
           grep -q 'V230_BACK_HOME_EXIT_OK' ../e2e-v230.txt
@@ -137,6 +137,7 @@ jobs:
           grep -q 'V230_SESSION_CLICK_FLOW_OK' ../e2e-v230.txt
           grep -q 'V230_SIM_CLICK_FLOW_OK' ../e2e-v230.txt
           grep -q 'V230_ALL_RESOURCE_TYPES_CLICK_OK' ../e2e-v230.txt
+          grep -q 'V230_CLICK_MATRIX_OK' ../e2e-v230.txt
           grep -q 'V230_CLIENT_E2E_OK' ../e2e-v230.txt
 
       - name: Restore permanent LA PAUSE signing key
@@ -169,6 +170,8 @@ jobs:
           grep -q 'requestExitConfirmation' "$J/PremiumActivity.java"
           grep -q 'getSafeInsetsJson' "$J/PremiumActivity.java"
           for f in client-product-core.js client-product-media.js client-product-views.js client-product-setup.js client-product-session-policy.js client-product-boot.js master-v2-runtime.js master-v2-safety.js p1-core.js; do node --check "$A/$f"; done
+          node --check tools/client-v230-e2e.spec.js
+          node --check tools/client-v230-click-matrix.spec.js
           grep -q 'src="client-product-session-policy.js"' "$A/index.html"
           grep -q 'client-product-v230.css' "$A/index.html"
           ! grep -q 'src="client-product-v230.js"' "$A/index.html"
