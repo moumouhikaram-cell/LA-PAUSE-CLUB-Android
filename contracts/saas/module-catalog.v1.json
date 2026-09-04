@@ -1,0 +1,187 @@
+{
+  "schema": "la-pause-module-catalog/1",
+  "catalogVersion": "2026-09-04-ma-launch-v1",
+  "currency": "MAD",
+  "billingInterval": "MONTH",
+  "taxInclusive": false,
+  "platformCore": {
+    "id": "PLATFORM_CORE",
+    "name": "Platform Core",
+    "price": 99,
+    "scope": "TENANT",
+    "mandatory": true,
+    "limits": {
+      "venuesIncluded": 1,
+      "branchesIncluded": 1,
+      "staffAccountsIncluded": 2
+    },
+    "features": [
+      "IDENTITY",
+      "TENANCY",
+      "BASE_RBAC",
+      "OFFLINE_CORE",
+      "SYNC_ENGINE",
+      "SECURE_STORE",
+      "BASE_AUDIT",
+      "ENTITLEMENT_RUNTIME"
+    ]
+  },
+  "modules": [
+    {
+      "id": "M01_OPERATIONS",
+      "name": "Gestion",
+      "price": 149,
+      "scope": "VENUE",
+      "dependencies": [],
+      "features": ["RESOURCES", "METIERS", "SESSIONS", "PRICING", "QUEUE", "STAFF_BOOKINGS", "DYNAMIC_MEDIA"]
+    },
+    {
+      "id": "M02_POS",
+      "name": "Caisse",
+      "price": 89,
+      "scope": "VENUE",
+      "dependencies": [],
+      "features": ["POS", "PAYMENTS", "PAYMENT_METHODS", "SHIFTS", "RECEIPTS", "REFUNDS", "CASH_MOVEMENTS"]
+    },
+    {
+      "id": "M03_INVENTORY",
+      "name": "Stock & Snacks",
+      "price": 49,
+      "scope": "VENUE",
+      "dependencies": [],
+      "features": ["PRODUCTS", "INVENTORY", "STOCK_ALERTS", "SUPPLIERS_BASIC", "SESSION_CROSS_SELL"]
+    },
+    {
+      "id": "M04_FINANCE",
+      "name": "Compta & Finance",
+      "price": 99,
+      "scope": "VENUE",
+      "dependencies": [],
+      "features": ["REVENUE_LEDGER", "EXPENSE_LEDGER", "TAX_CONFIG", "CLOSE_PERIOD", "RECONCILIATION", "FINANCE_EXPORTS"]
+    },
+    {
+      "id": "M05_CRM",
+      "name": "CRM & Fidélité",
+      "price": 79,
+      "scope": "VENUE",
+      "dependencies": [],
+      "features": ["CUSTOMERS", "MEMBERSHIPS", "LOYALTY", "PASSES", "SEGMENTS_BASIC", "CONSENT_HISTORY", "CHURN_SIGNALS"]
+    },
+    {
+      "id": "M06_MARKETING",
+      "name": "Marketing & Growth",
+      "price": 99,
+      "scope": "VENUE",
+      "dependencies": ["M05_CRM"],
+      "features": ["CAMPAIGNS", "OFFERS", "PROMO_CODES", "SEGMENTATION", "ATTRIBUTION", "ASSISTED_REVENUE", "CROSS_SELL_INTELLIGENCE"]
+    },
+    {
+      "id": "M07_BOOKINGS",
+      "name": "Réservations & File Pro",
+      "price": 59,
+      "scope": "VENUE",
+      "dependencies": [],
+      "features": ["SELF_BOOKING", "DEPOSITS", "CAPACITY_RULES", "WAITLIST_PRO", "BOOKING_PORTAL", "NO_SHOW_POLICY"]
+    },
+    {
+      "id": "M08_TOURNAMENTS",
+      "name": "Tournois & Communauté",
+      "price": 59,
+      "scope": "VENUE",
+      "dependencies": [],
+      "features": ["TOURNAMENTS", "BRACKETS", "QUALIFICATION", "WINNERS", "LEADERBOARDS", "TEAMS", "CHALLENGES"]
+    },
+    {
+      "id": "M09_DEVICE_CONTROL",
+      "name": "Device Control",
+      "price": 99,
+      "scope": "VENUE",
+      "dependencies": [],
+      "meter": {
+        "metric": "MANAGED_DEVICE",
+        "included": 10,
+        "unitPrice": 9
+      },
+      "features": ["DEVICE_MESH", "PAIRING", "HEALTH", "COMMANDS", "SESSION_ORCHESTRATION", "REMOTE_OPERATIONS"]
+    },
+    {
+      "id": "M10_ANALYTICS",
+      "name": "Owner Analytics & BI",
+      "price": 79,
+      "scope": "TENANT",
+      "dependencies": [],
+      "features": ["OWNER_COCKPIT", "CROSS_MODULE_KPI", "OCCUPANCY", "MARGINS", "STAFF_PERFORMANCE", "FORECASTS", "BI_EXPORTS"]
+    },
+    {
+      "id": "M11_PLAYER_PORTAL",
+      "name": "Espace Joueur / Membre",
+      "price": 79,
+      "scope": "TENANT",
+      "dependencies": [],
+      "features": ["PLAYER_ACCOUNT", "PLAYER_BALANCE", "PLAYER_BOOKING", "PLAYER_HISTORY", "PLAYER_LOYALTY", "PLAYER_NOTIFICATIONS", "PLAYER_TOURNAMENTS", "GAMING_PASSPORT"]
+    },
+    {
+      "id": "M12_TEAM_ADVANCED",
+      "name": "Équipe & Approbations",
+      "price": 49,
+      "scope": "TENANT",
+      "dependencies": [],
+      "features": ["CUSTOM_ROLES", "APPROVAL_WORKFLOWS", "DUAL_APPROVAL", "BRANCH_ROLE_SCOPE", "STAFF_POLICIES"]
+    },
+    {
+      "id": "M13_MULTI_SITE",
+      "name": "Multi-site",
+      "price": 149,
+      "scope": "ADDITIONAL_BRANCH",
+      "dependencies": [],
+      "features": ["BRANCH_SWITCHER", "CONSOLIDATED_OWNER", "CENTRAL_PRICING_TEMPLATES", "CENTRAL_CAMPAIGN_TEMPLATES", "CROSS_BRANCH_REPORTING"]
+    },
+    {
+      "id": "M14_API_INTEGRATIONS",
+      "name": "API & Intégrations",
+      "price": 99,
+      "scope": "TENANT",
+      "dependencies": [],
+      "features": ["PUBLIC_API", "WEBHOOKS", "PAYMENT_ADAPTERS", "ACCOUNTING_ADAPTERS", "MARKETING_ADAPTERS", "BI_AUTOMATION"]
+    },
+    {
+      "id": "M15_AI_OPERATOR",
+      "name": "AI Operator",
+      "price": 149,
+      "scope": "TENANT",
+      "dependencies": [],
+      "usageBilling": "MODEL_USAGE_EXTRA",
+      "features": ["AI_DRAFTS", "NEXT_BEST_ACTION", "CAMPAIGN_DRAFTS", "ANOMALY_EXPLANATIONS", "OWNER_QA"]
+    }
+  ],
+  "bundles": [
+    {
+      "id": "ESSENTIAL",
+      "name": "Essential",
+      "price": 219,
+      "modules": ["PLATFORM_CORE", "M01_OPERATIONS"]
+    },
+    {
+      "id": "BUSINESS",
+      "name": "Business",
+      "price": 399,
+      "modules": ["PLATFORM_CORE", "M01_OPERATIONS", "M02_POS", "M03_INVENTORY", "M05_CRM", "M07_BOOKINGS"]
+    },
+    {
+      "id": "PRO",
+      "name": "Pro",
+      "price": 599,
+      "modules": ["PLATFORM_CORE", "M01_OPERATIONS", "M02_POS", "M03_INVENTORY", "M04_FINANCE", "M05_CRM", "M06_MARKETING", "M07_BOOKINGS", "M08_TOURNAMENTS", "M10_ANALYTICS", "M11_PLAYER_PORTAL"]
+    },
+    {
+      "id": "AUTOMATION",
+      "name": "Automation",
+      "price": 749,
+      "modules": ["PLATFORM_CORE", "M01_OPERATIONS", "M02_POS", "M03_INVENTORY", "M04_FINANCE", "M05_CRM", "M06_MARKETING", "M07_BOOKINGS", "M08_TOURNAMENTS", "M09_DEVICE_CONTROL", "M10_ANALYTICS", "M11_PLAYER_PORTAL", "M12_TEAM_ADVANCED", "M14_API_INTEGRATIONS"]
+    }
+  ],
+  "security": {
+    "includedForAll": true,
+    "neverPaywalled": ["TENANT_ISOLATION", "BASE_RBAC", "SECURE_SECRET_STORAGE", "SIGNED_ENTITLEMENTS", "AUDIT_SECURITY_EVENTS", "REVOCATION"]
+  }
+}
