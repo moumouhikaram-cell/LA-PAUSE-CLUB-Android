@@ -147,7 +147,9 @@ jobs:
           grep -q 'From setup to<br>ready for players' signed-v260-canonical-screens.js
           grep -q 'Owner Sentinel' signed-v260-canonical-screens.js
           grep -q 'ps5-available.png' signed-v260-canonical-screens.js
-          grep -q 'products/redbull.jpg' signed-v260-canonical-screens.js
+          grep -q "PR=M+'products/'" signed-v260-canonical-screens.js
+          grep -q "return PR+'redbull.jpg'" signed-v260-canonical-screens.js
+          grep -q "return PR+'cocacola.jpg'" signed-v260-canonical-screens.js
           grep -q 'dx>82' signed-v260-canonical-app.js
           grep -q 'window.nativeBack' signed-v260-canonical-app.js
           grep -q 'navStack' signed-v260-canonical-app.js
