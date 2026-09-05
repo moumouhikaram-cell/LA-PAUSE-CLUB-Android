@@ -1,5 +1,5 @@
 'use strict';
-// v280 canonical recovery gate: this file is intentionally in both signed and native-smoke path filters.
+// Canonical recovery gates: this file is intentionally in both signed and native-smoke path filters.
 const fs=require('fs'),path=require('path');
 const root=path.resolve(__dirname,'..');
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
@@ -38,6 +38,7 @@ for(const token of ['PBKDF2WithHmacSHA256','MessageDigest.isEqual','createLocalC
 require('./test-v271-bootstrap-runtime.js');
 require('./test-v271-accounting-runtime.js');
 require('./test-v280-canonical-mobile.js');
+require('./test-v290-canonical-batch-01-10.js');
 console.log('V271_EXTENDED_TRUTHFUL_STATES_OK');
 console.log('V271_SAFE_LEGACY_SEED_MIGRATION_OK');
 console.log('V271_VERIFIED_AUTH_CHAIN_OK');
