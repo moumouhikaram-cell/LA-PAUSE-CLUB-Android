@@ -42,61 +42,127 @@ ui_dump(){
   [[ "$ok" = 1 ]] || fail "UIAutomator dump unavailable: $remote"
 }
 
-state_screen(){
+state_json_file(){
   local out="$1"
   require_adb "before state dump $out"
   timeout 8s adb shell run-as "$PKG" cat shared_prefs/gaming_floor_store.xml > "$out" 2>>"$TRACE" || fail "cannot read app state $out"
+}
+
+state_screen(){
+  local out="$1"
+  state_json_file "$out"
   python3 - "$out" <<'PY'
 import json,sys,xml.etree.ElementTree as ET
-p=sys.argv[1]
-r=ET.parse(p).getroot()
-s=''
+r=ET.parse(sys.argv[1]).getroot(); s=''
 for x in r.findall('string'):
-    if x.attrib.get('name')=='state_json':
-        s=x.text or ''
-        break
-if not s:
-    raise SystemExit('NO_STATE_JSON')
+    if x.attrib.get('name')=='state_json': s=x.text or ''; break
+if not s: raise SystemExit('NO_STATE_JSON')
 data=json.loads(s)
 print(int((data.get('ui') or {}).get('screen') or 0))
 PY
+}
+
+state_draft(){
+  local out="$1" field="$2"
+  state_json_file "$out"
+  python3 - "$out" "$field" <<'PY'
+import json,sys,xml.etree.ElementTree as ET
+r=ET.parse(sys.argv[1]).getroot(); s=''
+for x in r.findall('string'):
+    if x.attrib.get('name')=='state_json': s=x.text or ''; break
+if not s: raise SystemExit('NO_STATE_JSON')
+data=json.loads(s); d=(((data.get('ui') or {}).get('draftForms') or {}).get(sys.argv[2]) or {})
+print(str(d.get('value','')))
+PY
+}
+
+launch_app(){
+  adb shell am force-stop "$PKG" >/dev/null 2>&1 || true
+  adb shell am start -W -n "$PKG/$ACTIVITY" >> "$TRACE" 2>&1 || fail "launch failed"
+  sleep 7; require_adb "after app launch"; wait_app_window_focus "after app launch" 20
 }
 
 trace "INSTALL_BEGIN $APK"
 adb install -r "$APK" | tee -a "$TRACE"
 require_adb "after APK install"
 adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || true
-adb logcat -c; adb shell am force-stop "$PKG"
+adb logcat -c
 trace "LAUNCH_BEGIN activity=$ACTIVITY"
-adb shell am start -W -n "$PKG/$ACTIVITY" | tee android-v250-launch.txt | tee -a "$TRACE"
-sleep 7
-require_adb "after app launch"
+launch_app
 PID="$(adb shell pidof "$PKG" | tr -d '\r')"; [[ -n "$PID" ]] || fail "process absent after launch"
-wait_app_window_focus "after app launch" 20
 printf '%s\n' "$(adb shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp' | tail -n 4 || true)" | tee android-v250-focus.txt | tee -a "$TRACE"
 [[ "$(current_focus)" == *"$PKG"* ]] || fail "LA PAUSE OS input window is not foreground after launch"
 echo "ANDROID_V250_LAUNCH_OK" | tee android-native-v250-smoke.txt
 
-# Real WebView interaction gate. The v298/v299 phone shell fixes screen 01 so the
-# top Get Started CTA has a deterministic touch target on the 1080x1794 emulator.
-# adb input tap produces a real Android touch sequence, exercising WebView touch
-# delivery rather than calling JavaScript directly.
-trace "V299_REAL_CTA_TAP_BEGIN x=900 y=215"
+# Physical landing CTA.
+trace "V300_REAL_CTA_TAP_BEGIN x=900 y=215"
 timeout 8s adb shell input tap 900 215 >> "$TRACE" 2>&1 || fail "real CTA tap command failed"
 sleep 3; require_adb "after real CTA tap"
-SCREEN_AFTER_TAP="$(state_screen android-v250-state-after-real-tap.xml | tail -n 1 | tr -d '\r')"
-trace "V299_REAL_CTA_SCREEN=$SCREEN_AFTER_TAP"
+SCREEN_AFTER_TAP="$(state_screen android-v300-state-after-real-tap.xml | tail -n 1 | tr -d '\r')"
+trace "V300_REAL_CTA_SCREEN=$SCREEN_AFTER_TAP"
 [[ "$SCREEN_AFTER_TAP" = "3" ]] || fail "Get Started physical tap did not navigate to Create Account (screen=$SCREEN_AFTER_TAP)"
-echo "ANDROID_V299_REAL_WEBVIEW_TAP_OK" | tee -a android-native-v250-smoke.txt
+echo "ANDROID_V300_REAL_WEBVIEW_TAP_OK" | tee -a android-native-v250-smoke.txt
 
-# Return once through the application's own back stack so the following Back is
-# again a true-root exit-confirmation test.
-timeout 8s adb shell input keyevent KEYCODE_BACK >> "$TRACE" 2>&1 || fail "KEYCODE_BACK failed returning from Create Account"
-sleep 2; require_adb "after app back to landing"
-SCREEN_AFTER_APP_BACK="$(state_screen android-v250-state-after-app-back.xml | tail -n 1 | tr -d '\r')"
-trace "V299_APP_BACK_SCREEN=$SCREEN_AFTER_APP_BACK"
-[[ "$SCREEN_AFTER_APP_BACK" = "1" ]] || fail "app Back did not return to landing root (screen=$SCREEN_AFTER_APP_BACK)"
-wait_app_window_focus "after app back to landing" 12
+# Reproduce the exact real-phone failure: physically tap the HTML input, type
+# through Android's IME path, and prove canonical draft persistence saw it.
+trace "V300_FORM_NAME_TAP x=540 y=630"
+adb shell input tap 540 630 >> "$TRACE" 2>&1 || fail "name field tap failed"
+sleep 1
+adb shell input text 'KaramQA' >> "$TRACE" 2>&1 || fail "name field typing failed"
+sleep 1
+NAME_DRAFT="$(state_draft android-v300-state-name.xml newName | tail -n 1 | tr -d '\r')"
+trace "V300_FORM_NAME_VALUE=$NAME_DRAFT"
+[[ "$NAME_DRAFT" = "KaramQA" ]] || fail "Full name did not receive physical Android text (value=$NAME_DRAFT)"
+
+# Keyboard TAB validates focus transfer without JavaScript injection.
+adb shell input keyevent KEYCODE_TAB >> "$TRACE" 2>&1 || fail "TAB to email failed"
+sleep .5
+adb shell input text 'qa@lapause.test' >> "$TRACE" 2>&1 || fail "email field typing failed"
+sleep 1
+EMAIL_DRAFT="$(state_draft android-v300-state-email.xml newEmail | tail -n 1 | tr -d '\r')"
+trace "V300_FORM_EMAIL_VALUE=$EMAIL_DRAFT"
+[[ "$EMAIL_DRAFT" = "qa@lapause.test" ]] || fail "Email did not receive physical Android text (value=$EMAIL_DRAFT)"
+
+adb shell input keyevent KEYCODE_TAB >> "$TRACE" 2>&1 || fail "TAB to password failed"
+sleep .5
+adb shell input text 'Pass1234' >> "$TRACE" 2>&1 || fail "password field typing failed"
+sleep 1
+# Hide IME; first Back is consumed by the keyboard while the WebView remains on screen 3.
+adb shell input keyevent KEYCODE_BACK >> "$TRACE" 2>&1 || true
+sleep 1
+SCREEN_BEFORE_SUBMIT="$(state_screen android-v300-state-before-submit.xml | tail -n 1 | tr -d '\r')"
+[[ "$SCREEN_BEFORE_SUBMIT" = "3" ]] || fail "hiding IME unexpectedly navigated away from Create Account (screen=$SCREEN_BEFORE_SUBMIT)"
+
+# Button location can move slightly after IME resize. Try the expected physical
+# button band, then one scrolled position; success is screen 4 with a real local credential.
+SUBMITTED=0
+for y in 1240 1340 1460; do
+  trace "V300_CREATE_ACCOUNT_TAP x=540 y=$y"
+  adb shell input tap 540 "$y" >> "$TRACE" 2>&1 || true
+  sleep 2
+  SCR="$(state_screen android-v300-state-submit-$y.xml | tail -n 1 | tr -d '\r')"
+  if [[ "$SCR" = "4" ]]; then SUBMITTED=1; break; fi
+done
+if [[ "$SUBMITTED" != 1 ]]; then
+  adb shell input swipe 540 1480 540 900 350 >> "$TRACE" 2>&1 || true
+  sleep 1
+  for y in 1120 1260 1400; do
+    trace "V300_CREATE_ACCOUNT_SCROLLED_TAP x=540 y=$y"
+    adb shell input tap 540 "$y" >> "$TRACE" 2>&1 || true
+    sleep 2
+    SCR="$(state_screen android-v300-state-submit-scroll-$y.xml | tail -n 1 | tr -d '\r')"
+    if [[ "$SCR" = "4" ]]; then SUBMITTED=1; break; fi
+  done
+fi
+[[ "$SUBMITTED" = 1 ]] || fail "Create account visible button never submitted the physically typed form"
+echo "ANDROID_V300_FORM_FOCUS_INPUT_SUBMIT_OK" | tee -a android-native-v250-smoke.txt
+
+# Reset the smoke account/state before root Back/rotation checks so those remain
+# independent from authentication/navigation state.
+adb shell pm clear "$PKG" >> "$TRACE" 2>&1 || fail "pm clear failed after form smoke"
+adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || true
+launch_app
+PID="$(adb shell pidof "$PKG" | tr -d '\r')"; [[ -n "$PID" ]] || fail "process absent after clean relaunch"
 
 # True root Back must keep the process alive and expose native exit confirmation.
 timeout 8s adb shell input keyevent KEYCODE_BACK >> "$TRACE" 2>&1 || fail "KEYCODE_BACK failed on root"
