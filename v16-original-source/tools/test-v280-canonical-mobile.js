@@ -21,7 +21,7 @@ must(js.includes('if(w<=600){S.ui.screen=42')&&js.includes('else if(w<=1100){S.u
 must(css.includes('.canon-shell>.canon-bottomnav{display:none!important}'),'invented global bottom nav must be hidden');
 must(css.includes('.canonical-mobile-nav{display:grid!important'),'canonical mobile nav missing');
 must(app.includes("function bind(scope){scope.querySelectorAll('[data-go]')"),'data-go navigation binder missing');
-must(gradle.includes('versionCode = 32')&&gradle.includes('versionName = "2.6.1"'),'2.6.1 build identity missing');
+must(gradle.includes('versionCode = 31')&&gradle.includes('versionName = "2.6.0"'),'2.6.0 preview build identity missing');
 console.log('V280_CANONICAL_MOBILE_ROOT_OK');
 console.log('V280_OPERATOR_TABS_CLICKABLE_OK');
 console.log('V280_SETUP_BRANCH_FLOW_OK');
