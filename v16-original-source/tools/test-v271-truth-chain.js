@@ -1,5 +1,5 @@
 'use strict';
-// Canonical recovery gates: v297 mobile interaction + Android system-bar recovery + v296 unified product graph + v295 unified operational shell + v294 confirmed premium mobile home + v291 corrected batch 01-10.
+// Canonical recovery gates: v297 physical-phone CTA/runtime + responsive/system-bar recovery + v296 unified product graph + v295 unified operational shell + v294 confirmed premium mobile home + v291 corrected batch 01-10.
 const fs=require('fs'),path=require('path');
 const root=path.resolve(__dirname,'..');
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
@@ -56,3 +56,4 @@ console.log('V295_UNIFIED_OPERATIONAL_SHELL_GATE_OK');
 console.log('V296_UNIFIED_PRODUCT_GRAPH_GATE_OK');
 console.log('V297_MOBILE_INTERACTION_RECOVERY_GATE_OK');
 console.log('V297_ANDROID_SYSTEM_BAR_RECOVERY_GATE_OK');
+console.log('V297_PHYSICAL_PHONE_CTA_RUNTIME_GATE_OK');
