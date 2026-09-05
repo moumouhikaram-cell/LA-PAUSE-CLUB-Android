@@ -13,7 +13,7 @@ for(const f of ['canonical-batch-01-10-v290.css','canonical-batch-01-10-v290-fix
 must(html.indexOf('canonical-hotfix-v280.js')<html.indexOf('canonical-batch-01-10-v290.js'),'v290 must supersede v280');
 must(html.indexOf('canonical-batch-01-10-v290.js')<html.indexOf('canonical-app.js'),'v290 must register before first render');
 for(let i=1;i<=10;i++)must(js.includes(`U.register(${i},function()`),'canonical renderer missing screen '+i);
-const labels=['Sales Landing','Welcome back','Create your account','Create your organization','Switch workspace','What kind of venue','Which branch are','From setup to','How do you want','Set up your resources'];
+const labels=['THE ALL-IN-ONE GAMING VENUE OS','Welcome back','Create your account','Create your organization','Switch workspace','What kind of venue','Which branch are','From setup to','How do you want','Set up your resources'];
 for(const x of labels)must(js.includes(x),'frozen visual copy missing '+x);
 for(const x of ['data-action="signin"','data-action="create-account"','data-v290="create-org"','data-action="select-workspace:','data-v290="venue-type:','data-action="select-branch:','data-v290="onboarding-next"','data-v290="save-pricing"','data-v290="add-zone"','data-v290="add-device"','data-v290="save-layout"'])must(js.includes(x),'interaction missing '+x);
 for(const x of ['GAMING_CAFE','ESPORTS_ARENA','VR_EXPERIENCE','FAMILY_ENTERTAINMENT','HYBRID_VENUE'])must(js.includes(x),'venue template missing '+x);
