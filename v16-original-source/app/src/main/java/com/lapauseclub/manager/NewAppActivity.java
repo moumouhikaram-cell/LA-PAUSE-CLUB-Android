@@ -30,6 +30,7 @@ public final class NewAppActivity extends Activity {
     private static final String ENTRY = ASSET_PREFIX + "v250/index.html";
     private WebView webView;
     private CoreStore coreStore;
+    private boolean exitDialogVisible;
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
@@ -92,10 +93,25 @@ public final class NewAppActivity extends Activity {
     }
 
     @Override public void onBackPressed() {
-        if (webView == null) { super.onBackPressed(); return; }
+        if (webView == null) { confirmExit(); return; }
         webView.evaluateJavascript("window.nativeBack ? window.nativeBack() : false", value -> {
-            if (!"true".equals(value)) finish();
+            if (!"true".equals(value)) confirmExit();
         });
+    }
+
+    private void confirmExit() {
+        if (exitDialogVisible || isFinishing()) return;
+        exitDialogVisible = true;
+        new AlertDialog.Builder(this)
+                .setTitle("Quitter LA PAUSE OS ?")
+                .setMessage("Vos données sont enregistrées. Voulez-vous vraiment fermer l’application ?")
+                .setNegativeButton("Rester", (d, w) -> exitDialogVisible = false)
+                .setPositiveButton("Quitter", (d, w) -> {
+                    exitDialogVisible = false;
+                    finish();
+                })
+                .setOnCancelListener(d -> exitDialogVisible = false)
+                .show();
     }
 
     @Override protected void onDestroy() {
