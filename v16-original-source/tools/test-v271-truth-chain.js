@@ -1,5 +1,5 @@
 'use strict';
-// Canonical recovery gates: v291 corrected frozen batch 01-10 candidate, intentionally in both signed and native-smoke path filters.
+// Canonical recovery gates: v292 user-approved mobile home + v291 corrected batch 01-10.
 const fs=require('fs'),path=require('path');
 const root=path.resolve(__dirname,'..');
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
@@ -40,8 +40,10 @@ require('./test-v271-accounting-runtime.js');
 require('./test-v280-canonical-mobile.js');
 require('./test-v290-canonical-batch-01-10.js');
 require('./test-v291-frozen-01-10-interaction.js');
+require('./test-v292-mobile-home.js');
 console.log('V271_EXTENDED_TRUTHFUL_STATES_OK');
 console.log('V271_SAFE_LEGACY_SEED_MIGRATION_OK');
 console.log('V271_VERIFIED_AUTH_CHAIN_OK');
 console.log('V271_ACCOUNTING_INTEGRITY_OK');
 console.log('V271_NO_SYNTHETIC_SUCCESS_GATE_OK');
+console.log('V292_USER_APPROVED_MOBILE_HOME_GATE_OK');
