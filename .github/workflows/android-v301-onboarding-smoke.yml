@@ -1,0 +1,87 @@
+name: LA PAUSE OS v301 Physical SaaS Onboarding Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - android-new-app-v250
+    paths:
+      - "v16-original-source/app/src/main/**"
+      - "v16-original-source/tools/test-v271-truth-chain.js"
+      - "v16-original-source/tools/test-v301-saas-lifecycle.js"
+      - "v16-original-source/tools/cdp-v301-probe.js"
+      - "v16-original-source/tools/android-v301-onboarding-smoke.sh"
+      - ".github/workflows/android-v301-onboarding-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  physical-v301-onboarding:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.4.1"
+
+      - name: Enable KVM acceleration
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if [ -e /dev/kvm ]; then
+            sudo chmod 666 /dev/kvm
+            ls -l /dev/kvm
+          fi
+
+      - name: Configure Android SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+
+      - name: Build debug APK and run v301 product gates
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          node tools/test-v271-truth-chain.js
+          gradle --no-daemon --stacktrace :app:assembleDebug
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F 'assets/v250/saas-lifecycle-v301.js'
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F 'assets/v250/saas-lifecycle-v301.css'
+
+      - name: Run full four-step onboarding with physical Android input
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          target: default
+          arch: x86_64
+          profile: pixel_2
+          cores: 1
+          ram-size: 1536M
+          heap-size: 384M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
+          script: bash v16-original-source/tools/android-v301-onboarding-smoke.sh
+
+      - name: Upload v301 onboarding evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v301-physical-onboarding-${{ github.run_number }}
+          path: |
+            android-v301-onboarding-smoke.txt
+            android-v301-onboarding-trace.txt
+          if-no-files-found: warn
+          retention-days: 7
