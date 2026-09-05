@@ -19,10 +19,14 @@ for(const token of ["'EMPTY'","'NOT CONFIGURED'","'NO DATA'",'verifiedByNative==
 must(!extended.includes("S.meta.lastBackupAt?'PASS':'CHECK'"),'backup health must not infer PASS from timestamp');
 must(!extended.includes("'Active')+r('Console Duo'"),'pricing must not claim Active statically');
 must(bootstrap.includes("commercialBootstrap='UNCONFIGURED_V271'"),'commercial bootstrap guard missing');
+for(const token of ['looksLikePristineLegacySeed','owner@lapauseos.local','tenant-lapause','workspace-main','venue-elhajeb','branch-main','migratePristineLegacy','legacyPristineSeedMigrated']) must(bootstrap.includes(token),'safe legacy migration guard missing '+token);
+must(bootstrap.includes("emptyCollections(['sessions','payments','orders','sales','clients'"),'legacy migration must require empty operational data');
+must(bootstrap.includes("if(hadState&&marker!=='UNCONFIGURED_V271'&&!migratePristineLegacy)return"),'non-pristine existing state must be preserved');
 must(auth.includes('hasLocalCredential'),'auth UI credential state missing');
 must(safety.includes('verifyLocalCredential')&&safety.includes('SIGN_IN_REJECTED'),'verified sign-in rejection path missing');
 must(safety.includes("status:'PENDING'")&&safety.includes('verifiedByNative:false'),'pending pairing/backup truth missing');
 for(const token of ['PBKDF2WithHmacSHA256','MessageDigest.isEqual','createLocalCredential','verifyLocalCredential']) must(activity.includes(token),'native auth guarantee missing '+token);
 console.log('V271_EXTENDED_TRUTHFUL_STATES_OK');
+console.log('V271_SAFE_LEGACY_SEED_MIGRATION_OK');
 console.log('V271_VERIFIED_AUTH_CHAIN_OK');
 console.log('V271_NO_SYNTHETIC_SUCCESS_GATE_OK');
