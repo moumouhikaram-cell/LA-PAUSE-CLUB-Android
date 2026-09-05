@@ -26,6 +26,7 @@ must(auth.includes('hasLocalCredential'),'auth UI credential state missing');
 must(safety.includes('verifyLocalCredential')&&safety.includes('SIGN_IN_REJECTED'),'verified sign-in rejection path missing');
 must(safety.includes("status:'PENDING'")&&safety.includes('verifiedByNative:false'),'pending pairing/backup truth missing');
 for(const token of ['PBKDF2WithHmacSHA256','MessageDigest.isEqual','createLocalCredential','verifyLocalCredential']) must(activity.includes(token),'native auth guarantee missing '+token);
+require('./test-v271-bootstrap-runtime.js');
 console.log('V271_EXTENDED_TRUTHFUL_STATES_OK');
 console.log('V271_SAFE_LEGACY_SEED_MIGRATION_OK');
 console.log('V271_VERIFIED_AUTH_CHAIN_OK');
