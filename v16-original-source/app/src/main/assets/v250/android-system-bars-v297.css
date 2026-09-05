@@ -1,0 +1,26 @@
+/* Android 15/16 targetSdk 36 edge-to-edge compatibility.
+   WebView safe-area env values are not reliable for Android status/navigation bars,
+   so narrow-phone shells reserve a conservative touch-safe zone as a fallback. */
+@media (max-width:430px){
+  .b291-screen{
+    padding-top:max(34px,env(safe-area-inset-top))!important;
+    padding-bottom:max(62px,env(safe-area-inset-bottom))!important;
+  }
+  #modalRoot .modal-backdrop{
+    padding-top:max(12px,env(safe-area-inset-top))!important;
+    padding-bottom:max(58px,env(safe-area-inset-bottom))!important;
+  }
+  #modalRoot .modal-sheet,#modalRoot .b291-modal,#modalRoot .v296-sheet{
+    max-height:calc(100dvh - 78px)!important;
+  }
+  body.v295-ops #app>.canon-shell{
+    padding-top:max(26px,env(safe-area-inset-top))!important;
+  }
+  body.v295-ops .v296-nav{
+    bottom:max(42px,env(safe-area-inset-bottom))!important;
+  }
+}
+@media (orientation:landscape) and (max-height:540px){
+  .b291-screen{padding-top:max(16px,env(safe-area-inset-top))!important;padding-bottom:max(20px,env(safe-area-inset-bottom))!important}
+  #modalRoot .modal-backdrop{padding-bottom:max(24px,env(safe-area-inset-bottom))!important}
+}
