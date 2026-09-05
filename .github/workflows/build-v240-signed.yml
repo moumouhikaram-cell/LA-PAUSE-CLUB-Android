@@ -60,6 +60,16 @@ jobs:
           echo "LA_PAUSE_ENTITLEMENT_KEY_ID=$ENT_KID" >> "$GITHUB_ENV"
           echo "SAAS_ENTITLEMENT_PUBLIC_KEY_PINNED_OK $ACTUAL_PUB_SHA"
 
+      - name: Validate clean repository entitlement runtime
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check app/src/main/assets/entitlement-offline-v240.js
+          node tools/native-entitlement-offline-v240.js
+          grep -q "window.LP_BOOTSTRAP_ENTITLEMENT_B64=''" app/src/main/assets/bootstrap-entitlement-v240.js
+          echo CLEAN_REPOSITORY_ENTITLEMENT_RUNTIME_OK
+
       - name: Verify and stage signed offline bootstrap entitlement
         working-directory: v16-original-source
         shell: bash
@@ -102,7 +112,6 @@ jobs:
           set -euxo pipefail
           bash tools/prepare-client-media-v230.sh
           node --check app/src/main/assets/entitlement-offline-v240.js
-          node tools/native-entitlement-offline-v240.js
           grep -q 'versionCode = 29' app/build.gradle.kts
           grep -q 'versionName = "2.4.0"' app/build.gradle.kts
           grep -q 'isMinifyEnabled = true' app/build.gradle.kts
