@@ -37,7 +37,8 @@ must(registry.includes("[60,'Pricing / Offers / Dynamic Rules'"),'60-screen regi
 for(let n=1;n<=44;n++) must(canonicalScreens.includes(`register(${n},`),`canonical renderer ${n} missing`);
 for(let n=45;n<=60;n++) must(legacyRenderers.includes(`register(${n},`),`non-regression renderer ${n} missing`);
 for(const token of ['More Play.<br><span class="grad">More Revenue.','From setup to<br>ready for players','Turn Moments into Revenue','AI ASSISTED','Duo · 30 min','Charge per game. Easy +1 game.','Quick Actions for ','Smart Cart','CASH REGISTER','AI Revenue Assistant','Tournaments that Bring','Fleet Health','Pair Device','AI Support Agent','Revenue Forecast','LA PAUSE HQ','Built for Teams','Choose the Plan','Integrate Everything','Make It Yours','Business Configuration','Owner Sentinel','mobile-frame','tablet-frame','Subscription Required']) must(canonicalScreens.includes(token),`canonical visual element missing: ${token}`);
-for(const asset of ['ps5-available.png','esport-dynamic.png','football-dynamic.png','combat-dynamic.png','premium/billiard.jpg','premium/pc.jpg','products/redbull.jpg','products/cocacola.jpg']) must(canonicalScreens.includes(asset)||runtime.includes(asset),`HD/dynamic asset missing ${asset}`);
+for(const asset of ['ps5-available.png','esport-dynamic.png','football-dynamic.png','combat-dynamic.png','premium/billiard.jpg','premium/pc.jpg','redbull.jpg','cocacola.jpg']) must(canonicalScreens.includes(asset)||runtime.includes(asset),`HD/dynamic asset missing ${asset}`);
+must(canonicalScreens.includes("PR=M+'products/'")&&canonicalScreens.includes("return PR+'redbull.jpg'")&&canonicalScreens.includes("return PR+'cocacola.jpg'"),'canonical product media mapper missing');
 
 must(canonicalCss.includes('--bg:#020d1c'),'canonical navy palette missing');
 must(canonicalCss.includes('#10d9ff')&&canonicalCss.includes('#6255ff'),'canonical cyan/indigo palette missing');
