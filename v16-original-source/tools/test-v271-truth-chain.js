@@ -36,6 +36,7 @@ must(safety.includes("status:'PENDING'")&&safety.includes('verifiedByNative:fals
 for(const token of ['PBKDF2WithHmacSHA256','MessageDigest.isEqual','createLocalCredential','verifyLocalCredential']) must(activity.includes(token),'native auth guarantee missing '+token);
 require('./test-v271-bootstrap-runtime.js');
 require('./test-v271-accounting-runtime.js');
+require('./test-v280-canonical-mobile.js');
 console.log('V271_EXTENDED_TRUTHFUL_STATES_OK');
 console.log('V271_SAFE_LEGACY_SEED_MIGRATION_OK');
 console.log('V271_VERIFIED_AUTH_CHAIN_OK');
