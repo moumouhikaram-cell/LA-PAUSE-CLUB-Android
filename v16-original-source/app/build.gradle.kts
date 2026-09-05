@@ -23,8 +23,8 @@ android {
         applicationId = "com.lapauseclub.manager"
         minSdk = 26
         targetSdk = 36
-        versionCode = 31
-        versionName = "2.6.0"
+        versionCode = 32
+        versionName = "2.6.1"
         buildConfigField("String", "ENTITLEMENT_PUBLIC_KEY_B64", "\"$entitlementPublicKey\"")
         buildConfigField("String", "ENTITLEMENT_KEY_ID", "\"$entitlementKeyId\"")
     }
