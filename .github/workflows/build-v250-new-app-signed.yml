@@ -53,6 +53,7 @@ jobs:
         run: |
           set -euxo pipefail
           node --check app/src/main/assets/v250/saas-core.js
+          node --check app/src/main/assets/v250/accounting-integrity-v271.js
           node --check app/src/main/assets/v250/version-v260.js
           node --check app/src/main/assets/v250/media.js
           node --check app/src/main/assets/v250/canonical-screens.js
@@ -79,6 +80,7 @@ jobs:
           grep -q 'canonical-pixel-v270.css' app/src/main/assets/v250/index.html
           grep -q 'media.js' app/src/main/assets/v250/index.html
           grep -q 'screens-00-truthful-bootstrap-v271.js' app/src/main/assets/v250/index.html
+          grep -q 'accounting-integrity-v271.js' app/src/main/assets/v250/index.html
           grep -q 'screens-96-truthful-extended-v271.js' app/src/main/assets/v250/index.html
           grep -q 'screens-97-auth-ui-v271.js' app/src/main/assets/v250/index.html
           grep -q 'screens-98-truthful-ui-v271.js' app/src/main/assets/v250/index.html
@@ -150,6 +152,7 @@ jobs:
           unzip -l "$OUT" > signed-v260-files.txt
           for f in \
             assets/v250/index.html \
+            assets/v250/accounting-integrity-v271.js \
             assets/v250/canonical-app.js \
             assets/v250/canonical-overrides-v270.js \
             assets/v250/canonical-pixel-v270.css \
@@ -167,6 +170,7 @@ jobs:
           unzip -p "$OUT" assets/v250/canonical-screens.js > signed-v260-canonical-screens.js
           unzip -p "$OUT" assets/v250/canonical-app.js > signed-v260-canonical-app.js
           unzip -p "$OUT" assets/v250/saas-core.js > signed-v260-core.js
+          unzip -p "$OUT" assets/v250/accounting-integrity-v271.js > signed-v260-accounting.js
           unzip -p "$OUT" assets/v250/version-v260.js > signed-v260-version.js
 
           grep -q 'canonical-screens.js' signed-v260-index.html
@@ -176,6 +180,7 @@ jobs:
           grep -q 'canonical-pixel-v270.css' signed-v260-index.html
           grep -q 'media.js' signed-v260-index.html
           grep -q 'screens-00-truthful-bootstrap-v271.js' signed-v260-index.html
+          grep -q 'accounting-integrity-v271.js' signed-v260-index.html
           grep -q 'screens-96-truthful-extended-v271.js' signed-v260-index.html
           grep -q 'screens-97-auth-ui-v271.js' signed-v260-index.html
           grep -q 'screens-98-truthful-ui-v271.js' signed-v260-index.html
@@ -193,6 +198,9 @@ jobs:
           grep -q 'dx>82' signed-v260-canonical-app.js
           grep -q 'window.nativeBack' signed-v260-canonical-app.js
           grep -q 'navStack' signed-v260-canonical-app.js
+          grep -q 'grossRevenueToday' signed-v260-accounting.js
+          grep -q 'refundsToday' signed-v260-accounting.js
+          grep -q 'grossRevenueToday()-refundsToday()' signed-v260-accounting.js
           grep -q '@media(orientation:landscape)' signed-v260-canonical-ui.css
           grep -q '\[dir="rtl"\]' signed-v260-canonical-ui.css
           grep -q 'M15_AI_OPERATOR' signed-v260-core.js
@@ -218,6 +226,7 @@ jobs:
             echo 'Navigation: modal-first back + internal stack + right-swipe back + exit confirmation at true root'
             echo 'Responsive: phone portrait + phone landscape + tablet + RTL + state restoration'
             echo 'Operator: Duo 30 / per-game billiard / +30 / +1 game / snack / NBA / assisted revenue'
+            echo 'Accounting: posted gross minus refund ledger exactly once; refund regression runtime-tested'
             echo 'SaaS truth: empty bootstrap + truthful 45-60 overrides + no fake ONLINE/VERIFIED/ACTIVE + GO LIVE evidence gates'
             echo 'Auth: native PBKDF2-HMAC-SHA256 local credential verification; no unchecked sign-in'
             echo 'SaaS: tenant/workspace/venue/branch + M01-M15 + entitlement/RBAC + Edge/Cloud'
