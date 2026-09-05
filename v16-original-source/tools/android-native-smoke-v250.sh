@@ -42,6 +42,34 @@ ui_dump(){
   [[ "$ok" = 1 ]] || fail "UIAutomator dump unavailable: $remote"
 }
 
+ui_edit_center(){
+  local file="$1" idx="$2"
+  python3 - "$file" "$idx" <<'PY'
+import re,sys,xml.etree.ElementTree as ET
+root=ET.parse(sys.argv[1]).getroot(); idx=int(sys.argv[2])
+nodes=[n for n in root.iter('node') if n.attrib.get('class')=='android.widget.EditText' and n.attrib.get('enabled','true')=='true']
+if idx>=len(nodes): raise SystemExit(2)
+b=nodes[idx].attrib.get('bounds',''); m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',b)
+if not m: raise SystemExit(3)
+x1,y1,x2,y2=map(int,m.groups()); print((x1+x2)//2,(y1+y2)//2)
+PY
+}
+
+ui_text_center(){
+  local file="$1" text="$2"
+  python3 - "$file" "$text" <<'PY'
+import re,sys,xml.etree.ElementTree as ET
+root=ET.parse(sys.argv[1]).getroot(); needle=sys.argv[2].strip().lower()
+for n in root.iter('node'):
+    hay=((n.attrib.get('text') or '')+' '+(n.attrib.get('content-desc') or '')).strip().lower()
+    if needle in hay and n.attrib.get('enabled','true')=='true':
+        m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
+        if m:
+            x1,y1,x2,y2=map(int,m.groups()); print((x1+x2)//2,(y1+y2)//2); raise SystemExit(0)
+raise SystemExit(2)
+PY
+}
+
 state_json_file(){
   local out="$1"
   require_adb "before state dump $out"
@@ -94,7 +122,6 @@ printf '%s\n' "$(adb shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp' 
 [[ "$(current_focus)" == *"$PKG"* ]] || fail "LA PAUSE OS input window is not foreground after launch"
 echo "ANDROID_V250_LAUNCH_OK" | tee android-native-v250-smoke.txt
 
-# Physical landing CTA.
 trace "V300_REAL_CTA_TAP_BEGIN x=900 y=215"
 timeout 8s adb shell input tap 900 215 >> "$TRACE" 2>&1 || fail "real CTA tap command failed"
 sleep 3; require_adb "after real CTA tap"
@@ -103,10 +130,20 @@ trace "V300_REAL_CTA_SCREEN=$SCREEN_AFTER_TAP"
 [[ "$SCREEN_AFTER_TAP" = "3" ]] || fail "Get Started physical tap did not navigate to Create Account (screen=$SCREEN_AFTER_TAP)"
 echo "ANDROID_V300_REAL_WEBVIEW_TAP_OK" | tee -a android-native-v250-smoke.txt
 
-# Reproduce the exact real-phone failure: physically tap the HTML input, type
-# through Android's IME path, and prove canonical draft persistence saw it.
-trace "V300_FORM_NAME_TAP x=540 y=630"
-adb shell input tap 540 630 >> "$TRACE" 2>&1 || fail "name field tap failed"
+# Ask Android accessibility for the rendered WebView fields. This removes guessed
+# coordinates and proves the controls actually exist in the Android hit-test tree.
+ui_dump /sdcard/lp-v300-create.xml android-v300-create.xml
+printf '\n--- V300_CREATE_ACCESSIBILITY ---\n' >> "$TRACE"; cat android-v300-create.xml >> "$TRACE"; printf '\n--- END ---\n' >> "$TRACE"
+EDIT_COUNT="$(python3 - android-v300-create.xml <<'PY'
+import sys,xml.etree.ElementTree as ET
+r=ET.parse(sys.argv[1]).getroot(); print(sum(1 for n in r.iter('node') if n.attrib.get('class')=='android.widget.EditText' and n.attrib.get('enabled','true')=='true'))
+PY
+)"
+trace "V300_ACCESSIBLE_EDIT_FIELDS=$EDIT_COUNT"
+[[ "$EDIT_COUNT" -ge 3 ]] || fail "Create Account inputs are not exposed as editable Android controls (count=$EDIT_COUNT)"
+read NAME_X NAME_Y < <(ui_edit_center android-v300-create.xml 0) || fail "cannot locate Full name input bounds"
+trace "V300_FORM_NAME_TAP x=$NAME_X y=$NAME_Y"
+adb shell input tap "$NAME_X" "$NAME_Y" >> "$TRACE" 2>&1 || fail "name field tap failed"
 sleep 1
 adb shell input text 'KaramQA' >> "$TRACE" 2>&1 || fail "name field typing failed"
 sleep 1
@@ -114,7 +151,6 @@ NAME_DRAFT="$(state_draft android-v300-state-name.xml newName | tail -n 1 | tr -
 trace "V300_FORM_NAME_VALUE=$NAME_DRAFT"
 [[ "$NAME_DRAFT" = "KaramQA" ]] || fail "Full name did not receive physical Android text (value=$NAME_DRAFT)"
 
-# Keyboard TAB validates focus transfer without JavaScript injection.
 adb shell input keyevent KEYCODE_TAB >> "$TRACE" 2>&1 || fail "TAB to email failed"
 sleep .5
 adb shell input text 'qa@lapause.test' >> "$TRACE" 2>&1 || fail "email field typing failed"
@@ -127,44 +163,30 @@ adb shell input keyevent KEYCODE_TAB >> "$TRACE" 2>&1 || fail "TAB to password f
 sleep .5
 adb shell input text 'Pass1234' >> "$TRACE" 2>&1 || fail "password field typing failed"
 sleep 1
-# Hide IME; first Back is consumed by the keyboard while the WebView remains on screen 3.
 adb shell input keyevent KEYCODE_BACK >> "$TRACE" 2>&1 || true
 sleep 1
 SCREEN_BEFORE_SUBMIT="$(state_screen android-v300-state-before-submit.xml | tail -n 1 | tr -d '\r')"
 [[ "$SCREEN_BEFORE_SUBMIT" = "3" ]] || fail "hiding IME unexpectedly navigated away from Create Account (screen=$SCREEN_BEFORE_SUBMIT)"
 
-# Button location can move slightly after IME resize. Try the expected physical
-# button band, then one scrolled position; success is screen 4 with a real local credential.
-SUBMITTED=0
-for y in 1240 1340 1460; do
-  trace "V300_CREATE_ACCOUNT_TAP x=540 y=$y"
-  adb shell input tap 540 "$y" >> "$TRACE" 2>&1 || true
-  sleep 2
-  SCR="$(state_screen android-v300-state-submit-$y.xml | tail -n 1 | tr -d '\r')"
-  if [[ "$SCR" = "4" ]]; then SUBMITTED=1; break; fi
-done
-if [[ "$SUBMITTED" != 1 ]]; then
-  adb shell input swipe 540 1480 540 900 350 >> "$TRACE" 2>&1 || true
-  sleep 1
-  for y in 1120 1260 1400; do
-    trace "V300_CREATE_ACCOUNT_SCROLLED_TAP x=540 y=$y"
-    adb shell input tap 540 "$y" >> "$TRACE" 2>&1 || true
-    sleep 2
-    SCR="$(state_screen android-v300-state-submit-scroll-$y.xml | tail -n 1 | tr -d '\r')"
-    if [[ "$SCR" = "4" ]]; then SUBMITTED=1; break; fi
-  done
+ui_dump /sdcard/lp-v300-submit.xml android-v300-submit.xml
+printf '\n--- V300_SUBMIT_ACCESSIBILITY ---\n' >> "$TRACE"; cat android-v300-submit.xml >> "$TRACE"; printf '\n--- END ---\n' >> "$TRACE"
+if read BTN_X BTN_Y < <(ui_text_center android-v300-submit.xml 'Create account'); then
+  trace "V300_CREATE_ACCOUNT_ACCESSIBLE_TAP x=$BTN_X y=$BTN_Y"
+  adb shell input tap "$BTN_X" "$BTN_Y" >> "$TRACE" 2>&1 || fail "Create account tap failed"
+else
+  fail "Create account button is not exposed in Android accessibility tree"
 fi
-[[ "$SUBMITTED" = 1 ]] || fail "Create account visible button never submitted the physically typed form"
+sleep 3
+SCR="$(state_screen android-v300-state-after-submit.xml | tail -n 1 | tr -d '\r')"
+trace "V300_CREATE_ACCOUNT_RESULT_SCREEN=$SCR"
+[[ "$SCR" = "4" ]] || fail "Create account physical button did not submit the physically typed valid form (screen=$SCR)"
 echo "ANDROID_V300_FORM_FOCUS_INPUT_SUBMIT_OK" | tee -a android-native-v250-smoke.txt
 
-# Reset the smoke account/state before root Back/rotation checks so those remain
-# independent from authentication/navigation state.
 adb shell pm clear "$PKG" >> "$TRACE" 2>&1 || fail "pm clear failed after form smoke"
 adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || true
 launch_app
 PID="$(adb shell pidof "$PKG" | tr -d '\r')"; [[ -n "$PID" ]] || fail "process absent after clean relaunch"
 
-# True root Back must keep the process alive and expose native exit confirmation.
 timeout 8s adb shell input keyevent KEYCODE_BACK >> "$TRACE" 2>&1 || fail "KEYCODE_BACK failed on root"
 sleep 2; require_adb "after root Back"
 PID_AFTER_BACK="$(adb shell pidof "$PKG" | tr -d '\r')"; [[ "$PID_AFTER_BACK" = "$PID" ]] || fail "process changed/died after root Back"
@@ -173,7 +195,6 @@ grep -q "Voulez-vous vraiment fermer" android-v250-window-back.xml || fail "exit
 grep -q "LA PAUSE OS" android-v250-window-back.xml || fail "exit dialog identity missing"
 echo "ANDROID_V250_ROOT_BACK_OK" | tee -a android-native-v250-smoke.txt
 
-# Dismiss dialog, rotate both directions; configChanges must preserve the same process/WebView.
 timeout 8s adb shell input keyevent KEYCODE_BACK >> "$TRACE" 2>&1 || fail "KEYCODE_BACK failed dismissing exit dialog"
 sleep 1; wait_app_window_focus "after dialog dismiss" 12
 PID_BEFORE="$(adb shell pidof "$PKG" | tr -d '\r')"; [[ -n "$PID_BEFORE" ]] || fail "process missing before rotation"
