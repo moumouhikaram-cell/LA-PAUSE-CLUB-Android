@@ -1,0 +1,18 @@
+'use strict';
+const fs=require('fs'),path=require('path'),vm=require('vm');
+const root=path.resolve(__dirname,'..'),read=p=>fs.readFileSync(path.join(root,p),'utf8');
+const must=(x,m)=>{if(!x){console.error('V301_EXPLICIT_LOCK_FAIL',m);process.exit(1);}};
+const html=read('app/src/main/assets/v250/index.html'),src=read('app/src/main/assets/v250/saas-lifecycle-v301-hardlock.js');
+must(html.includes('saas-lifecycle-v301-hardlock.js'),'hardlock not loaded');
+must(html.indexOf('saas-lifecycle-v301.js')<html.indexOf('saas-lifecycle-v301-hardlock.js'),'hardlock must follow lifecycle');
+must(html.indexOf('saas-lifecycle-v301-hardlock.js')<html.indexOf('canonical-app.js'),'hardlock must execute before first render');
+for(const t of ['EXPLICIT_ACTIVATION_REQUIRED','trialActivatedAt','V301_TRIAL_ACTIVATED','S.lifecycle.setupComplete=false'])must(src.includes(t),'missing '+t);
+let routed=null,persisted=null;
+const S={identity:{signedIn:true},ui:{screen:42},lifecycle:{setupComplete:true,trialActivatedAt:null,stage:'LIVE'},audit:[]};
+const A={state:S,setScreen:n=>{routed=n;return n;},persist:(t,p)=>{persisted={t,p};}};
+const ctx={window:null,LPOS:A};ctx.window=ctx;vm.createContext(ctx);vm.runInContext(src,ctx);
+must(S.lifecycle.setupComplete===false,'legacy implied completion must be relocked');
+must(S.lifecycle.stage==='REVIEW','legacy LIVE stage must fall back to REVIEW');
+must(routed===42,'hardlock must route current operational screen through lifecycle guard');
+must(persisted&&persisted.t==='V301_LEGACY_STATE_RELOCKED','migration relock must be auditable');
+console.log('V301_EXPLICIT_ACTIVATION_HARDLOCK_OK');
