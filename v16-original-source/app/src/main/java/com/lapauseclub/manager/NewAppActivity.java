@@ -20,12 +20,18 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.window.OnBackInvokedCallback;
+import android.window.OnBackInvokedDispatcher;
 
 import com.lapauseclub.manager.core.CoreStore;
 import com.lapauseclub.manager.security.AppIntegrity;
 
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
@@ -42,6 +48,7 @@ public final class NewAppActivity extends Activity {
     private WebView webView;
     private CoreStore coreStore;
     private boolean exitDialogVisible;
+    private OnBackInvokedCallback backInvokedCallback;
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
@@ -96,6 +103,14 @@ public final class NewAppActivity extends Activity {
         webView.addJavascriptInterface(new NewBridge(), "Android");
         webView.addJavascriptInterface(new SyncBridgeV12(coreStore), "AndroidSync");
         webView.loadUrl(ENTRY);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            backInvokedCallback = this::handleBackNavigation;
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                    OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                    backInvokedCallback
+            );
+        }
     }
 
     private static boolean trusted(String url) {
@@ -103,12 +118,14 @@ public final class NewAppActivity extends Activity {
         return url.startsWith(ASSET_PREFIX + "v250/") || "about:blank".equals(url);
     }
 
-    @Override public void onBackPressed() {
+    private void handleBackNavigation() {
         if (webView == null) { confirmExit(); return; }
         webView.evaluateJavascript("window.nativeBack ? window.nativeBack() : false", value -> {
             if (!"true".equals(value)) confirmExit();
         });
     }
+
+    @Override public void onBackPressed() { handleBackNavigation(); }
 
     private void confirmExit() {
         if (exitDialogVisible || isFinishing()) return;
@@ -126,6 +143,10 @@ public final class NewAppActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && backInvokedCallback != null) {
+            getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(backInvokedCallback);
+            backInvokedCallback = null;
+        }
         if (coreStore != null) coreStore.close();
         if (webView != null) {
             webView.removeJavascriptInterface("AndroidSync");
@@ -157,6 +178,54 @@ public final class NewAppActivity extends Activity {
                 e.putString("state_json", parsed.toString()).apply();
                 if (coreStore != null) coreStore.mirrorLegacyState(parsed.toString());
             } catch (Exception ignored) {}
+        }
+
+        @JavascriptInterface public String verifyLocalBackup() {
+            JSONObject result = new JSONObject();
+            try {
+                String primary = prefs.getString("state_json", "");
+                if (primary == null || primary.trim().isEmpty()) {
+                    result.put("verified", false).put("code", "NO_STATE");
+                    return result.toString();
+                }
+                String canonical = new JSONObject(primary).toString();
+                byte[] source = canonical.getBytes(StandardCharsets.UTF_8);
+                File dir = new File(getFilesDir(), "verified-backups");
+                if (!dir.exists() && !dir.mkdirs()) {
+                    result.put("verified", false).put("code", "BACKUP_DIR_FAILED");
+                    return result.toString();
+                }
+                long at = System.currentTimeMillis();
+                File target = new File(dir, "state-" + at + ".json");
+                try (FileOutputStream out = new FileOutputStream(target, false)) {
+                    out.write(source);
+                    out.flush();
+                    out.getFD().sync();
+                }
+                byte[] copy;
+                try (FileInputStream in = new FileInputStream(target); ByteArrayOutputStream buffer = new ByteArrayOutputStream()) {
+                    byte[] chunk = new byte[8192];
+                    int n;
+                    while ((n = in.read(chunk)) != -1) buffer.write(chunk, 0, n);
+                    copy = buffer.toByteArray();
+                }
+                new JSONObject(new String(copy, StandardCharsets.UTF_8));
+                String sourceHash = sha256Hex(source);
+                String copyHash = sha256Hex(copy);
+                boolean verified = MessageDigest.isEqual(sourceHash.getBytes(StandardCharsets.US_ASCII), copyHash.getBytes(StandardCharsets.US_ASCII));
+                result.put("verified", verified)
+                        .put("scope", "LOCAL_INTERNAL")
+                        .put("at", at)
+                        .put("sha256", copyHash)
+                        .put("bytes", copy.length)
+                        .put("code", verified ? "VERIFIED" : "HASH_MISMATCH");
+                if (!verified) target.delete();
+                rotateVerifiedBackups(dir, target.getName());
+                return result.toString();
+            } catch (Exception ex) {
+                try { result.put("verified", false).put("code", "BACKUP_VERIFY_FAILED"); } catch (Exception ignored) {}
+                return result.toString();
+            }
         }
 
         @JavascriptInterface public boolean createLocalCredential(String email, String password) {
@@ -207,6 +276,20 @@ public final class NewAppActivity extends Activity {
 
         private String b64(byte[] value) { return Base64.encodeToString(value, Base64.NO_WRAP); }
 
+        private String sha256Hex(byte[] value) throws Exception {
+            byte[] hash = MessageDigest.getInstance("SHA-256").digest(value);
+            StringBuilder sb = new StringBuilder(hash.length * 2);
+            for (byte b : hash) sb.append(String.format(Locale.US, "%02x", b & 0xff));
+            return sb.toString();
+        }
+
+        private void rotateVerifiedBackups(File dir, String keep) {
+            File[] files = dir.listFiles((d, name) -> name.startsWith("state-") && name.endsWith(".json"));
+            if (files == null || files.length <= 3) return;
+            java.util.Arrays.sort(files, (a, b) -> Long.compare(b.lastModified(), a.lastModified()));
+            for (int i = 3; i < files.length; i++) if (!files[i].getName().equals(keep)) files[i].delete();
+        }
+
         @JavascriptInterface public String getOperatingMode() { return coreStore == null ? "AUTONOME" : coreStore.getOperatingMode(); }
         @JavascriptInterface public boolean setOperatingMode(String mode) {
             try { if (coreStore == null) return false; coreStore.setOperatingMode(mode); return true; }
@@ -254,7 +337,7 @@ public final class NewAppActivity extends Activity {
             AlarmManager am = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
             if (am == null) return;
             Intent intent = new Intent(NewAppActivity.this, SessionAlarmReceiver.class);
-            intent.setAction("com.lapauseclub.manager.SESSION_" + type.toUpperCase());
+            intent.setAction("com.lapauseclub.manager.SESSION_" + type.toUpperCase(Locale.US));
             intent.putExtra("sessionId", sessionId);
             intent.putExtra("stationName", stationName == null ? "Poste" : stationName);
             intent.putExtra("alertType", type);
