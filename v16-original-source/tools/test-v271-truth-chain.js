@@ -18,8 +18,12 @@ must(pos('accounting-integrity-v271.js')<pos('screens.js'),'accounting integrity
 must(pos('screens-53-60.js')<pos('screens-96-truthful-extended-v271.js'),'extended truth must override legacy 53-60');
 must(pos('screens-96-truthful-extended-v271.js')<pos('canonical-app.js'),'extended truth must load before first app render');
 for(const token of ['grossRevenueToday','refundsToday','postedPayment',"s==='PAID'||s==='REFUNDED'",'grossRevenueToday()-refundsToday()']) must(accounting.includes(token),'accounting integrity token missing '+token);
-for(const n of [53,54,57,58,59,60]) must(extended.includes(`register(${n},`),'truthful override missing screen '+n);
-for(const token of ["'EMPTY'","'NOT CONFIGURED'","'NO DATA'",'verifiedByNative===true','M15_AI_OPERATOR','actual pending events','dynamicPricingRules']) must(extended.includes(token),'extended truth token missing '+token);
+for(const n of [45,49,52,53,54,55,56,57,58,59,60]) must(extended.includes(`register(${n},`),'truthful override missing screen '+n);
+for(const token of ["'EMPTY'","'NOT CONFIGURED'","'NO DATA'",'verifiedByNative===true','M15_AI_OPERATOR','actual pending events','dynamicPricingRules','Gross Sales','Refunds','Net after expenses','Partial Refund','Exportable diagnostic archive','Profit Autopilot','Scheduled Coverage']) must(extended.includes(token),'extended truth token missing '+token);
+must(extended.includes("r('Partial Refund','Amount-level correction','NOT CONFIGURED'") ,'partial refund must not be advertised as implemented');
+must(extended.includes("r('Exportable diagnostic archive','File generation','NOT CONFIGURED'") ,'support archive must not be advertised before real export exists');
+must(extended.includes("r('Profit Autopilot','Margin-aware autonomous changes','NOT CONFIGURED'") ,'profit autopilot must not claim live automation');
+must(extended.includes("r('Scheduled Coverage','Demand vs staff','NOT CONFIGURED'") ,'staff scheduling must not claim implementation');
 must(!extended.includes("S.meta.lastBackupAt?'PASS':'CHECK'"),'backup health must not infer PASS from timestamp');
 must(!extended.includes("'Active')+r('Console Duo'"),'pricing must not claim Active statically');
 must(bootstrap.includes("commercialBootstrap='UNCONFIGURED_V271'"),'commercial bootstrap guard missing');
