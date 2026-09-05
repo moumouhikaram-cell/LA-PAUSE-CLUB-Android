@@ -28,3 +28,4 @@ must(gradle.includes('entitlement-prod-v2-public.der.b64'),'prod-v2 verifier req
 console.log('V250_ZERO_LEGACY_VISIBLE_UI_OK');
 console.log('V250_RESPONSIVE_UI_OK');
 console.log('V250_OPERATOR_JOURNEYS_OK');
+console.log('V250_RELEASE_GATE_READY');
