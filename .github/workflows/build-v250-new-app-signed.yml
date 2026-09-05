@@ -11,6 +11,7 @@ on:
       - "v16-original-source/app/src/main/AndroidManifest.xml"
       - "v16-original-source/app/build.gradle.kts"
       - "v16-original-source/tools/test-v250-new-app.js"
+      - "v16-original-source/tools/test-v271-truth-chain.js"
       - ".github/workflows/build-v250-new-app-signed.yml"
       - ".github/workflows/android-v250-native-smoke.yml"
 
@@ -59,6 +60,7 @@ jobs:
           node --check app/src/main/assets/v250/canonical-app.js
           for f in app/src/main/assets/v250/screens*.js; do node --check "$f"; done
           node tools/test-v250-new-app.js
+          node tools/test-v271-truth-chain.js
           test -s ../docs/frozen/LA_PAUSE_OS_MASTER_NON_REGRESSION_CONTRACT_FROZEN_2026-09-05.md
           test -s ../docs/frozen/LA_PAUSE_OS_SCREEN_REQUIREMENTS_MAPPING_FROZEN_2026-09-05.md
           test -s ../docs/frozen/LA_PAUSE_OS_CANONICAL_TEMPLATE_HASH_MANIFEST_2026-09-05.txt
@@ -77,6 +79,7 @@ jobs:
           grep -q 'canonical-pixel-v270.css' app/src/main/assets/v250/index.html
           grep -q 'media.js' app/src/main/assets/v250/index.html
           grep -q 'screens-00-truthful-bootstrap-v271.js' app/src/main/assets/v250/index.html
+          grep -q 'screens-96-truthful-extended-v271.js' app/src/main/assets/v250/index.html
           grep -q 'screens-97-auth-ui-v271.js' app/src/main/assets/v250/index.html
           grep -q 'screens-98-truthful-ui-v271.js' app/src/main/assets/v250/index.html
           grep -q 'screens-99-runtime-safety-v271.js' app/src/main/assets/v250/index.html
@@ -152,6 +155,7 @@ jobs:
             assets/v250/canonical-pixel-v270.css \
             assets/v250/media.js \
             assets/v250/screens-00-truthful-bootstrap-v271.js \
+            assets/v250/screens-96-truthful-extended-v271.js \
             assets/v250/screens-97-auth-ui-v271.js \
             assets/v250/screens-98-truthful-ui-v271.js \
             assets/v250/screens-99-runtime-safety-v271.js; do
@@ -172,6 +176,7 @@ jobs:
           grep -q 'canonical-pixel-v270.css' signed-v260-index.html
           grep -q 'media.js' signed-v260-index.html
           grep -q 'screens-00-truthful-bootstrap-v271.js' signed-v260-index.html
+          grep -q 'screens-96-truthful-extended-v271.js' signed-v260-index.html
           grep -q 'screens-97-auth-ui-v271.js' signed-v260-index.html
           grep -q 'screens-98-truthful-ui-v271.js' signed-v260-index.html
           grep -q 'screens-99-runtime-safety-v271.js' signed-v260-index.html
@@ -213,7 +218,7 @@ jobs:
             echo 'Navigation: modal-first back + internal stack + right-swipe back + exit confirmation at true root'
             echo 'Responsive: phone portrait + phone landscape + tablet + RTL + state restoration'
             echo 'Operator: Duo 30 / per-game billiard / +30 / +1 game / snack / NBA / assisted revenue'
-            echo 'SaaS truth: empty bootstrap + no fake ONLINE/VERIFIED/ACTIVE + GO LIVE evidence gates'
+            echo 'SaaS truth: empty bootstrap + truthful 45-60 overrides + no fake ONLINE/VERIFIED/ACTIVE + GO LIVE evidence gates'
             echo 'Auth: native PBKDF2-HMAC-SHA256 local credential verification; no unchecked sign-in'
             echo 'SaaS: tenant/workspace/venue/branch + M01-M15 + entitlement/RBAC + Edge/Cloud'
             echo 'Media: dynamic HD console/game/product assets wired in canonical screens'
