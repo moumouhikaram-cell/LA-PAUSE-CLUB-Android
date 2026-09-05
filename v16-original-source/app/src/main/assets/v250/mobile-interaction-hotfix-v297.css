@@ -1,0 +1,173 @@
+/* LA PAUSE OS v297 — phone interaction + viewport hotfix.
+   Purpose: fix real-device defects reported on Android: oversized landing media,
+   cramped touch targets, and modal CTA overlap. Loaded last so it wins cascade. */
+
+html,body{max-width:100%;overflow-x:hidden}
+button,[role="button"],[data-go],[data-action],[data-v291],[data-v296]{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+
+/* Dynamic modal content must stay inside the usable WebView viewport. */
+#modalRoot .modal-backdrop{
+  box-sizing:border-box!important;
+  padding:12px 12px max(18px,env(safe-area-inset-bottom))!important;
+  align-items:flex-end!important;
+  justify-content:center!important;
+  overflow:hidden!important;
+}
+#modalRoot .modal-sheet,
+#modalRoot .b291-modal,
+#modalRoot .v296-sheet{
+  box-sizing:border-box!important;
+  width:min(100%,430px)!important;
+  max-width:430px!important;
+  max-height:calc(100dvh - 28px)!important;
+  margin:0 auto!important;
+  border-radius:22px 22px 10px 10px!important;
+  overflow:hidden!important;
+  display:flex!important;
+  flex-direction:column!important;
+}
+#modalRoot .modal-head{flex:0 0 auto!important;min-height:58px!important;padding:10px 14px!important}
+#modalRoot .modal-head .icon-btn{min-width:46px!important;min-height:46px!important;border-radius:13px!important}
+#modalRoot .modal-body{
+  flex:1 1 auto!important;
+  min-height:0!important;
+  overflow-y:auto!important;
+  overscroll-behavior:contain!important;
+  -webkit-overflow-scrolling:touch!important;
+  padding:16px 16px max(24px,env(safe-area-inset-bottom))!important;
+}
+#modalRoot .modal-body .b291-btn.block,
+#modalRoot .modal-body .cbtn.block{
+  width:100%!important;
+  min-height:54px!important;
+  margin:14px 0 4px!important;
+  font-size:14px!important;
+}
+
+/* Real phone layout — intentionally not a shrunken desktop page. */
+@media (max-width:430px){
+  .b291-screen{
+    width:100%!important;
+    max-width:none!important;
+    min-height:100dvh!important;
+    padding:16px 16px max(28px,env(safe-area-inset-bottom))!important;
+    font-size:15px!important;
+  }
+  .b291-saleshead{
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr) auto!important;
+    gap:12px!important;
+    align-items:center!important;
+    margin-bottom:16px!important;
+  }
+  .b291-brand{font-size:19px!important;gap:9px!important}
+  .b291-brand .brand-mark{width:34px!important;height:33px!important}
+  .b291-saleshead>.b291-btn.compact{
+    min-height:46px!important;
+    padding:0 14px!important;
+    font-size:12px!important;
+    border-radius:13px!important;
+  }
+  .b291-saleshead nav{
+    grid-column:1/-1!important;
+    grid-row:2!important;
+    width:100%!important;
+    display:grid!important;
+    grid-template-columns:repeat(4,minmax(0,1fr))!important;
+    gap:0!important;
+    overflow:visible!important;
+    border-top:1px solid rgba(55,100,136,.55)!important;
+    border-bottom:1px solid rgba(55,100,136,.55)!important;
+  }
+  .b291-saleshead nav button{
+    min-width:0!important;
+    min-height:46px!important;
+    padding:0 4px!important;
+    font-size:10.5px!important;
+    line-height:1.15!important;
+    white-space:normal!important;
+  }
+
+  .b291-hero{
+    display:flex!important;
+    flex-direction:column!important;
+    gap:18px!important;
+    width:100%!important;
+  }
+  .b291-hero>div:first-child{order:1!important}
+  .b291-hero .b291-photo{
+    order:0!important;
+    width:100%!important;
+    height:210px!important;
+    min-height:0!important;
+    max-height:210px!important;
+    aspect-ratio:16/9!important;
+    border-radius:16px!important;
+  }
+  .b291-hero .b291-photo img{
+    width:100%!important;
+    height:100%!important;
+    object-fit:cover!important;
+    object-position:center 38%!important;
+  }
+  .b291-kicker{font-size:10px!important;letter-spacing:1.8px!important;margin-bottom:9px!important}
+  .b291-screen h1{font-size:36px!important;line-height:1.02!important;letter-spacing:-1.45px!important}
+  .b291-lead{font-size:14px!important;line-height:1.55!important;margin:13px 0 18px!important}
+  .b291-actions{
+    display:grid!important;
+    grid-template-columns:1fr!important;
+    gap:10px!important;
+  }
+  .b291-actions .b291-btn{
+    width:100%!important;
+    min-height:54px!important;
+    padding:0 16px!important;
+    border-radius:14px!important;
+    font-size:13px!important;
+  }
+  .b291-features{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:10px!important;
+    margin:16px 0!important;
+  }
+  .b291-features>div{min-height:82px!important;padding:12px!important;border-radius:13px!important;gap:10px!important}
+  .b291-features span{width:40px!important;height:40px!important;flex:0 0 40px!important}
+  .b291-features span .b291-ico{width:20px!important;height:20px!important}
+  .b291-features b{font-size:11.5px!important;line-height:1.3!important}
+  .b291-world{padding:24px 14px 16px!important;border-radius:15px!important}
+  .b291-worldtitle{font-size:9px!important}
+  .b291-stats{grid-template-columns:repeat(2,1fr)!important;gap:12px 0!important}
+  .b291-stats>div:nth-child(2){border-right:0!important}
+  .b291-stats b{font-size:24px!important}.b291-stats span{font-size:9px!important}
+  .b291-quote p{font-size:10.5px!important}.b291-quote small{font-size:9px!important}
+
+  /* Account/setup screens: readable and tappable. */
+  .b291-auth{padding:12px 0 0!important}
+  .b291-field{margin:15px 0!important}.b291-field>span{font-size:12px!important;margin-bottom:7px!important}
+  .b291-control{height:52px!important;border-radius:12px!important;padding:0 12px!important}
+  .b291-control input,.b291-control select{font-size:14px!important}
+  .b291-btn{min-height:52px!important;border-radius:13px!important;font-size:13px!important}
+  .b291-sso button{min-height:50px!important;font-size:12px!important;border-radius:12px!important}
+  .b291-selector,.b291-photo-row,.b291-quiz{min-height:78px!important;border-radius:13px!important}
+  .b291-selector>div b,.b291-photo-row>div b{font-size:12px!important}
+  .b291-selector>div small,.b291-photo-row>div small{font-size:9px!important}
+  .b291-step{min-height:76px!important}.b291-step b{font-size:11px!important}.b291-step small{font-size:9px!important}
+  .b291-tabs button,.b291-floortools button{min-height:46px!important;font-size:10px!important}
+}
+
+@media (max-width:370px){
+  .b291-screen{padding-left:13px!important;padding-right:13px!important}
+  .b291-screen h1{font-size:33px!important}
+  .b291-hero .b291-photo{height:190px!important;max-height:190px!important}
+  .b291-features{grid-template-columns:1fr!important}
+  .b291-features>div{min-height:70px!important}
+  .b291-saleshead nav button{font-size:9.5px!important}
+}
+
+@media (orientation:landscape) and (max-height:540px){
+  .b291-screen{width:100%!important;max-width:900px!important;padding:10px 18px max(16px,env(safe-area-inset-bottom))!important}
+  .b291-hero{display:grid!important;grid-template-columns:1fr .85fr!important;gap:16px!important;align-items:center!important}
+  .b291-hero>div:first-child{order:0!important}
+  .b291-hero .b291-photo{order:1!important;height:210px!important;max-height:210px!important}
+  #modalRoot .modal-sheet{max-height:calc(100dvh - 18px)!important}
+}
