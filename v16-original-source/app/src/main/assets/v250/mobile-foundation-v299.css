@@ -1,0 +1,245 @@
+/* LA PAUSE OS v299 — universal mobile foundation.
+   This layer does not redesign frozen screens. It constrains every operational
+   surface to the physical phone viewport, reserves Android system-bar space,
+   and supplies one persistent operator navigation independent of legacy navs. */
+
+:root{
+  --v299-page-x:14px;
+  --v299-system-top:30px;
+  --v299-system-bottom:48px;
+  --v299-nav-h:62px;
+  --v299-nav-gap:8px;
+}
+
+html,body,#app,#app>.canon-shell{max-width:100vw!important;overflow-x:hidden!important}
+img,video,canvas,svg{max-width:100%}
+#app *{min-width:0}
+
+@media (max-width:700px){
+  body.v299-ops{padding:0!important}
+  body.v299-ops #app>.canon-shell{
+    width:100%!important;
+    max-width:100vw!important;
+    min-height:100dvh!important;
+    padding-top:max(var(--v299-system-top),env(safe-area-inset-top))!important;
+    padding-bottom:calc(var(--v299-system-bottom) + var(--v299-nav-h) + 22px)!important;
+    overflow-x:hidden!important;
+  }
+  body.v299-ops .canon-screen,
+  body.v299-ops .b291-screen,
+  body.v299-ops main:not(.v294-home):not(.v298-landing){
+    width:100%!important;
+    max-width:100%!important;
+    margin:0!important;
+    padding-left:var(--v299-page-x)!important;
+    padding-right:var(--v299-page-x)!important;
+  }
+
+  /* The v294 Home remains visually frozen; only reserve the universal nav. */
+  body.v299-ops .v294-home{
+    width:100%!important;
+    max-width:100%!important;
+    padding-bottom:18px!important;
+  }
+
+  /* One bottom navigation only. */
+  body.v299-ops .v294-nav,
+  body.v299-ops .v293-nav,
+  body.v299-ops .v292-nav,
+  body.v299-ops .v296-nav,
+  body.v299-ops .v295-nav,
+  body.v299-ops .canon-bottomnav{display:none!important}
+
+  .v299-nav{
+    position:fixed!important;
+    z-index:9900!important;
+    left:10px!important;
+    right:10px!important;
+    bottom:max(var(--v299-system-bottom),env(safe-area-inset-bottom))!important;
+    height:var(--v299-nav-h)!important;
+    display:grid!important;
+    grid-template-columns:repeat(5,minmax(0,1fr))!important;
+    align-items:stretch!important;
+    padding:5px!important;
+    border:1px solid rgba(47,111,165,.58)!important;
+    border-radius:17px!important;
+    background:rgba(3,15,29,.96)!important;
+    box-shadow:0 16px 42px rgba(0,0,0,.46),0 0 0 1px rgba(13,211,255,.04) inset!important;
+    backdrop-filter:blur(18px)!important;
+    -webkit-backdrop-filter:blur(18px)!important;
+  }
+  .v299-nav button{
+    appearance:none!important;
+    -webkit-appearance:none!important;
+    border:0!important;
+    border-radius:12px!important;
+    background:transparent!important;
+    color:#7f9bb5!important;
+    min-height:50px!important;
+    padding:3px 1px!important;
+    display:flex!important;
+    flex-direction:column!important;
+    align-items:center!important;
+    justify-content:center!important;
+    gap:3px!important;
+    font-size:9.5px!important;
+    font-weight:780!important;
+    line-height:1!important;
+    touch-action:manipulation!important;
+    -webkit-tap-highlight-color:transparent!important;
+  }
+  .v299-nav button.active{
+    color:#49dfff!important;
+    background:linear-gradient(180deg,rgba(36,126,255,.18),rgba(16,213,255,.07))!important;
+  }
+  .v299-nav svg{width:23px!important;height:23px!important;fill:none!important;stroke:currentColor!important;stroke-width:1.8!important;stroke-linecap:round!important;stroke-linejoin:round!important}
+
+  /* App bar stays below the Android status area and never forces horizontal overflow. */
+  body.v299-ops .v295-appbar{width:100%!important;max-width:100%!important;left:0!important;right:0!important}
+
+  /* Generic responsive grids: never 3/4 tiny columns on a phone. */
+  body.v299-ops .g4,
+  body.v299-ops .grid4,
+  body.v299-ops .plans,
+  body.v299-ops .floor,
+  body.v299-ops .catalog,
+  body.v299-ops .resource-grid,
+  body.v299-ops .v296-type-grid,
+  body.v299-ops .v296-settings-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  }
+  body.v299-ops .g3,
+  body.v299-ops .grid3,
+  body.v299-ops .option-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  }
+  body.v299-ops .g2,
+  body.v299-ops .grid2,
+  body.v299-ops .land2{
+    grid-template-columns:1fr!important;
+  }
+  body.v299-ops .hero{grid-template-columns:1fr!important}
+
+  /* Cards and rows stay readable without becoming giant desktop blocks. */
+  body.v299-ops .metric{min-height:92px!important;padding:12px!important}
+  body.v299-ops .metric strong{font-size:clamp(20px,6vw,27px)!important}
+  body.v299-ops .crow,
+  body.v299-ops .row{max-width:100%!important}
+  body.v299-ops .offer{grid-template-columns:44px minmax(0,1fr)!important}
+  body.v299-ops .offer>:last-child{grid-column:1/-1!important;width:100%!important}
+
+  /* Tabs always fit: horizontal scrolling belongs to the tab strip, not the page. */
+  body.v299-ops .tabs,
+  body.v299-ops .canon-tabs{
+    width:100%!important;
+    max-width:100%!important;
+    overflow-x:auto!important;
+    overflow-y:hidden!important;
+    overscroll-behavior-x:contain!important;
+    -webkit-overflow-scrolling:touch!important;
+    scrollbar-width:none!important;
+    flex-wrap:nowrap!important;
+  }
+  body.v299-ops .tabs::-webkit-scrollbar,
+  body.v299-ops .canon-tabs::-webkit-scrollbar{display:none!important}
+  body.v299-ops .tab,
+  body.v299-ops .canon-tabs button{
+    min-height:46px!important;
+    min-width:max-content!important;
+    padding-left:13px!important;
+    padding-right:13px!important;
+    touch-action:manipulation!important;
+  }
+
+  /* Wide visual tools scroll inside themselves instead of widening the whole application. */
+  body.v299-ops .calendar,
+  body.v299-ops .cal-grid,
+  body.v299-ops .table-wrap,
+  body.v299-ops .floor-map{
+    max-width:100%!important;
+  }
+  body.v299-ops .calendar,
+  body.v299-ops .table-wrap{
+    overflow-x:auto!important;
+    overscroll-behavior-x:contain!important;
+    -webkit-overflow-scrolling:touch!important;
+  }
+  body.v299-ops table{max-width:none}
+
+  /* Every interactive control gets a real phone touch target. */
+  body.v299-ops button,
+  body.v299-ops [role="button"],
+  body.v299-ops [data-go],
+  body.v299-ops [data-action],
+  body.v299-ops [data-v291],
+  body.v299-ops [data-v294],
+  body.v299-ops [data-v296]{
+    touch-action:manipulation;
+    -webkit-tap-highlight-color:transparent;
+  }
+  body.v299-ops .cbtn,
+  body.v299-ops .btn{min-height:46px!important}
+
+  /* All legacy/new modal families are constrained to the physical viewport. */
+  #modalRoot .modal-backdrop,
+  #modalRoot .v296-more-backdrop,
+  .v299-more-backdrop{
+    width:100vw!important;
+    max-width:100vw!important;
+    min-height:100dvh!important;
+    padding:max(12px,env(safe-area-inset-top)) 10px max(var(--v299-system-bottom),env(safe-area-inset-bottom))!important;
+    overflow:hidden!important;
+  }
+  #modalRoot .modal-sheet,
+  #modalRoot .b291-modal,
+  #modalRoot .v296-sheet,
+  #modalRoot .v296-more,
+  .v299-more{
+    width:100%!important;
+    max-width:430px!important;
+    max-height:calc(100dvh - var(--v299-system-bottom) - 28px)!important;
+    overflow:auto!important;
+    overscroll-behavior:contain!important;
+  }
+
+  /* Remove decorative overlays from hit testing. */
+  body.v299-ops .hero-visual:after,
+  body.v299-ops .resource-img:after,
+  body.v299-ops [class*="glow"]:before,
+  body.v299-ops [class*="glow"]:after{pointer-events:none!important}
+}
+
+/* Contextual Plus sheet — no board numbers, only business journeys. */
+.v299-more-backdrop{
+  position:fixed;inset:0;z-index:9950;background:rgba(0,7,16,.82);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  display:flex;align-items:flex-end;justify-content:center;
+}
+.v299-more{
+  border:1px solid #28517a;border-radius:22px 22px 16px 16px;background:linear-gradient(180deg,#081d35,#041427);box-shadow:0 24px 80px rgba(0,0,0,.58);
+}
+.v299-more>header{position:sticky;top:0;z-index:2;min-height:62px;padding:10px 12px 10px 17px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #173c61;background:#081d35}
+.v299-more>header b{display:block;font-size:20px}.v299-more>header small{display:block;color:#88a5bf;margin-top:3px;font-size:11px}
+.v299-more>header button{width:46px;height:46px;border-radius:13px;border:1px solid #21496f;background:#0a2039;color:#d9e9f8}
+.v299-more-section{padding:13px 14px 2px}.v299-more-section h3{margin:0 0 9px;color:#88a6c2;font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+.v299-more-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.v299-more-grid button{min-height:70px;border:1px solid #1d456b;border-radius:13px;background:#092039;color:#eef7ff;padding:10px;display:flex;align-items:center;gap:10px;text-align:left;font-weight:760}
+.v299-more-grid button svg{width:24px;height:24px;flex:0 0 24px;fill:none;stroke:#47dfff;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+@media (max-width:359px){
+  :root{--v299-page-x:11px;--v299-system-bottom:46px}
+  body.v299-ops .g4,
+  body.v299-ops .grid4,
+  body.v299-ops .g3,
+  body.v299-ops .grid3,
+  body.v299-ops .plans,
+  body.v299-ops .option-grid{grid-template-columns:1fr!important}
+  .v299-nav{left:7px!important;right:7px!important}
+  .v299-nav button{font-size:8.8px!important}
+}
+
+@media (orientation:landscape) and (max-height:540px){
+  :root{--v299-system-top:12px;--v299-system-bottom:18px;--v299-nav-h:54px}
+  .v299-nav button{min-height:42px!important;flex-direction:row!important;gap:5px!important}
+  .v299-nav svg{width:20px!important;height:20px!important}
+  body.v299-ops #app>.canon-shell{padding-bottom:calc(var(--v299-system-bottom) + var(--v299-nav-h) + 14px)!important}
+}
