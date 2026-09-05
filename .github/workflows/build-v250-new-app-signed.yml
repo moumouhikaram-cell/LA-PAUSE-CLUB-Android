@@ -1,10 +1,11 @@
-name: Build Signed LA PAUSE OS 2.5.0 New App
+name: Build Signed LA PAUSE OS 2.6.0 Canonical SaaS
 
 on:
   workflow_dispatch:
   push:
     branches: [android-new-app-v250]
     paths:
+      - "docs/frozen/**"
       - "v16-original-source/app/src/main/assets/v250/**"
       - "v16-original-source/app/src/main/java/com/lapauseclub/manager/NewAppActivity.java"
       - "v16-original-source/app/src/main/AndroidManifest.xml"
@@ -16,7 +17,7 @@ permissions:
   contents: read
 
 jobs:
-  signed-new-app:
+  signed-canonical-saas:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -44,20 +45,33 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
 
-      - name: Enforce 60-screen SaaS release contract
+      - name: Enforce frozen canonical SaaS contract
         working-directory: v16-original-source
         shell: bash
         run: |
           set -euxo pipefail
-          for f in app/src/main/assets/v250/*.js; do node --check "$f"; done
+          node --check app/src/main/assets/v250/saas-core.js
+          node --check app/src/main/assets/v250/version-v260.js
+          node --check app/src/main/assets/v250/canonical-screens.js
+          node --check app/src/main/assets/v250/canonical-app.js
+          for f in app/src/main/assets/v250/screens*.js; do node --check "$f"; done
           node tools/test-v250-new-app.js
+          test -s ../docs/frozen/LA_PAUSE_OS_MASTER_NON_REGRESSION_CONTRACT_FROZEN_2026-09-05.md
+          test -s ../docs/frozen/LA_PAUSE_OS_SCREEN_REQUIREMENTS_MAPPING_FROZEN_2026-09-05.md
+          test -s ../docs/frozen/LA_PAUSE_OS_CANONICAL_TEMPLATE_HASH_MANIFEST_2026-09-05.txt
           grep -q 'android:name=".NewAppActivity"' app/src/main/AndroidManifest.xml
           ! grep -q 'PremiumActivity' app/src/main/AndroidManifest.xml
           grep -q 'v250/index.html' app/src/main/java/com/lapauseclub/manager/NewAppActivity.java
-          ! grep -R -q 'client-shell-next-v240' app/src/main/assets/v250
-          grep -q "\[60,'Pricing / Offers / Dynamic Rules'" app/src/main/assets/v250/screens.js
-          grep -q "30 min · Duo" app/src/main/assets/v250/screens-16-22.js
-          grep -q "orientation:window.innerWidth>window.innerHeight" app/src/main/assets/v250/app.js
+          grep -q 'confirmExit()' app/src/main/java/com/lapauseclub/manager/NewAppActivity.java
+          grep -q 'canonical-screens.js' app/src/main/assets/v250/index.html
+          grep -q 'canonical-app.js' app/src/main/assets/v250/index.html
+          grep -q 'canonical-ui.css' app/src/main/assets/v250/index.html
+          ! grep -q '<script src="app.js"></script>' app/src/main/assets/v250/index.html
+          grep -q 'start-console:30:2' app/src/main/assets/v250/canonical-screens.js
+          grep -q 'dx>82' app/src/main/assets/v250/canonical-app.js
+          grep -q 'window.nativeBack' app/src/main/assets/v250/canonical-app.js
+          grep -q '@media(orientation:landscape)' app/src/main/assets/v250/canonical-ui.css
+          grep -q '\[dir="rtl"\]' app/src/main/assets/v250/canonical-ui.css
 
       - name: Load pinned prod-v2 verifier
         shell: bash
@@ -95,7 +109,7 @@ jobs:
           test -f app/build/outputs/apk/release/app-release-unsigned.apk
           test -f app/build/outputs/mapping/release/mapping.txt
 
-      - name: Sign and verify 2.5.0 new app
+      - name: Sign and verify 2.6.0 canonical SaaS app
         shell: bash
         env:
           KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -105,61 +119,80 @@ jobs:
           set -euxo pipefail
           BT="$ANDROID_HOME/build-tools/36.0.0"
           U="v16-original-source/app/build/outputs/apk/release/app-release-unsigned.apk"
-          ALIGNED="$RUNNER_TEMP/lp-v250-aligned.apk"
-          OUT="LA-PAUSE-OS-Android-v2.5.0-NEW-APP-SIGNED.apk"
+          ALIGNED="$RUNNER_TEMP/lp-v260-canonical-aligned.apk"
+          OUT="LA-PAUSE-OS-Android-v2.6.0-CANONICAL-SIGNED.apk"
           "$BT/zipalign" -f -p 4 "$U" "$ALIGNED"
           "$BT/apksigner" sign --ks "$RUNNER_TEMP/la-pause-release.p12" --ks-type PKCS12 --ks-key-alias "$KEY_ALIAS" --ks-pass "pass:$KS_PASS" --key-pass "pass:$KEY_PASS" --out "$OUT" "$ALIGNED"
-          "$BT/apksigner" verify --verbose --print-certs "$OUT" | tee signed-v250-certificate.txt
-          "$BT/aapt" dump badging "$OUT" | tee signed-v250-badging.txt
-          grep "package: name='com.lapauseclub.manager'" signed-v250-badging.txt
-          grep "versionCode='30'" signed-v250-badging.txt
-          grep "versionName='2.5.0'" signed-v250-badging.txt
-          grep -qi 'Signer #1 certificate SHA-256 digest: f154909d8c631131975553c41481b67c282f514beb0ed9ab228d7275fa8e321f' signed-v250-certificate.txt
-          unzip -p "$OUT" assets/v250/index.html > signed-v250-index.html
-          unzip -p "$OUT" assets/v250/screens.js > signed-v250-screens.js
-          unzip -p "$OUT" assets/v250/saas-core.js > signed-v250-core.js
-          unzip -p "$OUT" assets/v250/app.js > signed-v250-runtime.js
-          unzip -p "$OUT" assets/v250/responsive.css > signed-v250-responsive.css
-          grep -q "screens-53-60.js" signed-v250-index.html
-          grep -q "\[60,'Pricing / Offers / Dynamic Rules'" signed-v250-screens.js
-          grep -q 'M15_AI_OPERATOR' signed-v250-core.js
-          grep -q 'acceptedActions' signed-v250-core.js
-          grep -q 'assistedRevenue' signed-v250-core.js
-          grep -q 'window.nativeBack' signed-v250-runtime.js
-          grep -q 'orientation:landscape' signed-v250-responsive.css
-          ! grep -q 'client-shell-next-v240' signed-v250-index.html
-          sha256sum "$OUT" | tee signed-v250-sha256.txt
-          stat -c '%s bytes' "$OUT" | tee signed-v250-size.txt
+          "$BT/apksigner" verify --verbose --print-certs "$OUT" | tee signed-v260-certificate.txt
+          "$BT/aapt" dump badging "$OUT" | tee signed-v260-badging.txt
+          grep "package: name='com.lapauseclub.manager'" signed-v260-badging.txt
+          grep "versionCode='31'" signed-v260-badging.txt
+          grep "versionName='2.6.0'" signed-v260-badging.txt
+          grep -qi 'Signer #1 certificate SHA-256 digest: f154909d8c631131975553c41481b67c282f514beb0ed9ab228d7275fa8e321f' signed-v260-certificate.txt
+
+          unzip -p "$OUT" assets/v250/index.html > signed-v260-index.html
+          unzip -p "$OUT" assets/v250/canonical-ui.css > signed-v260-canonical-ui.css
+          unzip -p "$OUT" assets/v250/canonical-screens.js > signed-v260-canonical-screens.js
+          unzip -p "$OUT" assets/v250/canonical-app.js > signed-v260-canonical-app.js
+          unzip -p "$OUT" assets/v250/saas-core.js > signed-v260-core.js
+          unzip -p "$OUT" assets/v250/version-v260.js > signed-v260-version.js
+
+          grep -q 'canonical-screens.js' signed-v260-index.html
+          grep -q 'canonical-app.js' signed-v260-index.html
+          grep -q 'canonical-ui.css' signed-v260-index.html
+          ! grep -q '<script src="app.js"></script>' signed-v260-index.html
+          grep -q 'Duo · 30 min' signed-v260-canonical-screens.js
+          grep -q 'start-console:30:2' signed-v260-canonical-screens.js
+          grep -q 'Charge per game. Easy +1 game.' signed-v260-canonical-screens.js
+          grep -q 'From setup to<br>ready for players' signed-v260-canonical-screens.js
+          grep -q 'Owner Sentinel' signed-v260-canonical-screens.js
+          grep -q 'ps5-available.png' signed-v260-canonical-screens.js
+          grep -q 'products/redbull.jpg' signed-v260-canonical-screens.js
+          grep -q 'dx>82' signed-v260-canonical-app.js
+          grep -q 'window.nativeBack' signed-v260-canonical-app.js
+          grep -q 'navStack' signed-v260-canonical-app.js
+          grep -q '@media(orientation:landscape)' signed-v260-canonical-ui.css
+          grep -q '\[dir="rtl"\]' signed-v260-canonical-ui.css
+          grep -q 'M15_AI_OPERATOR' signed-v260-core.js
+          grep -q 'acceptedActions' signed-v260-core.js
+          grep -q 'assistedRevenue' signed-v260-core.js
+          grep -q "appVersion='2.6.0'" signed-v260-version.js
+          grep -q "canonicalUi='FROZEN_01_44'" signed-v260-version.js
+
+          sha256sum "$OUT" | tee signed-v260-sha256.txt
+          stat -c '%s bytes' "$OUT" | tee signed-v260-size.txt
 
       - name: Build verification manifest
         shell: bash
         run: |
           {
-            echo 'LA PAUSE OS Android 2.5.0 — NEW 60-SCREEN SAAS APP'
+            echo 'LA PAUSE OS Android 2.6.0 — FROZEN CANONICAL SAAS'
             echo "Commit: $GITHUB_SHA"
             echo 'Launcher: com.lapauseclub.manager.NewAppActivity'
-            echo 'Visible legacy UI: NONE'
-            echo 'Entry: file:///android_asset/v250/index.html'
-            echo 'Screens: 01-44 canonical templates + 45-60 non-regression feature screens'
-            echo 'SaaS: account + tenant + workspace + venue + branch + M01-M15 + entitlement/RBAC'
-            echo 'Responsive: phone portrait + phone landscape + tablet + RTL + rotation state restore'
+            echo 'Visible rejected v2.5 shell: NOT LOADED'
+            echo 'Canonical visual contract: screens 01-44'
+            echo 'Non-regression surfaces: 45-60 preserved behind modules'
+            echo 'Master contract: docs/frozen/LA_PAUSE_OS_MASTER_NON_REGRESSION_CONTRACT_FROZEN_2026-09-05.md'
+            echo 'Navigation: modal-first back + internal stack + right-swipe back + exit confirmation at true root'
+            echo 'Responsive: phone portrait + phone landscape + tablet + RTL + state restoration'
             echo 'Operator: Duo 30 / per-game billiard / +30 / +1 game / snack / NBA / assisted revenue'
-            echo 'Offline: local edge authority + outbox/inbox + conflict model + offline entitlement lease'
-            cat signed-v250-sha256.txt
-            cat signed-v250-size.txt
-          } > LA-PAUSE-OS-v2.5.0-NEW-APP-MANIFEST.txt
+            echo 'SaaS: tenant/workspace/venue/branch + M01-M15 + entitlement/RBAC + Edge/Cloud'
+            echo 'Media: dynamic HD console/game/product assets wired in canonical screens'
+            cat signed-v260-sha256.txt
+            cat signed-v260-size.txt
+          } > LA-PAUSE-OS-v2.6.0-CANONICAL-VERIFICATION.txt
 
-      - name: Upload signed new app
+      - name: Upload signed canonical SaaS app
         uses: actions/upload-artifact@v4
         with:
-          name: LA-PAUSE-OS-Android-v2.5.0-NEW-APP-SIGNED
+          name: LA-PAUSE-OS-Android-v2.6.0-CANONICAL-SIGNED
           path: |
-            LA-PAUSE-OS-Android-v2.5.0-NEW-APP-SIGNED.apk
-            LA-PAUSE-OS-v2.5.0-NEW-APP-MANIFEST.txt
-            signed-v250-certificate.txt
-            signed-v250-badging.txt
-            signed-v250-sha256.txt
-            signed-v250-size.txt
+            LA-PAUSE-OS-Android-v2.6.0-CANONICAL-SIGNED.apk
+            LA-PAUSE-OS-v2.6.0-CANONICAL-VERIFICATION.txt
+            signed-v260-certificate.txt
+            signed-v260-badging.txt
+            signed-v260-sha256.txt
+            signed-v260-size.txt
             v16-original-source/app/build/outputs/mapping/release/mapping.txt
           if-no-files-found: error
           retention-days: 90
