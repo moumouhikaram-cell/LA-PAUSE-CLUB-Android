@@ -1,0 +1,11 @@
+'use strict';
+(function(){
+var BASE='../media/';
+var ASSETS={
+ ps5Available:BASE+'ps5-available.png',football:BASE+'football-dynamic.png',esport:BASE+'esport-dynamic.png',combat:BASE+'combat-dynamic.png',racing:BASE+'racing-dynamic.png',tactical:BASE+'tactical-dynamic.png',sim:BASE+'sim-vip.png',billiard:BASE+'premium/billiard.jpg',pc:BASE+'premium/pc.jpg',lounge:BASE+'premium/lounge.jpg',arcade:BASE+'premium/arcade.jpg',coca:BASE+'products/cocacola.jpg',redbull:BASE+'products/redbull.jpg',lays:BASE+'products/lays.jpg',oreo:BASE+'products/oreo.jpg',chocolate:BASE+'products/chocolate.svg',energy:BASE+'products/energy.svg',chips:BASE+'products/chips.svg'};
+function esc(v){return String(v==null?'':v).replace(/[&<>'"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c];});}
+function image(src,alt,fit){return '<div class="mediaFrame"><img class="canonicalImage '+(fit==='contain'?'contain':'')+'" src="'+esc(src)+'" alt="'+esc(alt||'')+'" loading="eager" decoding="async" draggable="false"></div>';}
+function resource(r,s){var t=window.LPOS.resourceType(r),u=String((s&&s.universe)||(s&&s.gameUniverse)||(s&&s.game)||(s&&s.note)||'').toLowerCase();if(t==='SIM_RACING')return ASSETS.sim;if(t==='BILLIARD_TABLE'||t==='SNOOKER_TABLE')return ASSETS.billiard;if(t==='PC_GAMING')return ASSETS.pc;if(t==='PRIVATE_ROOM')return ASSETS.lounge;if(t==='CONSOLE'){if(s){if(/fc|fifa|football|eafc/.test(u))return ASSETS.football;if(/race|gran|gt7|racing/.test(u))return ASSETS.racing;if(/ufc|combat|fight/.test(u))return ASSETS.combat;if(/cod|warzone|tactical/.test(u))return ASSETS.tactical;if(/esport/.test(u))return ASSETS.esport;}return ASSETS.ps5Available;}return ASSETS.arcade;}
+function product(p){var q=String((p&&p.name)||(p&&p.id)||'').toLowerCase();if(/coca|cola/.test(q))return ASSETS.coca;if(/red.?bull|energy/.test(q))return ASSETS.redbull;if(/lays|chips/.test(q))return ASSETS.lays;if(/oreo/.test(q))return ASSETS.oreo;if(/twix|choc/.test(q))return ASSETS.chocolate;return ASSETS.chips;}
+window.LPOSMedia={BASE:BASE,assets:ASSETS,image:image,resource:resource,product:product};
+})();
