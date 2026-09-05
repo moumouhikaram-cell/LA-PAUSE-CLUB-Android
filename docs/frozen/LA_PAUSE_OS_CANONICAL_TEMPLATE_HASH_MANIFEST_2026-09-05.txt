@@ -1,0 +1,19 @@
+LA PAUSE OS — CANONICAL TEMPLATE HASH MANIFEST
+FROZEN 2026-09-05
+
+board01_01-05.png  549a304f62fc15fa81957c87213b19339f971625fb94481e52db854e6a15af06
+board02_06-10.png  a648c9d4258aad8d32285d97c4aa1d107cf4bbf513dd7488a067c50779ad3163
+board03_11-14.png  dafb63a97eb46147226bd0921704dd83d9fd2a82f4f73e2519e4af66ff2cecf6
+board04_15-19.png  d638ee81c65ef0414e9568d46970e42432acf21efa3865a7206056253f3bf8e3
+board05_20-23.png  86185153e5fd22cd349c60d42eca1d435b1af2216459f053f943439ddb46f532
+board06_24-27.png  8bba7dbe6b0357408681a444c2ea876cdaeb818ac5d6ef9cd21348d381581420
+board07_28-31.png  194c77ae4ca4142836034dfa982c6a766bc4f71bf2c1e5d277e4b4e32e25569d
+board08_32-35.png  3d2ee7ba1f28d1dcf0b2e466bbfb07d797b5d74eb549eb6964b8adb0aee45b38
+board09_36-39.png  2a29b6b512693a2410fef69af25bbab1f771df93d403a86ec159c0418cf66dba
+board10_40-44.png  4942a265e6b35c69fdff62d75a0ebe2a1b82795b4708358b9b0b89fb76988ba5
+
+RULES
+- Any different SHA requires explicit user approval before replacing a canonical visual source.
+- Templates #01-#44 are immutable visual masters.
+- New requirements are append-only in the frozen master contract before implementation.
+- No redesign, recolor, visual simplification or arbitrary substitution is allowed.
