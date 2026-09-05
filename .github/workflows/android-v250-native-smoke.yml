@@ -62,6 +62,7 @@ jobs:
           unzip -l "$APK" > /tmp/apk-files.txt
           for f in \
             assets/v250/index.html \
+            assets/v250/accounting-integrity-v271.js \
             assets/v250/canonical-app.js \
             assets/v250/canonical-overrides-v270.js \
             assets/v250/canonical-pixel-v270.css \
@@ -74,7 +75,7 @@ jobs:
             grep -Fq "$f" /tmp/apk-files.txt || { echo "Missing runtime asset: $f"; exit 1; }
           done
           INDEX="$(unzip -p "$APK" assets/v250/index.html)"
-          for ref in canonical-overrides-v270.js canonical-pixel-v270.css media.js screens-00-truthful-bootstrap-v271.js screens-96-truthful-extended-v271.js screens-97-auth-ui-v271.js screens-98-truthful-ui-v271.js screens-99-runtime-safety-v271.js; do
+          for ref in accounting-integrity-v271.js canonical-overrides-v270.js canonical-pixel-v270.css media.js screens-00-truthful-bootstrap-v271.js screens-96-truthful-extended-v271.js screens-97-auth-ui-v271.js screens-98-truthful-ui-v271.js screens-99-runtime-safety-v271.js; do
             grep -Fq "$ref" <<<"$INDEX" || { echo "index.html does not load: $ref"; exit 1; }
           done
           grep -Fq 'createLocalCredential' app/src/main/java/com/lapauseclub/manager/NewAppActivity.java
