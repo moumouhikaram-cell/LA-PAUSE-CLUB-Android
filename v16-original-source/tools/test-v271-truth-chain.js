@@ -1,5 +1,5 @@
 'use strict';
-// Canonical recovery gates: this file is intentionally in both signed and native-smoke path filters.
+// Canonical recovery gates: v290 batch 01-10 candidate, intentionally in both signed and native-smoke path filters.
 const fs=require('fs'),path=require('path');
 const root=path.resolve(__dirname,'..');
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
