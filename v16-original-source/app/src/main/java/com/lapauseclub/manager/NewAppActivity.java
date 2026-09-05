@@ -14,7 +14,10 @@ import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.util.Base64;
+import android.view.MotionEvent;
+import android.view.View;
 import android.view.WindowManager;
+import android.view.inputmethod.InputMethodManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -50,7 +53,7 @@ public final class NewAppActivity extends Activity {
     private boolean exitDialogVisible;
     private OnBackInvokedCallback backInvokedCallback;
 
-    @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
+    @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface", "ClickableViewAccessibility"})
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -70,7 +73,17 @@ public final class NewAppActivity extends Activity {
         String legacy = prefs.getString("state_json", "");
         if (legacy != null && !legacy.trim().isEmpty()) coreStore.bootstrapFromLegacy(legacy);
 
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         webView = new WebView(this);
+        webView.setFocusable(true);
+        webView.setFocusableInTouchMode(true);
+        webView.requestFocus(View.FOCUS_DOWN);
+        webView.setOnTouchListener((v, event) -> {
+            if (event != null && event.getActionMasked() == MotionEvent.ACTION_DOWN && !webView.hasFocus()) {
+                webView.requestFocus(View.FOCUS_DOWN);
+            }
+            return false;
+        });
         setContentView(webView);
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG);
         WebSettings settings = webView.getSettings();
@@ -260,6 +273,15 @@ public final class NewAppActivity extends Activity {
             if (email == null) return false;
             try { return authPrefs.contains(credentialKey(email)); }
             catch (Exception ignored) { return false; }
+        }
+
+        @JavascriptInterface public void requestKeyboard() {
+            runOnUiThread(() -> {
+                if (webView == null) return;
+                webView.requestFocus(View.FOCUS_DOWN);
+                InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+                if (imm != null) imm.showSoftInput(webView, InputMethodManager.SHOW_IMPLICIT);
+            });
         }
 
         private String credentialKey(String email) throws Exception {
