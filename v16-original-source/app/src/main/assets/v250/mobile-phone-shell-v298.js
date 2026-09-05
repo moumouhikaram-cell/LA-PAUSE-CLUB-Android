@@ -1,9 +1,7 @@
 'use strict';
-/* LA PAUSE OS v298 — physical-phone landing + touch bridge.
-   This layer fixes two real-device defects:
-   1) marketing screen 01 was taller than a phone viewport;
-   2) Android WebView taps were not reliably becoming click events.
-   It preserves the existing state/operational engine and only replaces screen 01. */
+/* LA PAUSE OS v298 — physical-phone landing.
+   v300 now owns global app interaction. This layer is intentionally limited to
+   screen 01 so it can never cancel native form focus on setup/auth screens. */
 (function(){
   var A=window.LPOS,U=window.LPOSScreens,S=A&&A.state;
   if(!A||!U||!S)return;
@@ -59,18 +57,14 @@
     return false;
   }
 
-  /* Mouse/emulator fallback for the v298-owned controls. */
   document.addEventListener('click',function(ev){
     var el=ev.target&&ev.target.closest?ev.target.closest('[data-v298-go],[data-v298-action]'):null;
     if(!el)return;
     if(activate(el)){ev.preventDefault();ev.stopImmediatePropagation();}
   },true);
 
-  /* Physical Android bridge. touchend is used deliberately because the user's
-     WebView rendered correctly but did not reliably synthesize click events.
-     For existing screens we convert a short tap into el.click(), which invokes
-     their already-tested data-action/data-v291/data-v296 handlers. */
-  var touch=null,lastSyntheticAt=0,lastSyntheticEl=null;
+  /* Physical Android fallback ONLY for v298-owned landing controls. */
+  var touch=null;
   document.addEventListener('touchstart',function(ev){
     var t=ev.changedTouches&&ev.changedTouches[0];if(!t)return;
     touch={x:t.clientX,y:t.clientY,at:Date.now()};
@@ -80,22 +74,11 @@
     var t=ev.changedTouches&&ev.changedTouches[0],start=touch;touch=null;if(!t)return;
     var dx=Math.abs(t.clientX-start.x),dy=Math.abs(t.clientY-start.y),dt=Date.now()-start.at;
     if(dx>18||dy>18||dt>850)return;
-    var el=ev.target&&ev.target.closest?ev.target.closest('[data-v298-go],[data-v298-action],[data-go],[data-action],[data-v291],[data-v296]'):null;
+    var el=ev.target&&ev.target.closest?ev.target.closest('[data-v298-go],[data-v298-action]'):null;
     if(!el)return;
     ev.preventDefault();
-    if(activate(el)){ev.stopImmediatePropagation();return;}
-    lastSyntheticAt=Date.now();lastSyntheticEl=el;
-    try{el.click();}catch(_e){
-      try{el.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window}));}catch(_e2){}
-    }
+    if(activate(el))ev.stopImmediatePropagation();
   },{capture:true,passive:false});
-
-  /* Block only the duplicate native click that may follow our synthetic tap. */
-  document.addEventListener('click',function(ev){
-    if(!lastSyntheticEl||Date.now()-lastSyntheticAt>700)return;
-    var el=ev.target&&ev.target.closest?ev.target.closest('[data-go],[data-action],[data-v291],[data-v296]'):null;
-    if(el===lastSyntheticEl&&ev.isTrusted){ev.preventDefault();ev.stopImmediatePropagation();lastSyntheticEl=null;}
-  },true);
 
   function syncViewport(){
     var isLanding=!!document.querySelector('.v298-landing');
