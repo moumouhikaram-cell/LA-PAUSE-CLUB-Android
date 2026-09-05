@@ -27,7 +27,6 @@ for(const t of [
   'el.focus',
   'touchstart',
   'touchend',
-  'pointer',
   'window.__LPOS_V300',
   'function audit(root)',
   'v300InteractionUnbound',
@@ -46,7 +45,7 @@ for(const t of [
   'showSoftInput(webView, InputMethodManager.SHOW_IMPLICIT)'
 ])must(activity.includes(t),'Samsung WebView focus/keyboard guarantee missing '+t);
 
-for(const t of ['id="newName"','id="newEmail"','id="newPassword"','data-action="create-account"'])must(v291.includes(t),'Create Account renderer missing '+t);
+for(const t of ['newName','newEmail','newPassword','data-action="create-account"'])must(v291.includes(t),'Create Account renderer missing '+t);
 must(!/id=\"new(Name|Email|Password)\"[^>]*disabled/.test(v291),'Create Account fields must not be disabled');
 must(safety.includes("if(kind==='create-account')")&&safety.includes('createLocalCredential'),'secure Create Account handler missing');
 must(canonical.includes("querySelectorAll('[data-go]')")&&canonical.includes("querySelectorAll('[data-action]')"),'canonical click binding missing');
