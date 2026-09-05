@@ -1,5 +1,5 @@
 'use strict';
-// Canonical recovery gates: v292 user-approved mobile home + v291 corrected batch 01-10.
+// Canonical recovery gates: v292 user-approved mobile home + v291 corrected batch 01-10. Media assertion fix rerun.
 const fs=require('fs'),path=require('path');
 const root=path.resolve(__dirname,'..');
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
