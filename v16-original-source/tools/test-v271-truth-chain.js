@@ -1,5 +1,5 @@
 'use strict';
-// Canonical recovery gates: v299 universal mobile foundation + v298 strict phone viewport/touch bridge + v297 physical-phone recovery + v296 unified product graph + v295 unified operational shell + v294 confirmed premium mobile home + v291 corrected batch 01-10.
+// Canonical recovery gates: v300 global interaction integrity + v299 universal mobile foundation + v298 strict landing viewport + v297 physical-phone recovery + v296 unified product graph + v295 unified operational shell + v294 confirmed premium mobile home + v291 corrected batch 01-10.
 const fs=require('fs'),path=require('path');
 const root=path.resolve(__dirname,'..');
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
@@ -48,6 +48,7 @@ require('./test-v296-unified-product.js');
 require('./test-v297-mobile-interactions.js');
 require('./test-v298-phone-shell.js');
 require('./test-v299-mobile-foundation.js');
+require('./test-v300-interaction-integrity.js');
 console.log('V271_EXTENDED_TRUTHFUL_STATES_OK');
 console.log('V271_SAFE_LEGACY_SEED_MIGRATION_OK');
 console.log('V271_VERIFIED_AUTH_CHAIN_OK');
@@ -60,5 +61,6 @@ console.log('V297_MOBILE_INTERACTION_RECOVERY_GATE_OK');
 console.log('V297_ANDROID_SYSTEM_BAR_RECOVERY_GATE_OK');
 console.log('V297_PHYSICAL_PHONE_CTA_RUNTIME_GATE_OK');
 console.log('V298_STRICT_PHONE_VIEWPORT_GATE_OK');
-console.log('V298_ANDROID_TOUCH_BRIDGE_GATE_OK');
+console.log('V298_LANDING_ONLY_TOUCH_GATE_OK');
 console.log('V299_UNIVERSAL_MOBILE_FOUNDATION_GATE_OK');
+console.log('V300_GLOBAL_INTERACTION_INTEGRITY_GATE_OK');
