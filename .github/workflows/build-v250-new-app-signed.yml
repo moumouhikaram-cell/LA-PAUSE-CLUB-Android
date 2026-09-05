@@ -3,8 +3,7 @@ name: Build Signed LA PAUSE OS 2.5.0 New App
 on:
   workflow_dispatch:
   push:
-    branches:
-      - android-new-app-v250
+    branches: [android-new-app-v250]
     paths:
       - "v16-original-source/app/src/main/assets/v250/**"
       - "v16-original-source/app/src/main/java/com/lapauseclub/manager/NewAppActivity.java"
@@ -45,17 +44,20 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
 
-      - name: Enforce zero-legacy new app contract
+      - name: Enforce 60-screen SaaS release contract
         working-directory: v16-original-source
         shell: bash
         run: |
           set -euxo pipefail
-          node --check app/src/main/assets/v250/app.js
+          for f in app/src/main/assets/v250/*.js; do node --check "$f"; done
           node tools/test-v250-new-app.js
           grep -q 'android:name=".NewAppActivity"' app/src/main/AndroidManifest.xml
           ! grep -q 'PremiumActivity' app/src/main/AndroidManifest.xml
           grep -q 'v250/index.html' app/src/main/java/com/lapauseclub/manager/NewAppActivity.java
-          ! grep -q 'client-shell-next-v240' app/src/main/assets/v250/index.html
+          ! grep -R -q 'client-shell-next-v240' app/src/main/assets/v250
+          grep -q "\[60,'Pricing / Offers / Dynamic Rules'" app/src/main/assets/v250/screens.js
+          grep -q "30 min · Duo" app/src/main/assets/v250/screens-16-22.js
+          grep -q "orientation:window.innerWidth>window.innerHeight" app/src/main/assets/v250/app.js
 
       - name: Load pinned prod-v2 verifier
         shell: bash
@@ -114,9 +116,17 @@ jobs:
           grep "versionName='2.5.0'" signed-v250-badging.txt
           grep -qi 'Signer #1 certificate SHA-256 digest: f154909d8c631131975553c41481b67c282f514beb0ed9ab228d7275fa8e321f' signed-v250-certificate.txt
           unzip -p "$OUT" assets/v250/index.html > signed-v250-index.html
-          unzip -p "$OUT" assets/v250/app.js > signed-v250-app.js
-          grep -q 'Operator Console' signed-v250-app.js
-          grep -q 'Duo · 30 min' signed-v250-app.js
+          unzip -p "$OUT" assets/v250/screens.js > signed-v250-screens.js
+          unzip -p "$OUT" assets/v250/saas-core.js > signed-v250-core.js
+          unzip -p "$OUT" assets/v250/app.js > signed-v250-runtime.js
+          unzip -p "$OUT" assets/v250/responsive.css > signed-v250-responsive.css
+          grep -q "screens-53-60.js" signed-v250-index.html
+          grep -q "\[60,'Pricing / Offers / Dynamic Rules'" signed-v250-screens.js
+          grep -q 'M15_AI_OPERATOR' signed-v250-core.js
+          grep -q 'acceptedActions' signed-v250-core.js
+          grep -q 'assistedRevenue' signed-v250-core.js
+          grep -q 'window.nativeBack' signed-v250-runtime.js
+          grep -q 'orientation:landscape' signed-v250-responsive.css
           ! grep -q 'client-shell-next-v240' signed-v250-index.html
           sha256sum "$OUT" | tee signed-v250-sha256.txt
           stat -c '%s bytes' "$OUT" | tee signed-v250-size.txt
@@ -125,13 +135,16 @@ jobs:
         shell: bash
         run: |
           {
-            echo 'LA PAUSE OS Android 2.5.0 — NEW APP'
+            echo 'LA PAUSE OS Android 2.5.0 — NEW 60-SCREEN SAAS APP'
             echo "Commit: $GITHUB_SHA"
             echo 'Launcher: com.lapauseclub.manager.NewAppActivity'
             echo 'Visible legacy UI: NONE'
             echo 'Entry: file:///android_asset/v250/index.html'
-            echo 'Responsive: tablet + phone breakpoints enforced'
-            echo 'Operator journeys: Duo 30 / per-game billiard / +30 / +1 game / snack / NBA / assisted revenue'
+            echo 'Screens: 01-44 canonical templates + 45-60 non-regression feature screens'
+            echo 'SaaS: account + tenant + workspace + venue + branch + M01-M15 + entitlement/RBAC'
+            echo 'Responsive: phone portrait + phone landscape + tablet + RTL + rotation state restore'
+            echo 'Operator: Duo 30 / per-game billiard / +30 / +1 game / snack / NBA / assisted revenue'
+            echo 'Offline: local edge authority + outbox/inbox + conflict model + offline entitlement lease'
             cat signed-v250-sha256.txt
             cat signed-v250-size.txt
           } > LA-PAUSE-OS-v2.5.0-NEW-APP-MANIFEST.txt
