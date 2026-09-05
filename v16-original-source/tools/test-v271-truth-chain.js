@@ -1,5 +1,5 @@
 'use strict';
-// Canonical recovery gates: v290 batch 01-10 candidate, intentionally in both signed and native-smoke path filters.
+// Canonical recovery gates: v291 frozen batch 01-10 candidate, intentionally in both signed and native-smoke path filters.
 const fs=require('fs'),path=require('path');
 const root=path.resolve(__dirname,'..');
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
@@ -39,6 +39,7 @@ require('./test-v271-bootstrap-runtime.js');
 require('./test-v271-accounting-runtime.js');
 require('./test-v280-canonical-mobile.js');
 require('./test-v290-canonical-batch-01-10.js');
+require('./test-v291-frozen-01-10-interaction.js');
 console.log('V271_EXTENDED_TRUTHFUL_STATES_OK');
 console.log('V271_SAFE_LEGACY_SEED_MIGRATION_OK');
 console.log('V271_VERIFIED_AUTH_CHAIN_OK');
