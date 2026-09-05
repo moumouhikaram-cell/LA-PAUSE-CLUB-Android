@@ -1,4 +1,5 @@
 'use strict';
+// v280 canonical recovery gate: this file is intentionally in both signed and native-smoke path filters.
 const fs=require('fs'),path=require('path');
 const root=path.resolve(__dirname,'..');
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
