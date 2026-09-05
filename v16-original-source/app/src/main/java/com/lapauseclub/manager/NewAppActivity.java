@@ -13,6 +13,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.util.Base64;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebResourceRequest;
@@ -25,9 +26,19 @@ import com.lapauseclub.manager.security.AppIntegrity;
 
 import org.json.JSONObject;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
+import java.util.Locale;
+
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.PBEKeySpec;
+
 public final class NewAppActivity extends Activity {
     private static final String ASSET_PREFIX = "file:///android_asset/";
     private static final String ENTRY = ASSET_PREFIX + "v250/index.html";
+    private static final int AUTH_ITERATIONS = 120000;
+    private static final int AUTH_BITS = 256;
     private WebView webView;
     private CoreStore coreStore;
     private boolean exitDialogVisible;
@@ -126,6 +137,7 @@ public final class NewAppActivity extends Activity {
 
     public final class NewBridge {
         private final SharedPreferences prefs = getSharedPreferences("gaming_floor_store", MODE_PRIVATE);
+        private final SharedPreferences authPrefs = getSharedPreferences("la_pause_local_auth", MODE_PRIVATE);
 
         @JavascriptInterface public String getStateJson() {
             String primary = prefs.getString("state_json", "");
@@ -146,6 +158,54 @@ public final class NewAppActivity extends Activity {
                 if (coreStore != null) coreStore.mirrorLegacyState(parsed.toString());
             } catch (Exception ignored) {}
         }
+
+        @JavascriptInterface public boolean createLocalCredential(String email, String password) {
+            if (email == null || password == null || password.length() < 8) return false;
+            try {
+                String key = credentialKey(email);
+                byte[] salt = new byte[16];
+                new SecureRandom().nextBytes(salt);
+                byte[] hash = derive(password.toCharArray(), salt, AUTH_ITERATIONS);
+                String record = AUTH_ITERATIONS + ":" + b64(salt) + ":" + b64(hash);
+                return authPrefs.edit().putString(key, record).commit();
+            } catch (Exception ignored) { return false; }
+        }
+
+        @JavascriptInterface public boolean verifyLocalCredential(String email, String password) {
+            if (email == null || password == null) return false;
+            try {
+                String record = authPrefs.getString(credentialKey(email), "");
+                if (record == null || record.isEmpty()) return false;
+                String[] parts = record.split(":", -1);
+                if (parts.length != 3) return false;
+                int iterations = Integer.parseInt(parts[0]);
+                if (iterations < 100000 || iterations > 1000000) return false;
+                byte[] salt = Base64.decode(parts[1], Base64.NO_WRAP);
+                byte[] expected = Base64.decode(parts[2], Base64.NO_WRAP);
+                byte[] actual = derive(password.toCharArray(), salt, iterations);
+                return MessageDigest.isEqual(expected, actual);
+            } catch (Exception ignored) { return false; }
+        }
+
+        @JavascriptInterface public boolean hasLocalCredential(String email) {
+            if (email == null) return false;
+            try { return authPrefs.contains(credentialKey(email)); }
+            catch (Exception ignored) { return false; }
+        }
+
+        private String credentialKey(String email) throws Exception {
+            String normalized = email.trim().toLowerCase(Locale.ROOT);
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            return "credential_" + Base64.encodeToString(md.digest(normalized.getBytes(StandardCharsets.UTF_8)), Base64.NO_WRAP | Base64.URL_SAFE);
+        }
+
+        private byte[] derive(char[] password, byte[] salt, int iterations) throws Exception {
+            PBEKeySpec spec = new PBEKeySpec(password, salt, iterations, AUTH_BITS);
+            try { return SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).getEncoded(); }
+            finally { spec.clearPassword(); }
+        }
+
+        private String b64(byte[] value) { return Base64.encodeToString(value, Base64.NO_WRAP); }
 
         @JavascriptInterface public String getOperatingMode() { return coreStore == null ? "AUTONOME" : coreStore.getOperatingMode(); }
         @JavascriptInterface public boolean setOperatingMode(String mode) {
