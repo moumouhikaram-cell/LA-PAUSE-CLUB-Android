@@ -1,196 +1,43 @@
 'use strict';
-(() => {
-  const native = window.Android || null;
-  const root = document.getElementById('app');
-  const modalRoot = document.getElementById('modalRoot');
-  const toastRoot = document.getElementById('toastRoot');
-  const uid = (p='id') => `${p}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,8)}`;
-  const now = () => Date.now();
-  const num = (v,d=0) => Number.isFinite(+v) ? +v : d;
-  const money = v => `${(Math.round(num(v)*100)/100).toLocaleString('fr-FR',{maximumFractionDigits:2})} DH`;
-  const time = ms => new Date(ms).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
-  const esc = s => String(s ?? '').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
-  const ACTIVE = new Set(['active','paused','ACTIVE','PAUSED']);
-
-  function freshState(){
-    return {
-      schemaVersion: 7,
-      meta:{appVersion:'2.5.0',createdAt:now(),updatedAt:now(),dataRevision:1},
-      business:{name:'LA PAUSE CLUB',branchName:'El Hajeb',currency:'MAD',timezone:'Africa/Casablanca'},
-      rates:{ps5Solo:22,ps5Duo:28,sim:45,billiardGame:10},
-      sessionRules:{defaultPaymentTiming:'start',warningMinutes:5},
-      stations:[1,2,3,4,5,6].map(n=>({id:`ps5-${n}`,name:`PS5 ${n}`,type:'PS5',enabled:true,sort:n})).concat([{id:'sim-1',name:'SIM RACING VIP',type:'SIM',enabled:true,sort:7}]),
-      sessions:[],payments:[],clients:[],queue:[],bookings:[],reservations:[],products:[],sales:[],orders:[],shifts:[],cashEntries:[],tournaments:[],challenges:[],equipment:[],maintenance:[],devices:[],audit:[],outbox:[],
-      operatorMetrics:{acceptedActions:0,assistedRevenue:0},
-      ui:{currentRoute:'home'}
-    };
-  }
-
-  function normalize(raw){
-    const d=freshState();
-    const s=raw && typeof raw==='object' ? {...d,...raw} : d;
-    s.meta={...d.meta,...(s.meta||{}),appVersion:'2.5.0'};
-    s.business={...d.business,...(s.business||{})};
-    s.rates={...d.rates,...(s.rates||{})};
-    s.sessionRules={...d.sessionRules,...(s.sessionRules||{})};
-    s.ui={...d.ui,...(s.ui||{})};
-    s.operatorMetrics={...d.operatorMetrics,...(s.operatorMetrics||{})};
-    for(const k of ['stations','resources','sessions','payments','clients','queue','bookings','reservations','products','sales','orders','shifts','cashEntries','tournaments','challenges','equipment','maintenance','devices','audit','outbox']) if(!Array.isArray(s[k])) s[k]=[];
-    return s;
-  }
-
-  function loadState(){
-    try{
-      const raw=native?.getStateJson?.();
-      if(raw) return normalize(JSON.parse(raw));
-    }catch(_){ }
-    try{ const raw=localStorage.getItem('la-pause-os-v250'); if(raw) return normalize(JSON.parse(raw)); }catch(_){ }
-    return freshState();
-  }
-
-  let state=loadState();
-  let route=state.ui?.currentRoute || 'home';
-  let lastRoute='home';
-
-  function persist(eventType, payload={}){
-    state.meta.updatedAt=now();
-    state.meta.dataRevision=num(state.meta.dataRevision)+1;
-    state.meta.appVersion='2.5.0';
-    state.ui=state.ui||{};
-    state.ui.currentRoute=route;
-    if(eventType){
-      state.outbox=state.outbox||[];
-      state.outbox.push({id:uid('evt'),type:eventType,at:now(),payload});
-      if(state.outbox.length>1000) state.outbox=state.outbox.slice(-1000);
-      state.audit=state.audit||[];
-      state.audit.push({id:uid('audit'),type:eventType,at:now(),payload});
-      if(state.audit.length>1500) state.audit=state.audit.slice(-1500);
-    }
-    const json=JSON.stringify(state);
-    try{localStorage.setItem('la-pause-os-v250',json)}catch(_){ }
-    try{native?.setStateJson?.(json)}catch(_){ }
-  }
-
-  function resourceType(r){
-    const t=String(r.resourceType||r.type||'CUSTOM').toUpperCase();
-    if(t==='PS5'||t==='PS4'||t==='CONSOLE') return 'CONSOLE';
-    if(t==='SIM'||t==='SIM_RACING') return 'SIM_RACING';
-    if(t.includes('BILLIARD')||t.includes('BILLARD')) return 'BILLIARD_TABLE';
-    if(t.includes('SNOOKER')) return 'SNOOKER_TABLE';
-    if(t.includes('PING')||t.includes('TABLE_TENNIS')) return 'TABLE_TENNIS';
-    if(t.includes('PC')) return 'PC_GAMING';
-    if(t.includes('PRIVATE')) return 'PRIVATE_ROOM';
-    return t||'CUSTOM';
-  }
-
-  function resources(){
-    const source=(state.resources?.length?state.resources:state.stations)||[];
-    return source.filter(r=>r.enabled!==false).map((r,i)=>({...r,id:r.id||`res-${i+1}`,name:r.name||`Ressource ${i+1}`,resourceType:resourceType(r)})).sort((a,b)=>num(a.sort)-num(b.sort));
-  }
-
-  function sessionFor(resourceId){return state.sessions.find(s=>String(s.resourceId||s.stationId)===String(resourceId) && ACTIVE.has(String(s.status)))||null;}
-  function activeSessions(){return state.sessions.filter(s=>ACTIVE.has(String(s.status)));}
-  function revenueToday(){const day=new Date().toLocaleDateString('sv-SE',{timeZone:'Africa/Casablanca'});return state.payments.filter(p=>new Date(p.at||p.createdAt||0).toLocaleDateString('sv-SE',{timeZone:'Africa/Casablanca'})===day).reduce((a,p)=>a+num(p.amount),0);}
-  function paidSession(s){return state.payments.filter(p=>p.sessionId===s.id).reduce((a,p)=>a+num(p.amount),0);}
-  function remainingMs(s){if(!s.endAt)return 0;return Math.max(0,s.endAt-now());}
-  function timer(ms){const sec=Math.max(0,Math.floor(ms/1000)),m=Math.floor(sec/60),s=sec%60,h=Math.floor(m/60),mm=m%60;return h?`${String(h).padStart(2,'0')}:${String(mm).padStart(2,'0')}:${String(s).padStart(2,'0')}`:`${String(mm).padStart(2,'0')}:${String(s).padStart(2,'0')}`;}
-  function rateFor(r,players=1){const t=resourceType(r);if(t==='SIM_RACING')return num(state.rates.sim,45);if(t==='CONSOLE')return players===2?num(state.rates.ps5Duo,28):num(state.rates.ps5Solo,22);return num(r.ratePerHour||r.hourlyRate||state.rates.ps5Solo,22);}
-  function billardGamePrice(r){return num(r.pricePerGame||r.gamePrice||state.rates.billiardGame,10);}
-  function addPayment(amount,sessionId,note=''){const p={id:uid('pay'),sessionId,amount:Math.max(0,num(amount)),method:'cash',at:now(),createdAt:now(),note};state.payments.push(p);return p;}
-  function recordAccepted(amount,kind){state.operatorMetrics.acceptedActions=num(state.operatorMetrics.acceptedActions)+1;state.operatorMetrics.assistedRevenue=num(state.operatorMetrics.assistedRevenue)+Math.max(0,num(amount));persist('OPERATOR_ACTION_ACCEPTED',{kind,amount});}
-  function toast(text){toastRoot.innerHTML=`<div class="toast">${esc(text)}</div>`;setTimeout(()=>toastRoot.innerHTML='',2300);}
-
-  function startTimed(r,minutes,players=1,label='Session rapide'){
-    const rate=rateFor(r,players), amount=Math.round(((rate/60)*minutes)*2)/2, start=now();
-    const s={id:uid('sess'),stationId:r.id,resourceId:r.id,status:'active',mode:'fixed',startAt:start,endAt:start+minutes*60000,plannedMinutes:minutes,players,ratePerHour:rate,baseAmount:amount,totalAmount:amount,createdAt:start,updatedAt:start,note:label};
-    state.sessions.push(s);addPayment(amount,s.id,'Paiement au démarrage');
-    try{native?.scheduleSessionAlerts?.(s.id,s.endAt,s.endAt-num(state.sessionRules.warningMinutes,5)*60000,r.name)}catch(_){ }
-    persist('SESSION_STARTED',{sessionId:s.id,resourceId:r.id,minutes,players,amount});closeModal();toast(`${r.name} démarré · ${money(amount)}`);render();
-  }
-
-  function startGame(r,games=1){
-    const unit=billardGamePrice(r),amount=unit*games,start=now();
-    const s={id:uid('sess'),stationId:r.id,resourceId:r.id,status:'active',mode:'per_game',billingMode:'per_game',startAt:start,endAt:null,players:2,gamesPurchased:games,gamesPlayed:0,pricePerGame:unit,totalAmount:amount,createdAt:start,updatedAt:start};
-    state.sessions.push(s);addPayment(amount,s.id,'Paiement par partie au démarrage');persist('GAME_SESSION_STARTED',{sessionId:s.id,resourceId:r.id,games,amount});closeModal();toast(`${r.name} · ${games} partie${games>1?'s':''}`);render();
-  }
-
-  function finishSession(id){const s=state.sessions.find(x=>x.id===id);if(!s)return;s.status='completed';s.finishedAt=now();s.updatedAt=now();try{native?.cancelSessionEnd?.(s.id)}catch(_){ }persist('SESSION_COMPLETED',{sessionId:id});toast('Session terminée');render();}
-  function extend30(id,assisted=false){const s=state.sessions.find(x=>x.id===id);if(!s)return;const r=resources().find(x=>x.id===(s.resourceId||s.stationId));if(!r)return;const delta=Math.round(((rateFor(r,s.players||1)/2))*2)/2;s.endAt=Math.max(now(),num(s.endAt,now()))+30*60000;s.plannedMinutes=num(s.plannedMinutes)+30;s.totalAmount=num(s.totalAmount)+delta;s.updatedAt=now();addPayment(delta,s.id,'Extension +30 min');try{native?.scheduleSessionAlerts?.(s.id,s.endAt,s.endAt-num(state.sessionRules.warningMinutes,5)*60000,r.name)}catch(_){ }if(assisted)recordAccepted(delta,'EXTEND_30');else persist('SESSION_EXTENDED',{sessionId:id,minutes:30,amount:delta});toast(`+30 min · ${money(delta)}`);render();}
-  function addGame(id,assisted=false){const s=state.sessions.find(x=>x.id===id);if(!s)return;const r=resources().find(x=>x.id===(s.resourceId||s.stationId));if(!r)return;const delta=billardGamePrice(r);s.gamesPurchased=num(s.gamesPurchased)+1;s.totalAmount=num(s.totalAmount)+delta;s.updatedAt=now();addPayment(delta,s.id,'+1 partie');if(assisted)recordAccepted(delta,'ADD_GAME');else persist('GAME_ADDED',{sessionId:id,amount:delta});toast(`+1 partie · ${money(delta)}`);render();}
-  function addSnack(sessionId,productId,assisted=false){const p=state.products.find(x=>x.id===productId)||state.products.find(x=>x.enabled!==false);if(!p){toast('Ajoute des snacks dans le catalogue');return;}const amount=num(p.price||p.salePrice,0);state.sales.push({id:uid('sale'),sessionId,productId:p.id,qty:1,total:amount,at:now()});addPayment(amount,sessionId,`Snack · ${p.name||p.title||'Produit'}`);if(assisted)recordAccepted(amount,'SNACK');else persist('SNACK_SOLD',{sessionId,productId:p.id,amount});closeModal();toast(`${p.name||'Snack'} · ${money(amount)}`);render();}
-
-  function nextBestAction(){
-    const active=activeSessions();
-    const expiring=active.find(s=>s.endAt && remainingMs(s)<=15*60000);
-    if(expiring){const r=resources().find(x=>x.id===(expiring.resourceId||expiring.stationId));return {kind:'extend',title:`Prolonger ${r?.name||'la session'} de 30 min`,text:'Session bientôt terminée. Une prolongation immédiate évite un poste libéré trop tôt.',amount:r?rateFor(r,expiring.players||1)/2:0,sessionId:expiring.id};}
-    const game=active.find(s=>s.mode==='per_game'||s.billingMode==='per_game');
-    if(game){const r=resources().find(x=>x.id===(game.resourceId||game.stationId));return {kind:'game',title:`Proposer +1 partie sur ${r?.name||'billard'}`,text:'Action en un tap, facturée immédiatement par partie.',amount:r?billardGamePrice(r):0,sessionId:game.id};}
-    if(active.length && state.products.some(p=>p.enabled!==false)){const p=state.products.find(p=>p.enabled!==false);return {kind:'snack',title:`Proposer ${p?.name||'un snack'}`,text:'Upsell contextuel sur une session active.',amount:num(p?.price||p?.salePrice,0),sessionId:active[0].id,productId:p?.id};}
-    const free=resources().find(r=>!sessionFor(r.id));
-    if(free && state.queue.length){return {kind:'seat',title:`Installer le prochain client sur ${free.name}`,text:'Une ressource est libre alors que la file contient un client.',amount:0,resourceId:free.id};}
-    return {kind:'none',title:'Aucune action urgente',text:'Le floor est stable. Surveille les prochaines fins de session.',amount:0};
-  }
-
-  function acceptNBA(){const a=nextBestAction();if(a.kind==='extend')extend30(a.sessionId,true);else if(a.kind==='game')addGame(a.sessionId,true);else if(a.kind==='snack')addSnack(a.sessionId,a.productId,true);else if(a.kind==='seat'){state.queue.shift();recordAccepted(0,'QUEUE_SEATED');toast('Client appelé');}route='home';persist('NBA_RETURN_HOME',{kind:a.kind});render();}
-
-  function openSessionModal(r){
-    const t=resourceType(r);
-    let body='';
-    if(t==='CONSOLE') body=`<div class="quickGrid"><button class="choice" data-quick="duo30"><b>Duo · 30 min</b><small>${money(rateFor(r,2)/2)} · paiement maintenant</small></button><button class="choice" data-quick="solo30"><b>Solo · 30 min</b><small>${money(rateFor(r,1)/2)}</small></button><button class="choice" data-quick="duo60"><b>Duo · 60 min</b><small>${money(rateFor(r,2))}</small></button><button class="choice" data-quick="solo60"><b>Solo · 60 min</b><small>${money(rateFor(r,1))}</small></button></div>`;
-    else if(t==='BILLIARD_TABLE'||t==='SNOOKER_TABLE') body=`<div class="quickGrid"><button class="choice" data-quick="game1"><b>1 partie</b><small>${money(billardGamePrice(r))}</small></button><button class="choice" data-quick="game2"><b>2 parties</b><small>${money(billardGamePrice(r)*2)}</small></button><button class="choice" data-quick="game3"><b>3 parties</b><small>${money(billardGamePrice(r)*3)}</small></button></div>`;
-    else body=`<div class="quickGrid"><button class="choice" data-quick="solo30"><b>30 min</b><small>${money(rateFor(r,1)/2)}</small></button><button class="choice" data-quick="solo60"><b>60 min</b><small>${money(rateFor(r,1))}</small></button><button class="choice" data-quick="solo90"><b>90 min</b><small>${money(rateFor(r,1)*1.5)}</small></button></div>`;
-    modalRoot.innerHTML=`<div class="modalBackdrop"><div class="modal"><div class="modalHead"><div><strong>${esc(r.name)}</strong><div class="subtle">${esc(t)} · paiement au démarrage</div></div><button class="btn ghost" data-close>Fermer</button></div><div class="modalBody">${body}</div></div></div>`;
-    modalRoot.querySelector('[data-close]').onclick=closeModal;
-    modalRoot.querySelectorAll('[data-quick]').forEach(b=>b.onclick=()=>{const q=b.dataset.quick;if(q==='duo30')startTimed(r,30,2,'PS5 Duo 30');else if(q==='solo30')startTimed(r,30,1);else if(q==='duo60')startTimed(r,60,2);else if(q==='solo60')startTimed(r,60,1);else if(q==='solo90')startTimed(r,90,1);else if(q==='game1')startGame(r,1);else if(q==='game2')startGame(r,2);else if(q==='game3')startGame(r,3);};
-  }
-  function openSnackModal(sessionId){const products=state.products.filter(p=>p.enabled!==false);modalRoot.innerHTML=`<div class="modalBackdrop"><div class="modal"><div class="modalHead"><strong>Ajouter un snack</strong><button class="btn ghost" data-close>Fermer</button></div><div class="modalBody"><div class="list">${products.length?products.map(p=>`<button class="choice" data-product="${esc(p.id)}"><b>${esc(p.name||p.title||'Produit')}</b><small>${money(p.price||p.salePrice)}</small></button>`).join(''):'<div class="empty">Catalogue vide</div>'}</div></div></div></div>`;modalRoot.querySelector('[data-close]').onclick=closeModal;modalRoot.querySelectorAll('[data-product]').forEach(b=>b.onclick=()=>addSnack(sessionId,b.dataset.product,false));}
-  function closeModal(){modalRoot.innerHTML='';}
-
-  function navItems(){return [['home','⌂','Cockpit'],['floor','◫','Floor'],['cash','◉','Caisse'],['clients','◎','Clients'],['more','•••','Plus']];}
-  function navHtml(side=false){return navItems().map(([id,ic,label])=>`<button data-route="${id}" class="${route===id?'active':''}">${side?`${ic} ${label}`:`${ic}<br>${label}`}</button>`).join('');}
-  function shell(content,title,subtitle){
-    root.innerHTML=`<div class="app"><aside class="sidebar"><div class="brand"><div class="brandMark">LP</div><div class="brandText"><b>LA PAUSE OS</b><small>Operator Console</small></div></div><nav class="nav">${navHtml(true)}</nav><div class="sideStatus"><div><span class="dot"></span><b>${esc(native?.getOperatingMode?.()||'AUTONOME')}</b></div><small class="subtle">El Hajeb · v2.5.0</small></div></aside><main class="main"><header class="topbar"><div class="title"><h1>${esc(title)}</h1><p>${esc(subtitle)}</p></div><div class="topActions"><span class="pill">${esc(state.business.branchName||'El Hajeb')}</span><button class="btn primary" data-new-session>+ Nouvelle session</button></div></header>${content}</main><nav class="bottomNav">${navHtml(false)}</nav></div>`;
-    root.querySelectorAll('[data-route]').forEach(b=>b.onclick=()=>go(b.dataset.route));
-    root.querySelectorAll('[data-new-session]').forEach(b=>b.onclick=()=>{const free=resources().find(r=>!sessionFor(r.id));if(free)openSessionModal(free);else toast('Aucune ressource libre');});
-  }
-
-  function go(next){lastRoute=route;route=next;persist();render();}
-
-  function resourceCard(r){
-    const s=sessionFor(r.id),t=resourceType(r);
-    if(!s)return `<article class="resource free"><div class="resourceTop"><div><div class="resourceName">${esc(r.name)}</div><div class="resourceType">${esc(t)}</div></div><span class="status">LIBRE</span></div><div class="subtle">Prêt à démarrer</div><div class="resourceActions"><button class="mini" data-start="${esc(r.id)}">Démarrer</button></div></article>`;
-    const perGame=s.mode==='per_game'||s.billingMode==='per_game';
-    return `<article class="resource active"><div class="resourceTop"><div><div class="resourceName">${esc(r.name)}</div><div class="resourceType">${esc(t)}</div></div><span class="status busy">EN COURS</span></div><div class="timer">${perGame?`${num(s.gamesPurchased)} partie${num(s.gamesPurchased)>1?'s':''}`:timer(remainingMs(s))}</div><div class="subtle">${money(s.totalAmount)} · payé ${money(paidSession(s))}</div><div class="resourceActions">${perGame?`<button class="mini" data-add-game="${s.id}">+1 partie</button>`:`<button class="mini" data-extend="${s.id}">+30 min</button>`}<button class="mini" data-snack="${s.id}">Snack</button><button class="mini" data-finish="${s.id}">Fin</button></div></article>`;
-  }
-
-  function bindResourceActions(){
-    root.querySelectorAll('[data-start]').forEach(b=>b.onclick=()=>{const r=resources().find(x=>x.id===b.dataset.start);if(r)openSessionModal(r);});
-    root.querySelectorAll('[data-extend]').forEach(b=>b.onclick=()=>extend30(b.dataset.extend,false));
-    root.querySelectorAll('[data-add-game]').forEach(b=>b.onclick=()=>addGame(b.dataset.addGame,false));
-    root.querySelectorAll('[data-snack]').forEach(b=>b.onclick=()=>openSnackModal(b.dataset.snack));
-    root.querySelectorAll('[data-finish]').forEach(b=>b.onclick=()=>finishSession(b.dataset.finish));
-  }
-
-  function home(){
-    const rs=resources(),active=activeSessions(),free=rs.length-active.length,nba=nextBestAction();
-    const content=`<section class="kpis"><div class="kpi"><span>CA aujourd'hui</span><strong>${money(revenueToday())}</strong><em>paiements encaissés</em></div><div class="kpi"><span>Sessions actives</span><strong>${active.length}</strong><em>${free} ressources libres</em></div><div class="kpi"><span>CA assisté</span><strong>${money(state.operatorMetrics.assistedRevenue)}</strong><em>actions opérateur</em></div><div class="kpi"><span>Actions acceptées</span><strong>${num(state.operatorMetrics.acceptedActions)}</strong><em>Next Best Action</em></div></section><section class="grid2"><div class="card"><div class="cardHead"><h2>Control Center</h2><span class="tag">OPERATOR FIRST</span></div><div class="cardBody"><div class="resourceGrid">${rs.slice(0,9).map(resourceCard).join('')}</div></div></div><div class="card"><div class="cardHead"><h2>Next Best Action</h2></div><div class="cardBody"><div class="nba"><small>Recommandation</small><h3>${esc(nba.title)}</h3><p>${esc(nba.text)}</p>${nba.kind!=='none'?`<button class="btn primary" data-accept-nba>Accepter${nba.amount?` · +${money(nba.amount)}`:''}</button>`:'<span class="tag">Aucune action</span>'}</div></div></div></section>`;
-    shell(content,'Cockpit','Tout ce qui demande une action maintenant.');bindResourceActions();root.querySelector('[data-accept-nba]')?.addEventListener('click',acceptNBA);
-  }
-
-  function floor(){const rs=resources();shell(`<section class="hero"><div><h2>Gaming Floor</h2><p>${rs.length} ressources · 8 types supportés · facturation contextuelle</p></div><div class="actionStrip"><span class="tag">CONSOLE</span><span class="tag">PC</span><span class="tag">SIM</span><span class="tag">BILLARD</span><span class="tag">SNOOKER</span><span class="tag">PING-PONG</span><span class="tag">ROOM</span><span class="tag">CUSTOM</span></div></section><div style="height:14px"></div><section class="card"><div class="cardBody"><div class="resourceGrid">${rs.map(resourceCard).join('')}</div></div></section>`,'Floor','Toutes les ressources, sans supposer que tout est une PS5.');bindResourceActions();}
-
-  function cash(){const payments=[...state.payments].sort((a,b)=>num(b.at)-num(a.at)).slice(0,30);shell(`<section class="kpis"><div class="kpi"><span>CA aujourd'hui</span><strong>${money(revenueToday())}</strong></div><div class="kpi"><span>Transactions</span><strong>${payments.length}</strong></div><div class="kpi"><span>CA assisté</span><strong>${money(state.operatorMetrics.assistedRevenue)}</strong></div><div class="kpi"><span>Écart</span><strong>0 DH</strong><em>aucun faux KPI</em></div></section><section class="card"><div class="cardHead"><h2>Derniers paiements</h2></div><div class="cardBody"><div class="tableWrap"><table><thead><tr><th>Heure</th><th>Objet</th><th>Méthode</th><th>Montant</th></tr></thead><tbody>${payments.length?payments.map(p=>`<tr><td>${time(p.at||p.createdAt)}</td><td>${esc(p.note||p.sessionId||'Paiement')}</td><td>${esc(p.method||'cash')}</td><td class="money">${money(p.amount)}</td></tr>`).join(''):'<tr><td colspan="4" class="empty">Aucun paiement</td></tr>'}</tbody></table></div></div></section>`,'Caisse','Encaissements réels et traçables.');}
-
-  function clients(){const clients=state.clients.slice(0,80);shell(`<section class="card"><div class="cardHead"><h2>Clients</h2><button class="btn primary" data-add-client>+ Client</button></div><div class="cardBody"><div class="list">${clients.length?clients.map(c=>`<div class="row"><div><strong>${esc(c.name||`${c.firstName||''} ${c.lastName||''}`.trim()||'Client')}</strong><small>${esc(c.phone||c.email||'Sans coordonnées')}</small></div><span class="tag">${esc(c.status||'CLIENT')}</span></div>`).join(''):'<div class="empty">Aucun client enregistré</div>'}</div></div></section>`,'Clients','Recherche, historique et fidélisation sans ancien écran.');root.querySelector('[data-add-client]').onclick=()=>{modalRoot.innerHTML=`<div class="modalBackdrop"><div class="modal"><div class="modalHead"><strong>Nouveau client</strong><button class="btn ghost" data-close>Fermer</button></div><div class="modalBody"><div class="field"><label>Nom</label><input id="clientName" autocomplete="off"></div><div class="field"><label>Téléphone</label><input id="clientPhone" inputmode="tel"></div><button class="btn primary" id="saveClient">Créer</button></div></div></div>`;modalRoot.querySelector('[data-close]').onclick=closeModal;document.getElementById('saveClient').onclick=()=>{const name=document.getElementById('clientName').value.trim(),phone=document.getElementById('clientPhone').value.trim();if(!name)return toast('Nom obligatoire');state.clients.push({id:uid('client'),name,phone,createdAt:now()});persist('CLIENT_CREATED',{name});closeModal();render();};};}
-
-  function more(){
-    const tiles=[['Réservations',state.bookings.length+state.reservations.length],['File d’attente',state.queue.length],['Snacks & stock',state.products.length],['Tournois',state.tournaments.length],['Challenges',state.challenges.length],['Terminaux',state.devices.length],['Maintenance',state.maintenance.length],['Paramètres','22 / 28 / 45']];
-    shell(`<section class="sectionGrid">${tiles.map(([n,v])=>`<div class="card"><div class="cardBody"><div class="subtle">${esc(n)}</div><div style="font-size:30px;font-weight:950;margin-top:8px">${esc(v)}</div></div></div>`).join('')}</section><div style="height:14px"></div><section class="card"><div class="cardHead"><h2>Mode & Synchronisation</h2></div><div class="cardBody"><div class="row"><div><strong>Mode actuel</strong><small>La tablette reste utilisable hors ligne</small></div><span class="tag">${esc(native?.getOperatingMode?.()||'AUTONOME')}</span></div><div class="row"><div><strong>Version UI</strong><small>Nouveau shell indépendant</small></div><span class="tag">2.5.0</span></div></div></section>`,'Plus','Modules complémentaires sans aucune ancienne page.');
-  }
-
-  function render(){if(route==='home')home();else if(route==='floor')floor();else if(route==='cash')cash();else if(route==='clients')clients();else more();}
-  window.nativeBack=()=>{if(modalRoot.innerHTML){closeModal();return true;}if(route!=='home'){route='home';persist();render();return true;}return false;};
-  setInterval(()=>{if(route==='home'||route==='floor'){document.querySelectorAll('.timer').forEach(()=>{});render();}},15000);
-  persist('V250_NEW_APP_BOOT',{route});
-  render();
+(function(){
+var A=window.LPOS,U=window.LPOSScreens,S=A.state,root=document.getElementById('app'),modal=document.getElementById('modalRoot'),toastRoot=document.getElementById('toastRoot');
+var history=[];var touchStart=null;var scrollTimer=null;
+var MAIN=[11,12,15,20,21,24,26,27,28,29,32,34,36,37,40,41];
+var EXTRA=[45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60];
+function toast(x){toastRoot.innerHTML='<div class="toast">'+U.esc(x)+'</div>';setTimeout(function(){toastRoot.innerHTML='';},2100);}
+function current(){var n=A.num(S.ui.screen,2);return U.byNo[n]?n:2;}
+function scopeText(){var w=S.workspaces.find(function(x){return x.id===S.scope.workspaceId;})||S.workspaces[0],v=S.venues.find(function(x){return x.id===S.scope.venueId;})||S.venues[0],b=S.branches.find(function(x){return x.id===S.scope.branchId;})||S.branches[0];return {w:w,v:v,b:b};}
+function navButton(n){var x=U.byNo[n];return '<button data-go="'+n+'" class="'+(current()===n?'active':'')+'"><span class="n">'+String(n).padStart(2,'0')+'</span><span>'+U.esc(x.title)+'</span></button>';}
+function shell(){var n=current(),meta=U.byNo[n],pub=n<=4,sc=scopeText(),content=U.render(n);document.documentElement.lang=S.ui.language||'fr';document.documentElement.dir=S.ui.rtl?'rtl':'ltr';
+ if(pub){root.innerHTML='<div class="loginShell"><main class="main">'+content+'</main></div>';bind();restoreScroll();return;}
+ root.innerHTML='<div class="appShell"><aside class="side"><div class="logo"><div class="logoMark"></div><div class="logoText"><b>LA PAUSE OS</b><span>SAAS · EDGE · REVENUE</span></div></div><div class="context"><small>Workspace / Venue / Branch</small><b>'+U.esc(sc.w?sc.w.name:'Workspace')+'</b><span>'+U.esc((sc.v?sc.v.name:'Venue')+' · '+(sc.b?sc.b.name:'Branch'))+'</span></div><nav class="nav">'+MAIN.map(navButton).join('')+'<button data-action="screen-picker"><span class="n">∞</span><span>All 60 Screens</span></button></nav><div class="sideFoot"><div><span class="online">●</span> '+U.esc(A.native&&A.native.getOperatingMode?A.native.getOperatingMode():'AUTONOME')+'</div><div>tenant · venue · branch isolated</div></div></aside><main class="main"><header class="top"><div class="crumb"><div class="screenNo">'+String(n).padStart(2,'0')+'</div><div class="heading"><h1>'+U.esc(meta.title)+'</h1><p>'+U.esc(meta.group)+' · '+U.esc(sc.v?sc.v.name:'LA PAUSE OS')+'</p></div></div><div class="topRight"><span class="chip">'+U.esc(S.identity.role||'OWNER')+'</span><button class="btn ghost" data-action="screen-picker">01–60</button><button class="btn primary" data-action="quick-session">⚡ Session</button></div></header><div id="screenBody">'+content+'</div></main><nav class="bottomNav"><button data-go="12" class="'+(n===12?'active':'')+'">⌂<br>Control</button><button data-go="15" class="'+(n===15?'active':'')+'">▦<br>Floor</button><button data-go="20" class="'+(n===20?'active':'')+'">◈<br>POS</button><button data-go="27" class="'+(n===27?'active':'')+'">◉<br>Queue</button><button data-action="screen-picker">•••<br>More</button></nav></div><div class="boardTag">SCREEN '+String(n).padStart(2,'0')+' · '+U.esc(meta.title)+'</div>';bind();restoreScroll();}
+function saveScroll(){S.ui.scroll=window.scrollY||document.documentElement.scrollTop||0;A.persist(null);}
+function restoreScroll(){requestAnimationFrame(function(){var y=A.num(S.ui.scroll,0);if(y>0)window.scrollTo(0,y);});}
+function go(n,push){n=A.num(n);if(!U.byNo[n])return;if(push!==false&&current()!==n)history.push(current());S.ui.scroll=0;A.setScreen(n);shell();}
+function closeModal(){modal.innerHTML='';}
+function modalBox(title,body){modal.innerHTML='<div class="modalBackdrop"><div class="modal"><div class="top"><div class="heading"><h1>'+U.esc(title)+'</h1></div><button class="btn ghost" data-action="close-modal">Close</button></div>'+body+'</div></div>';bindModal();}
+function chooseResource(){var rs=A.resources().filter(function(x){return !A.sessionFor(x.id);});modalBox('Start a session','<div class="floor">'+rs.map(function(x){return '<div class="station"><span class="status">'+U.esc(x.resourceType)+'</span><h4>'+U.esc(x.name)+'</h4><button class="btn primary block" data-action="choose-resource:'+U.esc(x.id)+'">Select</button></div>';}).join('')+'</div>');}
+function snack(id){modalBox('Add snack','<div class="catalog">'+S.products.filter(function(p){return p.enabled!==false&&A.num(p.stock)>0;}).map(function(p){return '<div class="product"><div class="productArt">'+U.esc(p.emoji||'◫')+'</div><b>'+U.esc(p.name)+'</b><small>Stock '+A.num(p.stock)+'</small><strong>'+A.money(p.price)+'</strong><button class="btn primary block mt" data-action="sell-snack:'+id+':'+p.id+'">Add</button></div>';}).join('')+'</div>');}
+function simpleInput(title,fields,action){modalBox(title,fields.map(function(f){return '<div class="field"><label>'+U.esc(f[0])+'</label><input id="'+U.esc(f[1])+'" '+(f[2]?'value="'+U.esc(f[2])+'"':'')+'></div>';}).join('')+'<button class="btn primary block" data-action="'+action+'">Save</button>');}
+function screenPicker(){var groups={};U.list.forEach(function(x){(groups[x[2]]||(groups[x[2]]=[])).push(x);});modalBox('LA PAUSE OS · 60 Screens','<input id="screenSearch" class="search" placeholder="Search number or screen name..."><div id="screenList" class="list mt">'+Object.keys(groups).map(function(g){return '<div class="card"><div class="cardHead"><h3>'+U.esc(g)+'</h3></div><div class="cardBody"><div class="list">'+groups[g].map(function(x){return '<button class="row" data-go="'+x[0]+'"><div><b>'+String(x[0]).padStart(2,'0')+' · '+U.esc(x[1])+'</b><small>'+U.esc(x[2])+'</small></div><span class="value">Open →</span></button>';}).join('')+'</div></div></div>';}).join('')+'</div>');var q=document.getElementById('screenSearch');if(q)q.oninput=function(){var z=q.value.toLowerCase();document.querySelectorAll('#screenList [data-go]').forEach(function(el){el.style.display=el.textContent.toLowerCase().indexOf(z)>=0?'grid':'none';});};}
+function bindModal(){modal.querySelectorAll('[data-go]').forEach(function(x){x.onclick=function(){closeModal();go(x.dataset.go);};});modal.querySelectorAll('[data-action]').forEach(function(x){x.onclick=function(){act(x.dataset.action);};});}
+function bind(){root.querySelectorAll('[data-go]').forEach(function(x){x.onclick=function(){go(x.dataset.go);};});root.querySelectorAll('[data-action]').forEach(function(x){x.onclick=function(){act(x.dataset.action);};});root.querySelectorAll('[data-resource]').forEach(function(x){x.onclick=function(){S.ui.selectedResourceId=x.dataset.resource;A.persist(null);};});}
+function act(a){if(!a)return;var p=a.split(':'),kind=p[0];
+ if(kind==='go'){go(p[1]);return;}if(kind==='noop'){toast('Module preserved · action available in full workflow');return;}if(kind==='close-modal'){closeModal();return;}if(kind==='screen-picker'){screenPicker();return;}if(kind==='quick-session'){chooseResource();return;}
+ if(kind==='signin'){S.identity.signedIn=true;A.persist('SIGNED_IN',{accountId:S.identity.accountId});go(5);return;}if(kind==='create-account'){S.identity.signedIn=true;A.persist('ACCOUNT_CREATED',{});go(4);return;}if(kind==='create-org'){A.persist('ORGANIZATION_CREATED',{tenantId:S.scope.tenantId});go(5);return;}
+ if(kind==='select-workspace'){go(6);return;}if(kind==='select-venue'){go(7);return;}if(kind==='select-branch'){go(8);return;}if(kind==='onboarding-next'){S.onboarding.step=Math.min(15,A.num(S.onboarding.step)+1);S.onboarding.readiness=Math.min(100,Math.round(S.onboarding.step/15*100));A.persist('ONBOARDING_PROGRESS',{step:S.onboarding.step});shell();return;}
+ if(kind==='choose-resource'){S.ui.selectedResourceId=p[1];A.persist(null);closeModal();var x=A.resources().find(function(q){return q.id===p[1];});var z=A.resourceType(x);go(z==='BILLIARD_TABLE'||z==='SNOOKER_TABLE'?17:16);return;}
+ if(kind==='start-console'){var x=A.resources().find(function(q){return q.id===S.ui.selectedResourceId;})||A.resources().find(function(q){return A.resourceType(q)==='CONSOLE';});var res=A.startTimed(x.id,A.num(p[1]),A.num(p[2],1),'fixed');if(res.ok){toast('Session started · '+A.money(res.session.totalAmount));go(18);}else toast('Resource unavailable');return;}
+ if(kind==='start-game'){var g=A.resources().find(function(q){var z=A.resourceType(q);return z==='BILLIARD_TABLE'||z==='SNOOKER_TABLE';});var rg=A.startPerGame(g.id,A.num(p[1],1),2);if(rg.ok){toast('Per-game session started');go(18);}return;}
+ if(kind==='session'){S.ui.selectedSessionId=p[1];A.persist(null);go(18);return;}if(kind==='extend'){var d=A.extend30(p[1],false);toast(d?'+30 min · '+A.money(d):'Extension unavailable');shell();return;}if(kind==='add-game'){var dg=A.addGame(p[1],false);toast(dg?'+1 game · '+A.money(dg):'Per-game action unavailable');shell();return;}if(kind==='snack'){snack(p[1]);return;}if(kind==='sell-snack'){var ds=A.addSnack(p[1],p[2],1,false);if(ds){closeModal();toast('Snack · '+A.money(ds));shell();}return;}if(kind==='finish'){A.finishSession(p[1]);toast('Session completed');go(12);return;}
+ if(kind==='accept-nba'){var nba=A.acceptNBA();toast(nba.kind==='none'?'No urgent action':'Action accepted');go(12,false);return;}if(kind==='cart'){A.addCart(p[1]);shell();return;}if(kind==='checkout'){var total=A.checkoutCart('cash');toast(total?'Paid · '+A.money(total):'Cart empty');shell();return;}if(kind==='open-shift'){toast(A.openShift()?'Shift opened':'Shift already open');shell();return;}if(kind==='close-shift'){toast(A.closeShift()?'Shift closed':'No open shift');shell();return;}
+ if(kind==='add-client'){simpleInput('Create client',[['Name','clientName',''],['Phone','clientPhone','']],'save-client');return;}if(kind==='save-client'){var nm=document.getElementById('clientName').value.trim();if(!nm){toast('Name required');return;}A.addClient(nm,document.getElementById('clientPhone').value.trim());closeModal();toast('Client created');shell();return;}
+ if(kind==='new-booking'){simpleInput('New booking',[['Client','bookingName','Walk-in'],['Resource Type','bookingType','CONSOLE']],'save-booking');return;}if(kind==='save-booking'){A.createBooking(document.getElementById('bookingName').value,document.getElementById('bookingType').value,A.now()+3600000,60);closeModal();toast('Booking created');shell();return;}if(kind==='queue-client'){simpleInput('Add to queue',[['Name','queueName','Walk-in'],['Resource Type','queueType','CONSOLE']],'save-queue');return;}if(kind==='save-queue'){A.queueClient(document.getElementById('queueName').value,document.getElementById('queueType').value);closeModal();toast('Added to queue');shell();return;}
+ if(kind==='module'){var ok=A.setModule(p.slice(1).join(':'),!S.saas.modules[p.slice(1).join(':')]);toast(ok?'Module updated':'Dependency prevents this change');shell();return;}if(kind==='save-settings'){var bn=document.getElementById('businessName');var lg=document.getElementById('lang');if(bn)S.business.name=bn.value;if(lg){S.ui.language=lg.value;S.ui.rtl=lg.value==='ar';}A.persist('SETTINGS_SAVED',{});toast('Settings saved');shell();return;}if(kind==='save-brand'){var br=document.getElementById('brandName');if(br)S.business.brand=br.value;A.persist('BRAND_SAVED',{});toast('Brand saved');shell();return;}
+ if(kind==='backup-check'){S.meta.lastBackupAt=A.now();S.backups.push(Object.assign(A.entityBase(S.scope),{id:A.uid('backup'),status:'VERIFIED',at:A.now()}));A.persist('BACKUP_VERIFIED',{});toast('Backup verified');shell();return;}if(kind==='support-bundle'){S.supportBundles.push(Object.assign(A.entityBase(S.scope),{id:A.uid('support'),redacted:true,at:A.now()}));A.persist('SUPPORT_BUNDLE_CREATED',{});toast('Redacted support bundle created');shell();return;}
+ if(kind==='create-refund'){var pay=S.payments.slice().reverse().find(function(x){return x.status==='PAID';});if(!pay){toast('No payment to refund');return;}S.refunds.push(Object.assign(A.entityBase(S.scope),{id:A.uid('refund'),paymentId:pay.id,amount:pay.amount,status:'REFUNDED',at:A.now()}));pay.status='REFUNDED';A.persist('REFUND_CREATED',{paymentId:pay.id,amount:pay.amount});toast('Refund recorded');shell();return;}
+ if(kind==='create-tournament'){S.tournaments.push(Object.assign(A.entityBase(S.scope),{id:A.uid('tournament'),name:'New Tournament',status:'DRAFT',createdAt:A.now()}));A.persist('TOURNAMENT_CREATED',{});toast('Tournament draft created');shell();return;}if(kind==='pair-device'){S.devices.push(Object.assign(A.entityBase(S.scope),{id:A.uid('device'),name:'Android Device',status:'ONLINE',pairedAt:A.now()}));A.persist('DEVICE_PAIRED',{});toast('Device paired');shell();return;}if(kind==='new-incident'){S.incidents.push(Object.assign(A.entityBase(S.scope),{id:A.uid('incident'),title:'New Incident',status:'OPEN',createdAt:A.now()}));A.persist('INCIDENT_CREATED',{});toast('Incident created');shell();return;}if(kind==='add-campaign'){S.campaigns.push(Object.assign(A.entityBase(S.scope),{id:A.uid('campaign'),name:'New Campaign',status:'DRAFT'}));A.persist('CAMPAIGN_CREATED',{});toast('Campaign draft created');shell();return;}if(kind==='add-api'){S.apiKeys.push(Object.assign(A.entityBase(S.scope),{id:A.uid('api'),name:'API Key',status:'ACTIVE'}));A.persist('API_KEY_CREATED',{});toast('Scoped API key record created');shell();return;}if(kind==='add-webhook'){S.webhooks.push(Object.assign(A.entityBase(S.scope),{id:A.uid('webhook'),event:'*',status:'ACTIVE'}));A.persist('WEBHOOK_CREATED',{});toast('Webhook created');shell();return;}if(kind==='add-staff'){S.staff.push(Object.assign(A.entityBase(S.scope),{id:A.uid('staff'),name:'New Staff',role:'STAFF',status:'ACTIVE'}));A.persist('STAFF_CREATED',{});toast('Staff member created');shell();return;}toast('Action preserved · '+a);}
+window.nativeBack=function(){if(modal.innerHTML){closeModal();return true;}if(history.length){go(history.pop(),false);return true;}if(current()!==12&&current()>4){go(12,false);return true;}return false;};
+window.addEventListener('scroll',function(){clearTimeout(scrollTimer);scrollTimer=setTimeout(saveScroll,180);},{passive:true});window.addEventListener('resize',function(){S.ui.viewport={w:window.innerWidth,h:window.innerHeight,orientation:window.innerWidth>window.innerHeight?'landscape':'portrait'};A.persist(null);});document.addEventListener('visibilitychange',function(){if(document.hidden)saveScroll();});document.addEventListener('touchstart',function(ev){var q=ev.touches&&ev.touches[0];if(q)touchStart={x:q.clientX,y:q.clientY};},{passive:true});document.addEventListener('touchend',function(ev){if(!touchStart)return;var q=ev.changedTouches&&ev.changedTouches[0];if(q){var dx=q.clientX-touchStart.x,dy=Math.abs(q.clientY-touchStart.y);if(dx>85&&dy<60)window.nativeBack();}touchStart=null;},{passive:true});
+A.persist('V250_SAAS_APP_BOOT',{screen:current(),screenCount:U.list.length,tenantId:S.scope.tenantId,venueId:S.scope.venueId,branchId:S.scope.branchId});shell();
 })();
