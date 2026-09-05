@@ -9,6 +9,7 @@ on:
       - "v16-original-source/app/src/main/**"
       - "v16-original-source/tools/android-native-smoke-v250.sh"
       - ".github/workflows/android-v250-native-smoke.yml"
+      - ".github/workflows/build-v250-new-app-signed.yml"
 
 permissions:
   contents: read
@@ -74,6 +75,8 @@ jobs:
           done
           grep -Fq 'createLocalCredential' app/src/main/java/com/lapauseclub/manager/NewAppActivity.java
           grep -Fq 'verifyLocalCredential' app/src/main/java/com/lapauseclub/manager/NewAppActivity.java
+          grep -Fq 'PBKDF2WithHmacSHA256' app/src/main/java/com/lapauseclub/manager/NewAppActivity.java
+          grep -Fq 'MessageDigest.isEqual' app/src/main/java/com/lapauseclub/manager/NewAppActivity.java
 
       - name: Run v250 APK on lightweight AOSP Android emulator
         uses: reactivecircus/android-emulator-runner@v2
