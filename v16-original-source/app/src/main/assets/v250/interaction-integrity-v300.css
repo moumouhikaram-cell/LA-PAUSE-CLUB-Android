@@ -1,0 +1,84 @@
+/* LA PAUSE OS v300 — physical Android interaction integrity. */
+
+/* Never let a decorative layer steal taps from a real control. */
+.b291-brand .brand-mark::before,
+.b291-brand .brand-mark::after,
+.b291-screen [class*="glow"]::before,
+.b291-screen [class*="glow"]::after,
+.v294-home [class*="glow"]::before,
+.v294-home [class*="glow"]::after{
+  pointer-events:none!important;
+}
+
+/* Pre-auth/setup form fields must behave like native editable controls on
+   Samsung WebView. Their muted placeholder is visual only, never a disabled
+   state. */
+.b291-screen input:not(:disabled),
+.b291-screen textarea:not(:disabled),
+.b291-screen select:not(:disabled),
+#modalRoot input:not(:disabled),
+#modalRoot textarea:not(:disabled),
+#modalRoot select:not(:disabled),
+#app .cinput:not(:disabled),
+#app .cselect:not(:disabled){
+  pointer-events:auto!important;
+  opacity:1!important;
+  touch-action:auto!important;
+  -webkit-user-select:text!important;
+  user-select:text!important;
+  caret-color:#45ddff!important;
+}
+
+.b291-control input:not(:disabled),
+.b291-control select:not(:disabled){
+  color:#f7fbff!important;
+  -webkit-text-fill-color:#f7fbff!important;
+}
+.b291-control input::placeholder,
+.b291-search input::placeholder{
+  color:#7893ab!important;
+  -webkit-text-fill-color:#7893ab!important;
+  opacity:.72!important;
+}
+.b291-control:focus-within,
+.b291-search:focus-within{
+  border-color:#29d8ff!important;
+  box-shadow:0 0 0 2px rgba(41,216,255,.13)!important;
+}
+
+/* All app controls remain in the hit-test tree unless explicitly disabled. */
+#app button:not(:disabled),
+#app a[href],
+#app [role="button"]:not([aria-disabled="true"]),
+#app [data-go]:not([aria-disabled="true"]),
+#app [data-action]:not([aria-disabled="true"]),
+#app [data-v291]:not([aria-disabled="true"]),
+#app [data-v294]:not([aria-disabled="true"]),
+#app [data-v296]:not([aria-disabled="true"]),
+#app [data-v299]:not([aria-disabled="true"]),
+#modalRoot button:not(:disabled),
+#modalRoot [data-go]:not([aria-disabled="true"]),
+#modalRoot [data-action]:not([aria-disabled="true"]),
+#modalRoot [data-v291]:not([aria-disabled="true"]),
+#modalRoot [data-v296]:not([aria-disabled="true"]){
+  pointer-events:auto!important;
+  -webkit-tap-highlight-color:transparent!important;
+}
+
+/* Keep real disabled controls visually distinct without making normal fields
+   look disabled. */
+#app :is(button,input,textarea,select):disabled,
+#app [aria-disabled="true"],
+#modalRoot :is(button,input,textarea,select):disabled,
+#modalRoot [aria-disabled="true"]{
+  opacity:.46!important;
+}
+
+@media(max-width:700px){
+  .b291-field,.b291-control,.b291-search{position:relative;z-index:2}
+  .b291-control{min-height:48px!important;height:48px!important}
+  .b291-control input,.b291-control select{font-size:16px!important;line-height:1.2!important}
+  .b291-search{min-height:48px!important}
+  .b291-search input{font-size:16px!important}
+  .b291-btn,.b291-eye,.b291-lang,.b291-loginline button{position:relative;z-index:3}
+}
