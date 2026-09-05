@@ -1,0 +1,102 @@
+name: LA PAUSE OS 2.6.0 Android v250 Native Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - android-new-app-v250
+    paths:
+      - "v16-original-source/app/src/main/**"
+      - "v16-original-source/tools/android-native-smoke-v250.sh"
+      - ".github/workflows/android-v250-native-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  android-v250-native-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.4.1"
+
+      - name: Enable KVM acceleration
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if [ -e /dev/kvm ]; then
+            sudo chmod 666 /dev/kvm
+            ls -l /dev/kvm
+          fi
+
+      - name: Configure Android SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+
+      - name: Build v250 APK and enforce packaged runtime assets
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          gradle --no-daemon --stacktrace :app:assembleDebug
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK"
+          unzip -l "$APK" > /tmp/apk-files.txt
+          for f in \
+            assets/v250/index.html \
+            assets/v250/canonical-app.js \
+            assets/v250/canonical-overrides-v270.js \
+            assets/v250/canonical-pixel-v270.css \
+            assets/v250/media.js \
+            assets/v250/screens-00-truthful-bootstrap-v271.js \
+            assets/v250/screens-99-runtime-safety-v271.js; do
+            grep -Fq "$f" /tmp/apk-files.txt || { echo "Missing runtime asset: $f"; exit 1; }
+          done
+          INDEX="$(unzip -p "$APK" assets/v250/index.html)"
+          for ref in canonical-overrides-v270.js canonical-pixel-v270.css media.js screens-00-truthful-bootstrap-v271.js screens-99-runtime-safety-v271.js; do
+            grep -Fq "$ref" <<<"$INDEX" || { echo "index.html does not load: $ref"; exit 1; }
+          done
+
+      - name: Run v250 APK on lightweight AOSP Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          target: default
+          arch: x86_64
+          profile: pixel_2
+          cores: 1
+          ram-size: 1536M
+          heap-size: 384M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
+          script: bash v16-original-source/tools/android-native-smoke-v250.sh
+
+      - name: Upload v250 native smoke diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v250-android-native-smoke-${{ github.run_number }}
+          path: |
+            android-native-v250-smoke.txt
+            android-native-v250-trace.txt
+            android-v250-launch.txt
+            android-v250-focus.txt
+            android-v250-window-back.xml
+            android-v250-window-portrait.xml
+            android-v250-logcat.txt
+          if-no-files-found: warn
+          retention-days: 7
