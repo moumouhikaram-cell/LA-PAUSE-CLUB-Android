@@ -1,5 +1,5 @@
 'use strict';
-// Canonical recovery gates: v294 confirmed premium mobile home + v291 corrected batch 01-10.
+// Canonical recovery gates: v295 unified operational shell + v294 confirmed premium mobile home + v291 corrected batch 01-10.
 const fs=require('fs'),path=require('path');
 const root=path.resolve(__dirname,'..');
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
@@ -43,9 +43,11 @@ require('./test-v291-frozen-01-10-interaction.js');
 require('./test-v292-mobile-home.js');
 require('./test-v293-mobile-operations-home.js');
 require('./test-v294-confirmed-premium-home.js');
+require('./test-v295-operational-shell.js');
 console.log('V271_EXTENDED_TRUTHFUL_STATES_OK');
 console.log('V271_SAFE_LEGACY_SEED_MIGRATION_OK');
 console.log('V271_VERIFIED_AUTH_CHAIN_OK');
 console.log('V271_ACCOUNTING_INTEGRITY_OK');
 console.log('V271_NO_SYNTHETIC_SUCCESS_GATE_OK');
 console.log('V294_CONFIRMED_PREMIUM_HOME_GATE_OK');
+console.log('V295_UNIFIED_OPERATIONAL_SHELL_GATE_OK');
