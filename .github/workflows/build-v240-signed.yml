@@ -8,7 +8,8 @@ on:
     paths:
       - "v16-original-source/RELEASE-V240.txt"
       - "v16-original-source/app/build.gradle.kts"
-      - "contracts/security/entitlement-prod-v1-public.der.b64"
+      - "contracts/security/entitlement-prod-v2-public.der.b64"
+      - "contracts/security/bootstrap-entitlement-prod-v2.b64"
       - ".github/workflows/build-v240-signed.yml"
 
 permissions:
@@ -45,32 +46,33 @@ jobs:
 
       - name: Load pinned production SaaS entitlement verifier key
         shell: bash
-        env:
-          ENT_KID_SECRET: ${{ secrets.LA_PAUSE_ENTITLEMENT_KEY_ID }}
         run: |
           set -euo pipefail
-          PUB_FILE="contracts/security/entitlement-prod-v1-public.der.b64"
+          PUB_FILE="contracts/security/entitlement-prod-v2-public.der.b64"
           test -s "$PUB_FILE"
           ENT_PUB="$(tr -d '\r\n ' < "$PUB_FILE")"
           test -n "$ENT_PUB"
-          ENT_KID="${ENT_KID_SECRET:-prod-v1}"
+          ENT_KID="prod-v2"
+          ACTUAL_PUB_SHA="$(printf '%s' "$ENT_PUB" | base64 -d | sha256sum | awk '{print $1}')"
+          EXPECTED_PUB_SHA="12ef99e5353d1f172a8a5e69cb90f36df68fa81adaa89e52e827f3b8d1eab1a7"
+          test "$ACTUAL_PUB_SHA" = "$EXPECTED_PUB_SHA"
           echo "LA_PAUSE_ENTITLEMENT_PUBLIC_KEY_B64=$ENT_PUB" >> "$GITHUB_ENV"
           echo "LA_PAUSE_ENTITLEMENT_KEY_ID=$ENT_KID" >> "$GITHUB_ENV"
-          printf '%s' "$ENT_PUB" | base64 -d >/dev/null
-          echo SAAS_ENTITLEMENT_PUBLIC_KEY_PINNED_OK
+          echo "SAAS_ENTITLEMENT_PUBLIC_KEY_PINNED_OK $ACTUAL_PUB_SHA"
 
       - name: Verify and stage signed offline bootstrap entitlement
         working-directory: v16-original-source
         shell: bash
         env:
-          LA_PAUSE_BOOTSTRAP_ENTITLEMENT_B64: ${{ secrets.LA_PAUSE_BOOTSTRAP_ENTITLEMENT_B64 }}
-          LA_PAUSE_ENTITLEMENT_KEY_ID: ${{ secrets.LA_PAUSE_ENTITLEMENT_KEY_ID }}
+          LA_PAUSE_ENTITLEMENT_KEY_ID: prod-v2
         run: |
           set -euo pipefail
+          export LA_PAUSE_BOOTSTRAP_ENTITLEMENT_B64="$(tr -d '\r\n ' < ../contracts/security/bootstrap-entitlement-prod-v2.b64)"
           test -n "$LA_PAUSE_BOOTSTRAP_ENTITLEMENT_B64"
           case "$LA_PAUSE_BOOTSTRAP_ENTITLEMENT_B64" in *[!A-Za-z0-9+/=_-]*) echo INVALID_BOOTSTRAP_BASE64; exit 1;; esac
-          node tools/verify-bootstrap-entitlement-v240.js ../contracts/security/entitlement-prod-v1-public.der.b64 | tee bootstrap-entitlement-proof.txt
+          node tools/verify-bootstrap-entitlement-v240.js ../contracts/security/entitlement-prod-v2-public.der.b64 | tee bootstrap-entitlement-proof.txt
           grep -q 'BOOTSTRAP_ENTITLEMENT_SIGNATURE_OK' bootstrap-entitlement-proof.txt
+          grep -q 'BOOTSTRAP_ENTITLEMENT_KID_OK prod-v2' bootstrap-entitlement-proof.txt
           printf "'use strict';\nwindow.LP_BOOTSTRAP_ENTITLEMENT_B64='%s';\n" "$LA_PAUSE_BOOTSTRAP_ENTITLEMENT_B64" > app/src/main/assets/bootstrap-entitlement-v240.js
           grep -Eq "LP_BOOTSTRAP_ENTITLEMENT_B64='[^']{20,}'" app/src/main/assets/bootstrap-entitlement-v240.js
           echo SIGNED_OFFLINE_BOOTSTRAP_STAGED_OK
@@ -113,7 +115,8 @@ jobs:
           grep -Eq "LP_BOOTSTRAP_ENTITLEMENT_B64='[^']{20,}'" app/src/main/assets/bootstrap-entitlement-v240.js
           test -f ../contracts/saas/module-catalog.v1.json
           test -f ../contracts/security/entitlement.v1.schema.json
-          test -s ../contracts/security/entitlement-prod-v1-public.der.b64
+          test -s ../contracts/security/entitlement-prod-v2-public.der.b64
+          test -s ../contracts/security/bootstrap-entitlement-prod-v2.b64
 
       - name: Build R8 hardened release
         working-directory: v16-original-source
@@ -164,9 +167,9 @@ jobs:
             echo 'LA PAUSE OS Android 2.4.0 SaaS'
             echo "Commit: $GITHUB_SHA"
             echo 'R8: enabled'
-            echo 'Signed entitlement verifier: ECDSA P-256 SHA-256 / keyId prod-v1'
-            echo 'Entitlement verifier public key: contracts/security/entitlement-prod-v1-public.der.b64'
-            echo 'Offline bootstrap entitlement: signature verified before build and hydrated through Android Keystore cache'
+            echo 'Signed entitlement verifier: ECDSA P-256 SHA-256 / keyId prod-v2'
+            echo 'Entitlement verifier public key: contracts/security/entitlement-prod-v2-public.der.b64'
+            echo 'Offline bootstrap entitlement: contracts/security/bootstrap-entitlement-prod-v2.b64; signature verified before build and hydrated through Android Keystore cache'
             cat signer-v240.txt
             cat signed-v240-sha256.txt
             cat signed-v240-size.txt
