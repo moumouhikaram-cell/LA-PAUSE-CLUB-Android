@@ -1,8 +1,10 @@
 'use strict';
-const fs=require('fs'),path=require('path');
+const fs=require('fs'),path=require('path'),cp=require('child_process');
 const root=path.resolve(__dirname,'..');
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
 const must=(ok,msg)=>{if(!ok){console.error('V280_CANONICAL_FAIL',msg);process.exit(1);}};
+const hotfixPath=path.join(root,'app/src/main/assets/v250/canonical-hotfix-v280.js');
+cp.execFileSync(process.execPath,['--check',hotfixPath],{stdio:'inherit'});
 const html=read('app/src/main/assets/v250/index.html');
 const js=read('app/src/main/assets/v250/canonical-hotfix-v280.js');
 const css=read('app/src/main/assets/v250/canonical-hotfix-v280.css');
@@ -22,6 +24,7 @@ must(css.includes('.canon-shell>.canon-bottomnav{display:none!important}'),'inve
 must(css.includes('.canonical-mobile-nav{display:grid!important'),'canonical mobile nav missing');
 must(app.includes("function bind(scope){scope.querySelectorAll('[data-go]')"),'data-go navigation binder missing');
 must(gradle.includes('versionCode = 31')&&gradle.includes('versionName = "2.6.0"'),'2.6.0 preview build identity missing');
+console.log('V280_CANONICAL_HOTFIX_SYNTAX_OK');
 console.log('V280_CANONICAL_MOBILE_ROOT_OK');
 console.log('V280_OPERATOR_TABS_CLICKABLE_OK');
 console.log('V280_SETUP_BRANCH_FLOW_OK');
