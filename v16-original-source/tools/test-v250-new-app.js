@@ -53,9 +53,9 @@ must(runtime.includes('S.identity.signedIn&&n!==12'),'signed-in back fallback mi
 
 for(const mod of ['M01_OPERATIONS','M02_POS','M03_INVENTORY','M04_FINANCE','M05_CRM','M06_MARKETING','M07_BOOKINGS','M08_TOURNAMENTS','M09_DEVICE_CONTROL','M10_ANALYTICS','M11_PLAYER_PORTAL','M12_TEAM_ADVANCED','M13_MULTI_SITE','M14_API_INTEGRATIONS','M15_AI_OPERATOR']) must(core.includes(mod),`module missing ${mod}`);
 for(const token of ['tenantId','venueId','branchId','idempotencyKey','expectedRevision','outbox','inbox','syncConflicts','offlineLease','operatorMetrics','acceptedActions','assistedRevenue','per_game','BILLIARD_TABLE','SNOOKER_TABLE','TABLE_TENNIS','PC_GAMING','PRIVATE_ROOM']) must(core.includes(token),`core contract missing ${token}`);
-must(runtime.includes('start-console:30:2')&&canonicalScreens.includes('Duo · 30 min'),'PS5 Duo 30 fast path missing');
-must(runtime.includes('startPerGame')&&runtime.includes('addGame'),'per-game billiard path missing');
-must(runtime.includes('acceptNBA')&&runtime.includes('S.ui.navStack=[]')&&runtime.includes('A.setScreen(12)'),'NBA must execute and return Control Center');
+must(canonicalScreens.includes('start-console:30:2')&&canonicalScreens.includes('Duo · 30 min')&&runtime.includes('A.startTimed'),'PS5 Duo 30 fast path missing');
+must(runtime.includes('A.startPerGame')&&runtime.includes('A.addGame'),'per-game billiard path missing');
+must(runtime.includes('A.acceptNBA')&&runtime.includes('S.ui.navStack=[]')&&runtime.includes('A.setScreen(12)'),'NBA must execute and return Control Center');
 must(core.includes('state.operatorMetrics.acceptedActions')&&core.includes('state.operatorMetrics.assistedRevenue'),'NBA metrics mutation missing');
 must(core.includes('addSnack')&&core.includes('extend30')&&core.includes('addGame'),'contextual revenue actions missing');
 
