@@ -42,6 +42,26 @@ ui_dump(){
   [[ "$ok" = 1 ]] || fail "UIAutomator dump unavailable: $remote"
 }
 
+state_screen(){
+  local out="$1"
+  require_adb "before state dump $out"
+  timeout 8s adb shell run-as "$PKG" cat shared_prefs/gaming_floor_store.xml > "$out" 2>>"$TRACE" || fail "cannot read app state $out"
+  python3 - "$out" <<'PY'
+import json,sys,xml.etree.ElementTree as ET
+p=sys.argv[1]
+r=ET.parse(p).getroot()
+s=''
+for x in r.findall('string'):
+    if x.attrib.get('name')=='state_json':
+        s=x.text or ''
+        break
+if not s:
+    raise SystemExit('NO_STATE_JSON')
+data=json.loads(s)
+print(int((data.get('ui') or {}).get('screen') or 0))
+PY
+}
+
 trace "INSTALL_BEGIN $APK"
 adb install -r "$APK" | tee -a "$TRACE"
 require_adb "after APK install"
@@ -56,6 +76,27 @@ wait_app_window_focus "after app launch" 20
 printf '%s\n' "$(adb shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp' | tail -n 4 || true)" | tee android-v250-focus.txt | tee -a "$TRACE"
 [[ "$(current_focus)" == *"$PKG"* ]] || fail "LA PAUSE OS input window is not foreground after launch"
 echo "ANDROID_V250_LAUNCH_OK" | tee android-native-v250-smoke.txt
+
+# Real WebView interaction gate. The v298/v299 phone shell fixes screen 01 so the
+# top Get Started CTA has a deterministic touch target on the 1080x1794 emulator.
+# adb input tap produces a real Android touch sequence, exercising WebView touch
+# delivery rather than calling JavaScript directly.
+trace "V299_REAL_CTA_TAP_BEGIN x=900 y=215"
+timeout 8s adb shell input tap 900 215 >> "$TRACE" 2>&1 || fail "real CTA tap command failed"
+sleep 3; require_adb "after real CTA tap"
+SCREEN_AFTER_TAP="$(state_screen android-v250-state-after-real-tap.xml | tail -n 1 | tr -d '\r')"
+trace "V299_REAL_CTA_SCREEN=$SCREEN_AFTER_TAP"
+[[ "$SCREEN_AFTER_TAP" = "3" ]] || fail "Get Started physical tap did not navigate to Create Account (screen=$SCREEN_AFTER_TAP)"
+echo "ANDROID_V299_REAL_WEBVIEW_TAP_OK" | tee -a android-native-v250-smoke.txt
+
+# Return once through the application's own back stack so the following Back is
+# again a true-root exit-confirmation test.
+timeout 8s adb shell input keyevent KEYCODE_BACK >> "$TRACE" 2>&1 || fail "KEYCODE_BACK failed returning from Create Account"
+sleep 2; require_adb "after app back to landing"
+SCREEN_AFTER_APP_BACK="$(state_screen android-v250-state-after-app-back.xml | tail -n 1 | tr -d '\r')"
+trace "V299_APP_BACK_SCREEN=$SCREEN_AFTER_APP_BACK"
+[[ "$SCREEN_AFTER_APP_BACK" = "1" ]] || fail "app Back did not return to landing root (screen=$SCREEN_AFTER_APP_BACK)"
+wait_app_window_focus "after app back to landing" 12
 
 # True root Back must keep the process alive and expose native exit confirmation.
 timeout 8s adb shell input keyevent KEYCODE_BACK >> "$TRACE" 2>&1 || fail "KEYCODE_BACK failed on root"
