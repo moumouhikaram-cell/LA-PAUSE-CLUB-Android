@@ -1,7 +1,49 @@
 'use strict';
 (function(){
   var A=window.LPOS,S=A&&A.state,U=window.LPOSScreens;if(!A||!S||!U)return;
-  var m=U.metric,r=U.row,c=U.card,sec=U.section;
+  var m=U.metric,r=U.row,c=U.card,sec=U.section,b=U.btn;
+  function dayKey(ts){try{return new Date(ts||0).toLocaleDateString('sv-SE',{timeZone:(S.business&&S.business.timezone)||'Africa/Casablanca'});}catch(_){return new Date(ts||0).toISOString().slice(0,10);}}
+  function isToday(x){return dayKey(x&&x.at||x&&x.createdAt)===dayKey(Date.now());}
+
+  U.register(45,function(){
+    var gross=A.grossRevenueToday?A.grossRevenueToday():A.revenueToday(),refunds=A.refundsToday?A.refundsToday():0;
+    var expenses=(S.expenses||[]).filter(isToday).reduce(function(sum,x){return sum+A.num(x.amount,0);},0),net=A.revenueToday()-expenses;
+    var postedCash=(S.payments||[]).filter(function(p){var st=String(p.status||'').toUpperCase();return (st==='PAID'||st==='REFUNDED')&&String(p.method||'cash').toLowerCase()==='cash'&&isToday(p);});
+    var byId={};(S.payments||[]).forEach(function(p){byId[p.id]=p;});
+    var cashGross=postedCash.reduce(function(sum,p){return sum+A.num(p.amount,0);},0);
+    var cashRefunds=(S.refunds||[]).filter(function(x){var p=byId[x.paymentId];return isToday(x)&&p&&String(p.method||'cash').toLowerCase()==='cash';}).reduce(function(sum,x){return sum+A.num(x.amount,0);},0);
+    var shift=(S.shifts||[]).find(function(x){return String(x.status||'').toUpperCase()==='OPEN';}),expected=cashGross-cashRefunds+(shift?A.num(shift.openingFloat,0):0),counted=shift&&shift.countedCash!=null?A.num(shift.countedCash):null;
+    return '<div class="grid4">'+m('Gross Sales',A.money(gross),'posted payments')+m('Refunds',A.money(refunds),'refund ledger')+m('Expenses',A.money(expenses),'today')+m('Net after expenses',A.money(net),'gross - refunds - expenses')+'</div>'+sec('Reconciliation')+c('Closing & Finance','<div class="list">'+
+      r('Expected Cash','Cash sales - cash refunds + opening float',A.money(expected))+
+      r('Counted Cash','Operator count',counted==null?'PENDING':A.money(counted),counted==null?'warn':'')+
+      r('Variance','Counted - expected',counted==null?'PENDING':A.money(counted-expected),counted==null?'warn':'')+
+      r('Credit Notes','Accounting correction workflow','NOT CONFIGURED','warn')+'</div>');
+  });
+
+  U.register(49,function(){
+    var eligible=(S.payments||[]).filter(function(x){return String(x.status||'').toUpperCase()==='PAID';}).length;
+    return c('Refunds / Credit Notes / Corrections','<div class="list">'+
+      r('Full Refund','Existing implemented flow',eligible?eligible+' eligible payment(s)':'NO ELIGIBLE PAYMENT',eligible?'':'warn')+
+      r('Partial Refund','Amount-level correction','NOT CONFIGURED','warn')+
+      r('Credit Note','Accounting correction','NOT CONFIGURED','warn')+
+      r('Exchange','Product correction','NOT CONFIGURED','warn')+
+      r('Same-payment full refund','PAID → REFUNDED transition','GUARDED')+
+      '</div><div class="actions mt">'+b('Create Full Refund','create-refund','danger')+b('Back to Cash','go:21','ghost')+'</div>');
+  });
+
+  U.register(52,function(){
+    var bundles=S.supportBundles||[];
+    return '<div class="grid2"><div>'+c('Support Diagnostics','<div class="list">'+
+      r('Support Records','Local redacted records',String(bundles.length))+
+      r('Versions / Health','Diagnostic metadata contract','AVAILABLE')+
+      r('Secrets / PIN hashes / tokens','Never requested by this local record','EXCLUDED')+
+      r('Exportable diagnostic archive','File generation','NOT CONFIGURED','warn')+
+      '</div>'+b('Create Redacted Support Record','support-bundle','primary mt'))+'</div><div>'+c('Privacy Boundary','<div class="list">'+
+      r('Secrets','Must never be exported','FORBIDDEN','bad')+
+      r('PIN hashes','Must never be exported','FORBIDDEN','bad')+
+      r('Tokens','Must never be exported','FORBIDDEN','bad')+
+      r('Unnecessary PII','Must never be exported','FORBIDDEN','bad')+'</div>')+'</div></div>';
+  });
 
   U.register(53,function(){
     var creatives=S.mediaCreatives||[],plays=S.proofOfPlay||[],reds=S.sponsorRedemptions||[];
@@ -31,6 +73,34 @@
       r('Empty seat + queue','Seat next',rules.length?'RULE SET PRESENT':'NOT CONFIGURED',rules.length?'':'warn')+
       r('Low stock','Create reorder suggestion',rules.length?'RULE SET PRESENT':'NOT CONFIGURED',rules.length?'':'warn')+
       r('Churn risk','Draft campaign',rules.length?'RULE SET PRESENT':'NOT CONFIGURED',rules.length?'':'warn')+'</div>')+'</div></div>';
+  });
+
+  U.register(55,function(){
+    var metrics=S.operatorMetrics||{},experiments=S.experiments||[],forecasts=S.forecasts||[],nba=A.nextBestAction?A.nextBestAction():{kind:'none'};
+    return '<div class="grid4">'+m('Assisted Revenue',A.money(metrics.assistedRevenue||0),'attributed')+m('Accepted Actions',String(metrics.acceptedActions||0),'tracked')+m('Experiments',String(experiments.length),'actual')+m('Lost Revenue',A.money(metrics.lostRevenue||0),'tracked')+'</div>'+sec('Revenue Engine')+'<div class="list">'+
+      r('Revenue Moments','Next Best Action',nba.kind&&nba.kind!=='none'?'LIVE RECOMMENDATION':'NO CURRENT ACTION',nba.kind&&nba.kind!=='none'?'':'warn')+
+      r('Profit Autopilot','Margin-aware autonomous changes','NOT CONFIGURED','warn')+
+      r('Smart Seat','Queue → free resource','MANUAL WORKFLOW')+
+      r('Dynamic Loyalty','Player-value automation','NOT CONFIGURED','warn')+
+      r('Inventory Brain','Demand model','NO MODEL','warn')+
+      r('Hardware ROI','Resource return model','NO DATA','warn')+
+      r('Forecast','Scenario model',forecasts.length?forecasts.length+' model(s)':'NO DATA',forecasts.length?'':'warn')+
+      r('Monthly Value Report','Owner SaaS value report','NOT CONFIGURED','warn')+'</div>';
+  });
+
+  U.register(56,function(){
+    var tasks=S.staffTasks||S.tasks||[],approvals=S.approvals||[],staff=S.staff||[],inc=S.incidents||[],bookings=S.bookings||[],devices=S.devices||[],nba=A.nextBestAction?A.nextBestAction():{title:'No urgent action'};
+    return '<div class="grid2"><div>'+c('Staff Planner','<div class="list">'+
+      r('Staff','Actual team records',String(staff.length))+
+      r('Scheduled Coverage','Demand vs staff','NOT CONFIGURED','warn')+
+      r('Tasks','Assigned shift actions',tasks.length?tasks.length+' task(s)':'EMPTY',tasks.length?'':'warn')+
+      r('Approvals','Sensitive actions',approvals.length?approvals.length+' pending/recorded':'EMPTY',approvals.length?'':'warn')+
+      '</div>')+'</div><div>'+c('Daily Brief','<div class="list">'+
+      r('Revenue','Net today',A.money(A.revenueToday()))+
+      r('Incidents','Actual records',String(inc.length))+
+      r('Bookings','Upcoming / recorded',String(bookings.length))+
+      r('Devices','Paired records',String(devices.length))+
+      r('Next Best Action','Current recommendation',nba.title||'No urgent action')+'</div>')+'</div></div>';
   });
 
   U.register(57,function(){
