@@ -8,6 +8,7 @@ on:
     paths:
       - "v16-original-source/app/src/main/**"
       - "v16-original-source/tools/android-native-smoke-v250.sh"
+      - "v16-original-source/tools/test-v250-new-app.js"
       - ".github/workflows/android-v250-native-smoke.yml"
       - ".github/workflows/build-v250-new-app-signed.yml"
 
