@@ -14,7 +14,7 @@ must(html.indexOf('mobile-home-v292.js')<html.indexOf('canonical-app.js'),'v292 
 must(js.includes('U.register(42,screen42)'),'screen 42 must be overridden by approved home');
 for(const token of ['Live Players','Active Stations','Occupancy Rate','Today Revenue','Avg Session Time','Snack Sales Today','Start Session','End Session','Extend Time','Game Categories','Live Stations','Snacks & Drinks','Busiest category right now'])must(js.includes(token),'approved home copy missing '+token);
 for(const token of ["label:'PS5'","label:'SIM Racing'","label:'PC Gaming'","label:'Billiard'"])must(js.includes(token),'resource grouping missing '+token);
-for(const token of ['premium/ps5.jpg','premium/sim.jpg','premium/pc.jpg','premium/billiard.jpg','products/cocacola.jpg','products/redbull.jpg','products/snickers.jpg'])must(js.includes(token),'real photo mapping missing '+token);
+for(const token of ["P+'ps5.jpg'","P+'sim.jpg'","P+'pc.jpg'","P+'billiard.jpg'","PR+'cocacola.jpg'","PR+'redbull.jpg'","PR+'snickers.jpg'"])must(js.includes(token),'real photo mapping missing '+token);
 for(const token of ['A.resources()','A.activeSessions()','A.sessionFor','A.revenueToday()','snackStats()','avgSessionMinutes()'])must(js.includes(token),'dynamic KPI source missing '+token);
 for(const token of ['data-action="quick-session"','data-v292="end-session"','data-v292="extend-session"','data-go="24"','data-go="29"','data-go="40"','data-go="14"'])must(js.includes(token),'navigation/action missing '+token);
 must(!js.includes('View All'),'View All is forbidden on approved dashboard');
