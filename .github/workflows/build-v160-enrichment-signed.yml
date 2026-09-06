@@ -1,0 +1,175 @@
+name: Android v1.6 Enrichment Signed Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - android-v160-enrichment
+    paths:
+      - "v16-original-source/**"
+      - ".github/workflows/build-v160-enrichment-signed.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-signed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.4.1"
+
+      - name: Configure Android SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/36.0.0:$PATH"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/build-tools/36.0.0" >> "$GITHUB_PATH"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+          test -x "$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          test -x "$ANDROID_HOME/build-tools/36.0.0/zipalign"
+          test -x "$ANDROID_HOME/build-tools/36.0.0/aapt"
+
+      - name: Prove frozen v1.6 base
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test "$(git hash-object v16-original-source/app/build.gradle.kts)" = "e40c86ad23fbf3042fc25d5b9e1a58139f172414"
+          test "$(git hash-object v16-original-source/app/src/main/AndroidManifest.xml)" = "33636fd6f089837cb24c90083f687ff67ee8dc30"
+          test "$(git hash-object v16-original-source/app/src/main/assets/app.css)" = "ee2d33799164b14d012abc0aecc3c94c5e214250"
+          test "$(git hash-object v16-original-source/app/src/main/assets/app.js)" = "4cbafc7dfadcd086a0387e4b7bec3de4cc2074b1"
+          test "$(git hash-object v16-original-source/app/src/main/assets/v13.css)" = "ee295d223f75d007b4db542b283bd194bba24fe1"
+          test "$(git hash-object v16-original-source/app/src/main/assets/v13.js)" = "5b6d3468a314012c6ce793ce8de21630a18ea273"
+          test "$(git hash-object v16-original-source/app/src/main/assets/v14.css)" = "1c4c083a2b4c164ed90658470159c2ea0baddfcf"
+          test "$(git hash-object v16-original-source/app/src/main/assets/v14.js)" = "42134cceabd9c15dc52cfde30b7d5ca3818b1502"
+          test "$(git hash-object v16-original-source/app/src/main/assets/v15.css)" = "8b5d7ef51d3f5d49cf06ee27f32585dca9a0c34e"
+          test "$(git hash-object v16-original-source/app/src/main/assets/v15.js)" = "ab2288f35b39620b7c6c0401d342ce9349f17959"
+          test "$(git hash-object v16-original-source/app/src/main/java/com/lapauseclub/manager/MainActivity.java)" = "bab0a577e167e42a4e35f430c7b6a6b85fabc305"
+          test "$(git hash-object v16-original-source/app/src/main/java/com/lapauseclub/manager/core/CoreStore.java)" = "e5af1005e089e88782ac154b5bf72e33a82ac2e8"
+          grep -q 'applicationId = "com.lapauseclub.manager"' v16-original-source/app/build.gradle.kts
+          grep -q 'versionCode = 19' v16-original-source/app/build.gradle.kts
+          grep -q 'versionName = "1.6.0"' v16-original-source/app/build.gradle.kts
+
+      - name: Validate enrichment contract
+        shell: bash
+        run: |
+          set -euxo pipefail
+          node v16-original-source/tools/test-v160-enrichment.js
+          for f in v16-original-source/app/src/main/assets/enrich-v160-*.js; do node --check "$f"; done
+
+      - name: Park modern modules exactly like CI
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ROOT="v16-original-source/app/src/main/java/com/lapauseclub/manager"
+          PARK_JAVA="$RUNNER_TEMP/parked-modern-java"
+          mkdir -p "$PARK_JAVA"
+          while IFS= read -r -d '' src; do
+            rel="${src#$ROOT/}"
+            case "$rel" in
+              MainActivity.java|BootReceiver.java|SessionAlarmReceiver.java|core/CoreStore.java) ;;
+              *) mkdir -p "$PARK_JAVA/$(dirname "$rel")"; mv "$src" "$PARK_JAVA/$rel" ;;
+            esac
+          done < <(find "$ROOT" -type f -name '*.java' -print0)
+          test "$(find "$ROOT" -type f -name '*.java' | wc -l)" -eq 4
+
+          ASSETS="v16-original-source/app/src/main/assets"
+          PARK_ASSETS="$RUNNER_TEMP/parked-modern-assets"
+          mkdir -p "$PARK_ASSETS"
+          while IFS= read -r -d '' src; do
+            rel="${src#$ASSETS/}"
+            case "$rel" in
+              app.css|app.js|index.html|logo.svg|v13.css|v13.js|v14.css|v14.js|v15.css|v15.js|enrich-v160-*.js|\
+              media/combat-dynamic.png|media/combat.svg|media/esport-dynamic.png|media/esport-team.jpg|media/esport.svg|media/football-dynamic.png|media/football.svg|media/idle.svg|\
+              media/products/chips.svg|media/products/chocolate.svg|media/products/cocacola.jpg|media/products/coffee.svg|media/products/cola.svg|media/products/energy.svg|media/products/fanta.jpg|media/products/lays.jpg|media/products/oreo.jpg|media/products/redbull.jpg|media/products/snickers.jpg|media/products/sprite.jpg|media/products/twix.jpg|media/products/water.svg|\
+              media/ps5-available.png|media/ps5-default.jpg|media/racing-dynamic.png|media/racing.svg|media/sim-racing.jpg|media/sim-vip.png|media/sim.svg|media/tactical-dynamic.png|media/tactical.jpg|media/tactical.svg) ;;
+              *) mkdir -p "$PARK_ASSETS/$(dirname "$rel")"; mv "$src" "$PARK_ASSETS/$rel" ;;
+            esac
+          done < <(find "$ASSETS" -type f -print0)
+          ENRICH_COUNT="$(find "$ASSETS" -maxdepth 1 -type f -name 'enrich-v160-*.js' | wc -l)"
+          TOTAL="$(find "$ASSETS" -type f | wc -l)"
+          test "$TOTAL" -eq "$((42 + ENRICH_COUNT))"
+          ! find "$ASSETS" -type f | grep -q '/v250/'
+          ! find "$ASSETS" -type f | grep -qi 'saas'
+          ! find "$ASSETS" -type f | grep -qi 'onboarding'
+
+      - name: Restore permanent signing key
+        shell: bash
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          test -n "$KS_B64"
+          test -n "$KS_PASS"
+          test -n "$KEY_ALIAS"
+          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/la-pause-release.p12"
+          keytool -list -storetype PKCS12 -keystore "$RUNNER_TEMP/la-pause-release.p12" -storepass "$KS_PASS" -alias "$KEY_ALIAS" >/dev/null
+
+      - name: Build exact release
+        working-directory: v16-original-source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          gradle --no-daemon --stacktrace :app:assembleRelease
+          test -f app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: Sign and verify exact APK
+        shell: bash
+        env:
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          BT="$ANDROID_HOME/build-tools/36.0.0"
+          U="v16-original-source/app/build/outputs/apk/release/app-release-unsigned.apk"
+          A="$RUNNER_TEMP/la-pause-v160-enrichment-aligned.apk"
+          S="LA-PAUSE-CLUB-Manager-v1.6.0-ENRICHED-SIGNED.apk"
+          "$BT/zipalign" -f -p 4 "$U" "$A"
+          "$BT/apksigner" sign --ks "$RUNNER_TEMP/la-pause-release.p12" --ks-type PKCS12 --ks-key-alias "$KEY_ALIAS" --ks-pass "pass:$KS_PASS" --key-pass "pass:$KEY_PASS" --out "$S" "$A"
+          "$BT/apksigner" verify --verbose --print-certs "$S" | tee signed-certificate.txt
+          "$BT/aapt" dump badging "$S" | tee signed-badging.txt
+          grep "package: name='com.lapauseclub.manager'" signed-badging.txt
+          grep "versionCode='19'" signed-badging.txt
+          grep "versionName='1.6.0'" signed-badging.txt
+          unzip -Z1 "$S" > signed-assets.txt
+          for f in enrich-v160-core.js enrich-v160-session-form.js enrich-v160-session-start.js enrich-v160-session-form-ui.js; do
+            grep -qx "assets/$f" signed-assets.txt
+          done
+          ! grep -q '^assets/v250/' signed-assets.txt
+          ! grep -qi 'saas' signed-assets.txt
+          ! grep -qi 'onboarding' signed-assets.txt
+          sha256sum "$S" | tee signed-sha256.txt
+
+      - name: Cleanup key
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/la-pause-release.p12" "$RUNNER_TEMP/la-pause-v160-enrichment-aligned.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LA-PAUSE-CLUB-Manager-v1.6.0-ENRICHED-SIGNED
+          path: |
+            LA-PAUSE-CLUB-Manager-v1.6.0-ENRICHED-SIGNED.apk
+            signed-certificate.txt
+            signed-badging.txt
+            signed-assets.txt
+            signed-sha256.txt
+          if-no-files-found: error
+          retention-days: 30
