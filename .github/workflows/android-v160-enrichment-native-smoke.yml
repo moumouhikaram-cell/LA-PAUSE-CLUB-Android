@@ -85,11 +85,11 @@ jobs:
           target: default
           arch: x86_64
           profile: pixel_2
-          cores: 1
-          ram-size: 1536M
+          cores: 2
+          ram-size: 2048M
           heap-size: 384M
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
+          emulator-options: -no-window -gpu swiftshader_indirect -feature -Vulkan -no-snapshot -noaudio -no-boot-anim -no-metrics
           script: bash v16-original-source/tools/android-v160-enrichment-smoke.sh
 
       - name: Upload native diagnostics
