@@ -1,8 +1,8 @@
 /* LA PAUSE OS v302 — final mobile/SaaS layout integrity. */
-html,body{width:100%!important;max-width:100vw!important;height:auto!important;min-height:100%!important;max-height:none!important;overflow-x:hidden!important;overflow-y:auto!important;overscroll-behavior-y:auto!important;-webkit-overflow-scrolling:touch!important}
-body{touch-action:pan-y!important}
-#app,#app>.canon-shell,#app .canon-screen,#app .b291-screen,#app .v301-screen{height:auto!important;min-height:100dvh!important;max-height:none!important;overflow-x:hidden!important;overflow-y:visible!important}
-#app,#app>.canon-shell{position:relative!important;inset:auto!important;transform:none!important}
+html:not(.v298-landing-active),body:not(.v298-landing-active){width:100%!important;max-width:100vw!important;height:auto!important;min-height:100%!important;max-height:none!important;overflow-x:hidden!important;overflow-y:auto!important;overscroll-behavior-y:auto!important;-webkit-overflow-scrolling:touch!important}
+body:not(.v298-landing-active){touch-action:pan-y!important}
+body:not(.v298-landing-active) #app,body:not(.v298-landing-active) #app>.canon-shell,body:not(.v298-landing-active) #app .canon-screen,body:not(.v298-landing-active) #app .b291-screen,body:not(.v298-landing-active) #app .v301-screen{height:auto!important;min-height:100dvh!important;max-height:none!important;overflow-x:hidden!important;overflow-y:visible!important}
+body:not(.v298-landing-active) #app,body:not(.v298-landing-active) #app>.canon-shell{position:relative!important;inset:auto!important;transform:none!important}
 #app .v301-screen{touch-action:pan-y!important}
 #app input,#app textarea,#app select,#modalRoot input,#modalRoot textarea,#modalRoot select{font-size:16px!important;touch-action:manipulation!important;scroll-margin-top:110px!important;scroll-margin-bottom:190px!important}
 #modalRoot .modal-body,#modalRoot .v301-modal-body,#modalRoot .v296-sheet,#modalRoot .v299-more{overflow-y:auto!important;overscroll-behavior:contain!important;-webkit-overflow-scrolling:touch!important;touch-action:pan-y!important}
