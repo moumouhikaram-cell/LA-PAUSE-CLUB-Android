@@ -70,6 +70,7 @@ jobs:
           grep -q '<script src="enrich-v160-core.js"></script>' "$INDEX"
           grep -q '<script src="enrich-v160-session-form.js"></script>' "$INDEX"
           grep -q '<script src="enrich-v160-session-start.js"></script>' "$INDEX"
+          grep -q '<script src="enrich-v160-session-form-ui.js"></script>' "$INDEX"
           ! grep -qi 'v250/' "$INDEX"
           ! grep -q 'LPSaas' "$INDEX"
           ! grep -qi 'saas-lifecycle' "$INDEX"
@@ -77,7 +78,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           s=Path('v16-original-source/app/src/main/assets/index.html').read_text()
-          order=['app.js','v13.js','v14.js','v15.js','enrich-v160-core.js','enrich-v160-billing.js','enrich-v160-session-profiles.js','enrich-v160-session-form.js','enrich-v160-session-start.js','enrich-v160-revenue.js','enrich-v160-intelligence.js','enrich-v160-player.js']
+          order=['app.js','v13.js','v14.js','v15.js','enrich-v160-core.js','enrich-v160-billing.js','enrich-v160-session-profiles.js','enrich-v160-session-form.js','enrich-v160-session-start.js','enrich-v160-session-form-ui.js','enrich-v160-revenue.js','enrich-v160-intelligence.js','enrich-v160-player.js']
           pos=[s.index(x) for x in order]
           assert pos==sorted(pos), (order,pos)
           print('V160_SCRIPT_ORDER_OK')
@@ -93,6 +94,7 @@ jobs:
           node v16-original-source/tools/test-v160-control-center.js
           node v16-original-source/tools/test-v160-session-form.js
           node v16-original-source/tools/test-v160-session-start.js
+          node v16-original-source/tools/test-v160-session-form-ui.js
 
       - name: Park non-v1.6 modules outside APK build
         shell: bash
@@ -120,7 +122,7 @@ jobs:
               media/combat-dynamic.png|media/combat.svg|media/esport-dynamic.png|media/esport-team.jpg|media/esport.svg|\
               media/football-dynamic.png|media/football.svg|media/idle.svg|\
               media/products/chips.svg|media/products/chocolate.svg|media/products/cocacola.jpg|media/products/coffee.svg|media/products/cola.svg|media/products/energy.svg|media/products/fanta.jpg|media/products/lays.jpg|media/products/oreo.jpg|media/products/redbull.jpg|media/products/snickers.jpg|media/products/sprite.jpg|media/products/twix.jpg|media/products/water.svg|\
-              media/ps5-available.png|media/ps5-default.jpg|media/racing-dynamic.png|media/racing.svg|media/sim-racing.jpg|media/sim-vip.png|media/sim-vip.png|media/sim.svg|media/tactical-dynamic.png|media/tactical.jpg|media/tactical.svg) ;;
+              media/ps5-available.png|media/ps5-default.jpg|media/racing-dynamic.png|media/racing.svg|media/sim-racing.jpg|media/sim-vip.png|media/sim.svg|media/tactical-dynamic.png|media/tactical.jpg|media/tactical.svg) ;;
               *) mkdir -p "$PARK_ASSETS/$(dirname "$rel")"; mv "$src" "$PARK_ASSETS/$rel" ;;
             esac
           done < <(find "$ASSETS" -type f -print0)
@@ -151,6 +153,7 @@ jobs:
           grep -qx 'assets/enrich-v160-billing.js' v160-enrichment-assets.txt
           grep -qx 'assets/enrich-v160-session-form.js' v160-enrichment-assets.txt
           grep -qx 'assets/enrich-v160-session-start.js' v160-enrichment-assets.txt
+          grep -qx 'assets/enrich-v160-session-form-ui.js' v160-enrichment-assets.txt
           ! grep -q '^assets/v250/' v160-enrichment-assets.txt
           ! grep -qi 'saas' v160-enrichment-assets.txt
           ! grep -qi 'onboarding' v160-enrichment-assets.txt
