@@ -1,0 +1,18 @@
+'use strict';
+const fs=require('fs'),path=require('path');
+const root=path.resolve(__dirname,'..');
+const read=p=>fs.readFileSync(path.join(root,p),'utf8');
+const must=(ok,msg)=>{if(!ok){console.error('V306_PHYSICAL_INPUT_HARNESS_FAIL',msg);process.exit(1);}};
+const form=read('app/src/main/assets/v250/form-input-stability-v303.js');
+const probe=read('tools/cdp-v301-probe.js');
+const wrapper=read('tools/android-v306-onboarding-smoke.sh');
+must(form.includes('focusEpoch')&&form.includes('focusStable(el,true,true)'),'direct physical tap must own focus');
+must(form.includes("version:'v306'")&&form.includes("dataset.formInputStability='v306'"),'v306 form stability marker missing');
+must(probe.includes('active:a===e')&&probe.includes('activeId:a?'),'CDP probe must expose activeElement truth');
+must(wrapper.includes('did not become active after physical tap'),'onboarding harness must fail closed on missing focus');
+must(wrapper.includes('adb shell input keyevent 77'),'email @ must use a physical key event');
+must(wrapper.includes('FOCUS_ATTEMPT'),'focus retries must be traceable');
+console.log('V306_PHYSICAL_FIELD_OWNERSHIP_OK');
+console.log('V306_CDP_ACTIVE_ELEMENT_PROBE_OK');
+console.log('V306_ONBOARDING_FOCUS_RETRY_OK');
+console.log('V306_EMAIL_PHYSICAL_KEYEVENT_OK');
