@@ -22,10 +22,10 @@
       try{el.focus({preventScroll:true});}catch(_e){try{el.focus();}catch(_e2){}}
     }
     if(document.activeElement===el){lastFocus=el;lastAt=Date.now();reveal(el);}
-    /* Physical touch already asks Android WebView to show the IME. Do not call
-       Android.requestKeyboard(): its historical FOCUS_DOWN path could advance
-       email focus to the password field. requestIme is retained only for API
-       compatibility with the existing interaction layer. */
+    /* Physical touch already asks Android WebView to show the IME. Do not invoke
+       the native keyboard bridge: its historical directional-focus path could
+       advance email focus to the password field. requestIme is retained only for
+       API compatibility with the existing interaction layer. */
     if(requestIme)document.documentElement.dataset.imeOwner='native-touch';
     return document.activeElement===el;
   }
