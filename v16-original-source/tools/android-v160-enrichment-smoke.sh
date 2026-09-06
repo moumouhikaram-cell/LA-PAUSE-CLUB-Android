@@ -23,7 +23,7 @@ wait_resumed(){
   for i in $(seq 1 20); do
     snap="$(activity_snapshot)"
     if printf '%s\n' "$snap" | grep -Eq "mResumedActivity.*${PKG//./\\.}.*MainActivity|topResumedActivity=.*${PKG//./\\.}.*MainActivity"; then return 0; fi
-    sleep .4
+    sleep 0.4
   done
   return 1
 }
@@ -33,7 +33,7 @@ ensure_main_foreground(){
     line="$(foreground_line)"
     if printf '%s\n' "$line" | grep -Eq "${PKG//./\\.}.*MainActivity"; then return 0; fi
     [[ -n "$line" ]] && break
-    sleep .4
+    sleep 0.4
   done
   log "FOREGROUND_DIAG line=${line:-NONE}"
   if printf '%s\n' "$line" | grep -q 'com.android.settings'; then
@@ -56,24 +56,22 @@ attach_try(){
   printf '%s' "$sock"
 }
 probe(){ LPOS_CDP_PORT=$PORT node "$CDP_PROBE" "$@"; }
-wait_floor_dom(){
+prove_floor_dom_once(){
   local attempt sock="" json=""
-  for attempt in $(seq 1 40); do
-    ensure_main_foreground || { sleep .5; continue; }
+  # Finding/forwarding the DevTools socket is safe to retry. Runtime.evaluate itself is executed
+  # once only, after all ADB physical checks, because this hosted emulator can become unstable
+  # after WebView inspection. CDP remains strictly read-only.
+  for attempt in $(seq 1 12); do
+    ensure_main_foreground || return 1
     sock="$(attach_try || true)"
-    if [[ -n "$sock" ]]; then
-      json="$(probe floor-state 2>/dev/null || printf 'null')"
-      if printf '%s' "$json" | python3 -c 'import json,sys;p=json.load(sys.stdin) or {};t=(p.get("viewText") or "").lower(); r=p.get("viewRect") or {}; state=p.get("readyState"); ok=state in ("interactive","complete") and p.get("viewExists") and int(p.get("viewChildCount") or 0)>0 and int(p.get("stationCount") or 0)>=7 and int(p.get("visibleStationCount") or 0)>=7 and float(r.get("width") or 0)>0 and float(r.get("height") or 0)>0 and "gaming floor" in t and "ps5 1" in t; raise SystemExit(0 if ok else 1)' >/dev/null 2>&1; then
-        log "CDP_FLOOR_READY attempt=$attempt socket=$sock state=$json"
-        return 0
-      fi
-      log "CDP_FLOOR_WAIT attempt=$attempt state=$json"
-    else
-      log "CDP_ATTACH_WAIT attempt=$attempt"
-    fi
-    sleep .5
+    [[ -n "$sock" ]] && break
+    log "CDP_ATTACH_WAIT attempt=$attempt"
+    sleep .4
   done
-  return 1
+  [[ -n "$sock" ]] || return 1
+  json="$(probe floor-state 2>/dev/null || printf 'null')"
+  log "CDP_FLOOR_ONE_SHOT socket=$sock state=$json"
+  printf '%s' "$json" | python3 -c 'import json,sys;p=json.load(sys.stdin) or {};t=(p.get("viewText") or "").lower();r=p.get("viewRect") or {};ids=set(p.get("stationIds") or []);required={"ps5-1","ps5-2","ps5-3","ps5-4","ps5-5","ps5-6","sim-1"};ok=p.get("viewExists") and int(p.get("viewChildCount") or 0)>0 and int(p.get("stationCount") or 0)>=7 and int(p.get("visibleStationCount") or 0)>=7 and required.issubset(ids) and float(r.get("width") or 0)>0 and float(r.get("height") or 0)>0 and "gaming floor" in t and "ps5 1" in t;raise SystemExit(0 if ok else 1)'
 }
 
 # Same-source contract: physical APK must carry the contextual Session stack CI validated.
@@ -119,23 +117,16 @@ log "PHASE_LAUNCH_BEGIN"
 timeout --foreground 20s adb shell am start -W -n "$ACT" >> "$TRACE" 2>&1 || fail "launch failed or timed out"
 wait_resumed || fail "MainActivity not resumed after launch"
 log "MAIN_ACTIVITY_READY"
-
-# Read-only CDP proves the document actually rendered. CDP never clicks/types/mutates state.
-# A fully populated interactive DOM is already physically renderable; waiting for complete can
-# falsely reject a healthy historical WebView while slow subresources are still finishing.
-wait_floor_dom || fail "Gaming Floor DOM never became ready in foreground WebView"
-log "WEBVIEW_FLOOR_DOM_READY"
 PID="$(timeout --foreground 5s adb shell pidof "$PKG" 2>/dev/null | tr -d '\r')"
-[[ -n "$PID" ]] || fail "package pid missing after Floor readiness"
+[[ -n "$PID" ]] || fail "package pid missing after launch"
 log "APP_PID_READY pid=$PID"
 
-# Real physical ADB input: prove the running Floor accepts a touch gesture and remains healthy.
+# Real physical ADB input first. Do not let renderer/debug observation run before the physical gate.
 timeout --foreground 8s adb shell input swipe 540 1300 540 850 260 >/dev/null 2>&1 || fail "physical Floor swipe failed"
 sleep 1
 ensure_main_foreground || fail "MainActivity lost after physical Floor swipe"
 PID_AFTER_SWIPE="$(timeout --foreground 5s adb shell pidof "$PKG" 2>/dev/null | tr -d '\r')"
 [[ "$PID_AFTER_SWIPE" = "$PID" ]] || fail "pid changed after physical Floor swipe"
-attach_try >/dev/null || fail "WebView CDP lost after physical Floor swipe"
 log "PHYSICAL_FLOOR_SWIPE_OK"
 
 # Rotation must not destroy/replace the historical v1.6 activity/process.
@@ -145,18 +136,24 @@ timeout --foreground 8s adb shell settings put system user_rotation 1 >/dev/null
 sleep 2
 wait_resumed || fail "MainActivity lost in landscape"
 [[ "$(timeout --foreground 5s adb shell pidof "$PKG" 2>/dev/null | tr -d '\r')" = "$PID" ]] || fail "pid changed in landscape"
-attach_try >/dev/null || fail "WebView CDP lost in landscape"
 log "LANDSCAPE_ACTIVITY_OK"
 log "PHASE_ROTATION_PORTRAIT_BEGIN"
 timeout --foreground 8s adb shell settings put system user_rotation 0 >/dev/null || true
 sleep 2
 wait_resumed || fail "MainActivity lost returning portrait"
 [[ "$(timeout --foreground 5s adb shell pidof "$PKG" 2>/dev/null | tr -d '\r')" = "$PID" ]] || fail "pid changed returning portrait"
-attach_try >/dev/null || fail "WebView CDP lost returning portrait"
 log "PORTRAIT_ACTIVITY_OK"
 
+# Capture crash evidence before the final WebView observation, while ADB is known healthy.
 timeout --foreground 12s adb logcat -d --pid="$PID" > "$LOGCAT" 2>/dev/null || timeout --foreground 12s adb logcat -d > "$LOGCAT" 2>/dev/null || true
 if grep -Eqi 'FATAL EXCEPTION|AndroidRuntime:.*FATAL|Process com\.lapauseclub\.manager .* has died|chromium.*(crash|Aw, Snap)' "$LOGCAT"; then
   fail "fatal runtime signal found"
 fi
+log "NO_FATAL_RUNTIME_SIGNAL"
+
+# One final read-only CDP observation proves the rendered Floor content. readyState is diagnostic
+# only: this historical asset page can expose all seven visible station cards while still loading
+# slow subresources, so acceptance is based on actual DOM content/geometry rather than that flag.
+prove_floor_dom_once || fail "final read-only Floor DOM proof failed"
+log "WEBVIEW_FLOOR_DOM_READY"
 log "ANDROID_V160_ENRICHMENT_NATIVE_SMOKE_OK"
