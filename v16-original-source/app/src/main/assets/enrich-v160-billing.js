@@ -49,7 +49,15 @@
         const minutes=Math.max(1,n(draft.duration,60));return {model:MODEL.TIME,known:rate>0,amount:round((rate/60)*minutes),minutes,rate};
       }
     }
-    if(model===MODEL.TIME){const rate=n(plan?.hourlyRate,0);const minutes=Math.max(1,n(draft.duration,60));return {model,known:rate>0,amount:round(rate*minutes/60),minutes,rate};}
+    if(model===MODEL.TIME){
+      const rate=n(plan?.hourlyRate,0);
+      if(draft.mode==='open')return {model,known:false,amount:0,minutes:null,rate};
+      if(draft.mode==='budget'){
+        const amount=Math.max(0,n(draft.budget,0));
+        return {model,known:rate>0&&amount>0,amount:round(amount),minutes:rate>0?(amount/rate)*60:0,rate};
+      }
+      const minutes=Math.max(1,n(draft.duration,60));return {model,known:rate>0,amount:round(rate*minutes/60),minutes,rate};
+    }
     if(model===MODEL.BLOCK){const minutes=Math.max(1,n(plan?.blockMinutes,n(draft.duration,30))),price=n(plan?.blockPrice,n(plan?.unitPrice,0));return {model,known:price>0,amount:round(price),minutes,unitPrice:price};}
     if(model===MODEL.GAME||model===MODEL.PLAYER_GAME){const units=Math.max(1,Math.round(n(draft.units,1)));let price=n(plan?.unitPrice,n(plan?.gamePrice,0));if(model===MODEL.PLAYER_GAME){const r=plan?.playerRates||{};price=n(r[String(players)],price);}return {model,known:price>0,amount:round(price*units),minutes:null,units,unitPrice:price};}
     if(model===MODEL.FIXED){const price=n(plan?.fixedPrice,n(plan?.sessionPrice,n(plan?.unitPrice,0)));return {model,known:price>0,amount:round(price),minutes:n(plan?.defaultDurationMinutes,0)||null,unitPrice:price};}
