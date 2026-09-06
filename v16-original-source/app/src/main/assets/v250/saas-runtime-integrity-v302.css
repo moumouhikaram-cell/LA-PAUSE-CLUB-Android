@@ -1,0 +1,39 @@
+/* LA PAUSE OS v302 — final mobile/SaaS layout integrity. */
+html,body{width:100%!important;max-width:100vw!important;height:auto!important;min-height:100%!important;max-height:none!important;overflow-x:hidden!important;overflow-y:auto!important;overscroll-behavior-y:auto!important;-webkit-overflow-scrolling:touch!important}
+body{touch-action:pan-y!important}
+#app,#app>.canon-shell,#app .canon-screen,#app .b291-screen,#app .v301-screen{height:auto!important;min-height:100dvh!important;max-height:none!important;overflow-x:hidden!important;overflow-y:visible!important}
+#app,#app>.canon-shell{position:relative!important;inset:auto!important;transform:none!important}
+#app .v301-screen{touch-action:pan-y!important}
+#app input,#app textarea,#app select,#modalRoot input,#modalRoot textarea,#modalRoot select{font-size:16px!important;touch-action:manipulation!important;scroll-margin-top:110px!important;scroll-margin-bottom:190px!important}
+#modalRoot .modal-body,#modalRoot .v301-modal-body,#modalRoot .v296-sheet,#modalRoot .v299-more{overflow-y:auto!important;overscroll-behavior:contain!important;-webkit-overflow-scrolling:touch!important;touch-action:pan-y!important}
+
+/* Setup is a separate gated product surface. Operational chrome cannot leak in. */
+body.v302-setup-locked #v299Nav,
+body.v302-setup-locked #v295More,
+body.v302-setup-locked #v299More,
+body.v302-setup-locked .canon-bottomnav,
+body.v302-setup-locked .v294-nav,
+body.v302-setup-locked .v295-appbar,
+body.v302-setup-locked .v296-nav{display:none!important}
+body.v302-setup-locked .v294-home{visibility:hidden!important;pointer-events:none!important}
+
+/* Keep onboarding short and phone-native. */
+@media(max-width:700px){
+  .v301-screen{padding-left:12px!important;padding-right:12px!important;padding-top:max(28px,env(safe-area-inset-top))!important;padding-bottom:max(72px,calc(env(safe-area-inset-bottom) + 28px))!important}
+  .v301-title h1{font-size:30px!important;line-height:1.05!important}.v301-title p{font-size:12.5px!important;line-height:1.45!important}
+  .v301-card{padding:12px!important;margin:10px 0!important}.v301-formgrid{grid-template-columns:1fr!important;gap:9px!important}
+  .v301-field input,.v301-field select{height:48px!important}.v301-btn{min-height:52px!important}
+  .v301-activity-fields,.v301-package-config{grid-template-columns:1fr 1fr!important}
+  .v301-floor-tools{grid-template-columns:1fr 1fr!important}.v301-floor-canvas{width:100%!important;min-height:430px!important;aspect-ratio:3/4!important;touch-action:none!important}
+  .v301-zone{touch-action:none!important}
+  .v301-product-head,.v301-product-row{grid-template-columns:minmax(0,1fr) 72px 66px!important}
+}
+@media(max-width:370px){.v301-activity-fields,.v301-package-config{grid-template-columns:1fr!important}.v301-floor-canvas{min-height:390px!important}.v301-product-head,.v301-product-row{grid-template-columns:minmax(0,1fr) 64px 60px!important;gap:5px!important}}
+
+/* Dynamic setup feedback: recommended by venue type, never auto-priced. */
+.v301-activity.recommended{border-color:#35bfe8!important;box-shadow:0 0 0 1px rgba(53,191,232,.11) inset!important}
+.v301-activity.recommended:after{content:'RECOMMANDÉ';display:inline-block;margin-top:8px;padding:3px 7px;border-radius:999px;background:rgba(48,204,234,.12);color:#67e7ff;font-size:8px;font-weight:900;letter-spacing:.08em}
+
+/* v302 only yields gesture ownership while floor editing. */
+body.v302-floor-gesture{touch-action:none!important;overscroll-behavior:none!important}
+body.v302-floor-gesture #v301FloorCanvas{touch-action:none!important}
