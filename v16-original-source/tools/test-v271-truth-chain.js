@@ -1,5 +1,5 @@
 'use strict';
-// Canonical recovery gates (v308): proven physical email input + bidirectional onboarding locator + deterministic setup transition + v306 physical Android input harness + v305 platform truth + v304 operational truth + v303 Android form stability + v302 SaaS runtime authority + v301 SaaS lifecycle isolation + v300 interaction integrity + v299 universal mobile foundation + v298 strict landing viewport + v297 physical-phone recovery + v296 unified product graph + v295 unified operational shell + v294 confirmed premium mobile home + v291 corrected batch 01-10.
+// Canonical recovery gates (v309): foreground-ready physical landing + proven physical email input + bidirectional onboarding locator + deterministic setup transition + v306 physical Android input harness + v305 platform truth + v304 operational truth + v303 Android form stability + v302 SaaS runtime authority + v301 SaaS lifecycle isolation + v300 interaction integrity + v299 universal mobile foundation + v298 strict landing viewport + v297 physical-phone recovery + v296 unified product graph + v295 unified operational shell + v294 confirmed premium mobile home + v291 corrected batch 01-10.
 const fs=require('fs'),path=require('path');
 const root=path.resolve(__dirname,'..');
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
@@ -40,7 +40,9 @@ for(const token of ['PBKDF2WithHmacSHA256','MessageDigest.isEqual','createLocalC
 must(v306Harness.includes("s.index('input_value(){')")&&v306Harness.includes("s.index('hide_ime(){',start)"),'v306 harness must replace helper block by deterministic anchors');
 must(v306Harness.includes('LOCATE_SCROLL direction=UP')&&v306Harness.includes('LOCATE_SCROLL direction=DOWN'),'v308 onboarding locator must navigate both directions');
 must(v306Harness.includes('CONSOLE_RATE_DIAG')&&v306Harness.includes('V308_CONSOLE_RATE_DOM_OK'),'v308 console rate diagnostic evidence missing');
+for(const token of ['APP_RELAUNCH','APP_READY foreground=1',"probe rect-text 'Start Free Trial'","tap rect-text 'Start Free Trial'",'try_state_screen','LANDING_PHYSICAL_TAP_OK']) must(v306Harness.includes(token),'v309 onboarding startup proof token missing '+token);
 for(const token of ['EMAIL_FOCUS_ATTEMPT','EMAIL_PREFIX_OK','EMAIL_AT_OK','EMAIL_PHYSICAL_OK','EMAIL_STATE_OK','KEYCODE_AT','ANDROID_NATIVE_V307_SMOKE_OK']) must(v307Native.includes(token),'v308 native physical email proof token missing '+token);
+for(const token of ['APP_RELAUNCH','APP_READY foreground=1',"probe rect-text 'Start Free Trial'","tap rect-text 'Start Free Trial'",'try_state_screen','LANDING_PHYSICAL_TAP_OK']) must(v307Native.includes(token),'v309 native startup proof token missing '+token);
 require('./test-v271-bootstrap-runtime.js');
 require('./test-v271-accounting-runtime.js');
 require('./test-v280-canonical-mobile.js');
@@ -86,3 +88,4 @@ console.log('V306_PHYSICAL_INPUT_HARNESS_GATE_OK');
 console.log('V306_DETERMINISTIC_HARNESS_PATCH_GATE_OK');
 console.log('V307_SETUP_ACTION_BRIDGE_GATE_OK');
 console.log('V308_PHYSICAL_EMAIL_AND_BIDIRECTIONAL_LOCATOR_GATE_OK');
+console.log('V309_FOREGROUND_READY_PHYSICAL_LANDING_GATE_OK');
