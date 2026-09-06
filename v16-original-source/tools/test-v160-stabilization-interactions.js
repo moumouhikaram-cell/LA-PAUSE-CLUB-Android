@@ -33,3 +33,6 @@ for(const id of critical){
 
 if(failures.length){console.error(failures.join('\n'));process.exit(1)}
 console.log(`V160_STABILIZATION_INTERACTION_AUDIT_OK buttons=${ids.size} dataContracts=${attrs.size}`);
+
+// Dynamic v1.5 tabs also need persistent route state, otherwise a re-render can jump to a wrong screen.
+require('./test-v160-stabilization-tabs.js');
