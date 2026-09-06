@@ -22,7 +22,9 @@ direction=-1 if my<0 else (1 if my>=ih else 0)
 print(round(cx),round(cy),1 if vis else 0,direction)
 PYRECT
 }
-locate(){ local mode="$1" sel="$2" x y v dir attempt; for attempt in $(seq 1 12); do if read x y v dir < <(rect "$mode" "$sel"); then if [[ "$v" = 1 ]]; then echo "$x $y"; return 0; fi; if [[ "$dir" = -1 ]]; then log "LOCATE_SCROLL direction=UP mode=$mode sel=$sel attempt=$attempt"; adb shell input swipe 540 700 540 1450 300 >>"$TRACE" 2>&1||true; else log "LOCATE_SCROLL direction=DOWN mode=$mode sel=$sel attempt=$attempt"; adb shell input swipe 540 1450 540 650 300 >>"$TRACE" 2>&1||true; fi; else log "LOCATE_SCROLL direction=DOWN_UNKNOWN mode=$mode sel=$sel attempt=$attempt"; adb shell input swipe 540 1450 540 650 300 >>"$TRACE" 2>&1||true; fi; sleep .45; done; fail "not reachable: $mode $sel"; }
+# V312_LOCATOR_STDOUT_COORDS_ONLY: process-substitution callers must receive only "x y".
+# Diagnostic scroll logs are redirected to stderr while still being tee'd into TRACE.
+locate(){ local mode="$1" sel="$2" x y v dir attempt; for attempt in $(seq 1 12); do if read x y v dir < <(rect "$mode" "$sel"); then if [[ "$v" = 1 ]]; then echo "$x $y"; return 0; fi; if [[ "$dir" = -1 ]]; then log "LOCATE_SCROLL direction=UP mode=$mode sel=$sel attempt=$attempt" >&2; adb shell input swipe 540 700 540 1450 300 >>"$TRACE" 2>&1||true; else log "LOCATE_SCROLL direction=DOWN mode=$mode sel=$sel attempt=$attempt" >&2; adb shell input swipe 540 1450 540 650 300 >>"$TRACE" 2>&1||true; fi; else log "LOCATE_SCROLL direction=DOWN_UNKNOWN mode=$mode sel=$sel attempt=$attempt" >&2; adb shell input swipe 540 1450 540 650 300 >>"$TRACE" 2>&1||true; fi; sleep .45; done; fail "not reachable: $mode $sel"; }
 '''
 new_input=r'''input_value(){
   local id="$1" val="$2" x y active="0" got="" attempt
@@ -123,7 +125,7 @@ s2=s2[:cdp_start]+new_cdp+s2[cdp_end:]
 old_fail='fail(){ log "ANDROID_V301_ONBOARDING_FAIL: $*"; adb shell dumpsys window >>"$TRACE" 2>&1 || true; exit 1; }'
 new_fail='fail(){ log "ANDROID_V301_ONBOARDING_FAIL: $*"; adb shell dumpsys window >>"$TRACE" 2>&1 || true; adb logcat -d -t 500 >>"$TRACE" 2>&1 || true; exit 1; }'
 if old_fail not in s2:
-    print('V311_HARNESS_FAIL fail anchor not found',file=sys.stderr);sys.exit(4)
+    print('V312_HARNESS_FAIL fail anchor not found',file=sys.stderr);sys.exit(4)
 s2=s2.replace(old_fail,new_fail,1)
 old_start='adb shell am start -W -n "$PKG/$ACTIVITY" >>"$TRACE" 2>&1||fail "launch"; sleep 7; need_adb launch\nlog "LANDING_PHYSICAL_TAP"; adb shell input tap 900 215 >>"$TRACE" 2>&1||fail "landing tap"; wait_screen 3; cdp_attach'
 new_start=r'''launch_ready; need_adb launch
@@ -142,7 +144,7 @@ done
 printf '%s' "$LANDING" | python3 -c 'import json,sys;p=json.load(sys.stdin);assert p and float(p.get("width") or 0)>0 and float(p.get("height") or 0)>0 and not p.get("disabled") and p.get("pointerEvents")!="none"' || fail "landing CTA not ready"
 tap rect-css "$LANDING_SEL"; wait_screen 3; log "LANDING_PHYSICAL_TAP_OK"'''
 if old_start not in s2:
-    print('V311_HARNESS_FAIL startup anchor not found',file=sys.stderr);sys.exit(5)
+    print('V312_HARNESS_FAIL startup anchor not found',file=sys.stderr);sys.exit(5)
 s2=s2.replace(old_start,new_start,1)
 
 anchor="input_css '[data-v301-rate=\"CONSOLE\"]' 22"
@@ -154,7 +156,7 @@ if anchor not in s2:
     print('V306_HARNESS_FAIL console rate anchor not found',file=sys.stderr);sys.exit(6)
 s2=s2.replace(anchor,diag+anchor,1)
 open(out,'w',encoding='utf-8').write(s2)
-print('V311_HARNESS_PATCH_OK')
+print('V312_HARNESS_PATCH_OK')
 PY
 chmod +x "$OUT"
 exec bash "$OUT" "$@"
