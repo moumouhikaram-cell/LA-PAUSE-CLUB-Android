@@ -1,7 +1,7 @@
 'use strict';
 const fs=require('fs'),path=require('path'),root=path.resolve(__dirname,'..');
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
-const must=(x,m)=>{if(!x){console.error('V319_SETUP_BRIDGE_FAIL',m);process.exit(1);}};
+const must=(x,m)=>{if(!x){console.error('V320_SETUP_BRIDGE_FAIL',m);process.exit(1);}};
 const html=read('app/src/main/assets/v250/index.html');
 const bridge=read('app/src/main/assets/v250/setup-action-bridge-v307.js');
 const interaction=read('app/src/main/assets/v250/interaction-integrity-v300.js');
@@ -22,6 +22,11 @@ must(interaction.includes('[data-v301]'),'v301 controls absent from physical con
 must(html.includes('floor-scroll-v319.css'),'v319 floor scroll override missing from index');
 must(html.indexOf('floor-scroll-v319.css')>html.indexOf('saas-lifecycle-v301.css'),'v319 floor scroll override must load after canonical floor CSS');
 for(const t of ['.v301-floor-canvas{touch-action:pan-y!important}','.v301-floor-canvas.wall-mode{touch-action:pan-y!important}','.v301-zone{touch-action:none!important}'])must(floorScroll.includes(t),'v319 floor scroll token missing '+t);
+for(const t of ['function ensureFloor()','function saveFloor()','A.resources?A.resources()','floorSaved=true','floorConfiguredV291=true',"S.lifecycle.stage='REVIEW'","persist('V301_FLOOR_SAVED'",'A.setScreen(8)','saveFloor:saveFloor',"floorVersion:'v320'","floorSaveBridge='v320'"])must(bridge.includes(t),'v320 floor-save bridge token missing '+t);
+for(const t of ['function saveFloor()','if(!A.resources().length)',"S.setupV301.floorSaved=true","S.meta.floorConfiguredV291=true","S.lifecycle.stage='REVIEW'","persist('V301_FLOOR_SAVED'",'A.setScreen(8)'])must(lifecycle.includes(t),'canonical v301 floor-save token missing '+t);
+must(interaction.includes("a==='save-floor'&&window.__LPOS_V307_SETUP&&typeof window.__LPOS_V307_SETUP.saveFloor==='function'"),'physical router does not invoke floor-save bridge');
+must(interaction.includes('window.__LPOS_V320_LAST_FLOOR_ERROR')&&interaction.includes("dataset.v320FloorError='1'"),'floor-save bridge exception diagnostics missing');
+must(interaction.includes("floorSaveVersion:'v320'")&&interaction.includes("floorSaveIntegrity='v320'"),'v320 physical floor-save integrity marker missing');
 console.log('V307_SETUP_BUSINESS_BRIDGE_OK');
 console.log('V307_SETUP_BRIDGE_LOAD_ORDER_OK');
 console.log('V307_PHYSICAL_V301_ROUTING_OK');
@@ -31,3 +36,5 @@ console.log('V318_WALL_TOUCH_OWNER_OK');
 console.log('V318_WALL_CANONICAL_PARITY_OK');
 console.log('V319_FLOOR_CANVAS_VERTICAL_SCROLL_OK');
 console.log('V319_ZONE_DRAG_GESTURE_OWNERSHIP_OK');
+console.log('V320_FLOOR_SAVE_BRIDGE_PARITY_OK');
+console.log('V320_PHYSICAL_SAVE_FLOOR_ROUTING_OK');

@@ -1,8 +1,8 @@
 'use strict';
-/* LA PAUSE OS v317 — deterministic physical-action bridge for critical SaaS setup.
-   Business and commercial setup transitions are callable directly from the Android
-   physical-touch router. The commercial transaction mirrors canonical v301 state
-   semantics, removing dependence on synthetic click ordering without changing UI. */
+/* LA PAUSE OS v320 — deterministic physical-action bridge for critical SaaS setup.
+   Business, commercial and floor-save transitions are callable directly from the
+   Android physical-touch router. Transactions mirror canonical v301 state semantics,
+   removing dependence on synthetic click ordering without changing UI. */
 (function(){
   var A=window.LPOS,S=A&&A.state;
   if(!A||!S)return;
@@ -11,6 +11,7 @@
   function toast(msg){var r=document.getElementById('toastRoot');if(!r)return;r.innerHTML='<div class="toast">'+String(msg||'')+'</div>';setTimeout(function(){if(r)r.innerHTML='';},2300);}
   function persist(type,payload){A.persist(type||null,payload||null);}
   function ensureCatalog(){if(window.__LPOS_V301&&typeof window.__LPOS_V301.ensureCatalog==='function')window.__LPOS_V301.ensureCatalog();}
+  function ensureFloor(){S.zones=Array.isArray(S.zones)?S.zones:[];S.floorLayout=S.floorLayout&&typeof S.floorLayout==='object'?S.floorLayout:{zones:{},walls:[]};S.floorLayout.zones=S.floorLayout.zones&&typeof S.floorLayout.zones==='object'?S.floorLayout.zones:{};S.floorLayout.walls=Array.isArray(S.floorLayout.walls)?S.floorLayout.walls:[];if(!S.zones.length)S.zones.push({id:'zone-v301-main',name:'Salle principale',setupV301:true});S.zones.forEach(function(z,i){if(!S.floorLayout.zones[z.id])S.floorLayout.zones[z.id]={x:6+(i%2)*48,y:8+Math.floor(i/2)*34,w:42,h:28};});}
   var ACT=[
     {key:'CONSOLE',label:'PS5 / Consoles',rate:'ps5Solo',unit:'/ heure',prefix:'PS5'},
     {key:'PC_GAMING',label:'PC Gaming',rate:'pc',unit:'/ heure',prefix:'PC'},
@@ -43,6 +44,16 @@
     if(!active){toast('Activez au moins une activité avec un nombre et un tarif supérieurs à zéro.');return false;}
     S.features.packages=!!((document.getElementById('v301PackagesOn')||{}).checked);S.features.pack5Discount=n((document.getElementById('v301Pack5')||{}).value,8);S.features.pack10Discount=n((document.getElementById('v301Pack10')||{}).value,15);buildPackages();S.setupV301.commercialSaved=true;S.meta=S.meta||{};S.meta.pricingConfiguredV290=true;S.lifecycle.stage='FLOOR';persist('V301_COMMERCIAL_SAVED',{activities:active,packages:S.packages.length,products:S.products.length});window.__LPOS_V317_LAST_COMMERCIAL_RESULT={ok:true,active:active,packages:S.packages.length,screen:10,at:Date.now()};A.setScreen(10);location.reload();return true;
   }
-  window.__LPOS_V307_SETUP={saveBusiness:saveBusiness,saveCommercial:saveCommercial,version:'v317'};
+  function saveFloor(){
+    ensureFloor();var resources=A.resources?A.resources():(S.resources||[]).filter(function(r){return r.enabled!==false;});
+    window.__LPOS_V320_LAST_FLOOR_ATTEMPT={zones:S.zones.length,resources:resources.length,walls:S.floorLayout.walls.length,at:Date.now()};
+    if(!resources.length){toast('Ajoutez au moins un équipement.');return false;}
+    S.setupV301=S.setupV301||{};S.setupV301.floorSaved=true;S.meta=S.meta||{};S.meta.floorConfiguredV291=true;S.lifecycle=S.lifecycle||{};S.lifecycle.stage='REVIEW';
+    persist('V301_FLOOR_SAVED',{zones:S.zones.length,resources:resources.length,walls:S.floorLayout.walls.length});
+    window.__LPOS_V320_LAST_FLOOR_RESULT={ok:true,zones:S.zones.length,resources:resources.length,walls:S.floorLayout.walls.length,screen:8,at:Date.now()};
+    A.setScreen(8);location.reload();return true;
+  }
+  window.__LPOS_V307_SETUP={saveBusiness:saveBusiness,saveCommercial:saveCommercial,saveFloor:saveFloor,version:'v317',floorVersion:'v320'};
   document.documentElement.dataset.setupActionBridge='v317';
+  document.documentElement.dataset.floorSaveBridge='v320';
 })();
