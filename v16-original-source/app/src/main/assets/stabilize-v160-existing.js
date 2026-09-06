@@ -94,11 +94,39 @@
     window.openShiftModal=wrappedOpenShift;try{openShiftModal=wrappedOpenShift}catch(_){}
   }
 
+  function tabButtons(){try{return [...document.querySelectorAll('[data-v15-tab]')]}catch(_){return []}}
+  function bindCompetitionRouteState(renderFn){
+    const buttons=tabButtons(),ids=new Set(buttons.map(b=>b?.dataset?.v15Tab));
+    if(!ids.has('tournaments')||!ids.has('challenges')||!ids.has('king'))return;
+    buttons.forEach(b=>{const m=b?.dataset?.v15Tab;if(!['tournaments','challenges','king'].includes(m))return;b.onclick=()=>{try{currentView=m}catch(_){};return renderFn(m)}});
+  }
+  function bindReportRouteState(renderFn){
+    const buttons=tabButtons(),ids=new Set(buttons.map(b=>b?.dataset?.v15Tab));
+    if(!ids.has('overview')||!ids.has('customers'))return;
+    buttons.forEach(b=>{const t=b?.dataset?.v15Tab;if(!['overview','revenue','occupancy','customers','closure'].includes(t))return;b.onclick=()=>{const route=t==='customers'?'customerReports':t==='overview'?'overview':t;try{currentView=route}catch(_){};return renderFn(t)}});
+  }
+
+  const originalCompetitions=window.renderCompetitionsV15;
+  if(typeof originalCompetitions==='function'&&!originalCompetitions.__lp160RouteStabilized){
+    const wrappedCompetitions=function(){const out=originalCompetitions.apply(this,arguments);bindCompetitionRouteState(wrappedCompetitions);return out;};
+    wrappedCompetitions.__lp160RouteStabilized=true;wrappedCompetitions.__lp160Original=originalCompetitions;
+    window.renderCompetitionsV15=wrappedCompetitions;try{renderCompetitionsV15=wrappedCompetitions}catch(_){}
+  }
+
+  const originalReports=window.renderReportsV15;
+  if(typeof originalReports==='function'&&!originalReports.__lp160RouteStabilized){
+    const wrappedReports=function(){const out=originalReports.apply(this,arguments);bindReportRouteState(wrappedReports);return out;};
+    wrappedReports.__lp160RouteStabilized=true;wrappedReports.__lp160Original=originalReports;
+    window.renderReportsV15=wrappedReports;try{renderReportsV15=wrappedReports}catch(_){}
+  }
+
   window.LP160Stabilization=Object.freeze({
-    version:'1.6.0-stabilization-1',
+    version:'1.6.0-stabilization-2',
     currentShift:compatibleCurrentShift,
     getPendingSessionStart:getPending,
     clearPendingSessionStart:clearPending,
-    restorePendingSessionStart:restorePending
+    restorePendingSessionStart:restorePending,
+    bindCompetitionRouteState,
+    bindReportRouteState
   });
 })();
