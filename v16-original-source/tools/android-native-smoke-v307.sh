@@ -29,6 +29,8 @@ PY
 }
 attach(){ local sock=""; adb forward --remove tcp:$PORT >/dev/null 2>&1 || true; for _ in $(seq 1 25); do sock="$(adb shell cat /proc/net/unix 2>/dev/null|awk '/webview_devtools_remote/{print $NF}'|tail -n1|tr -d '\r@')"; if [[ -n "$sock" ]]; then adb forward tcp:$PORT localabstract:$sock >/dev/null 2>&1 || true; curl -fsS --max-time 2 http://127.0.0.1:$PORT/json >/dev/null 2>&1 && { log "CDP_ATTACHED $sock"; return; }; fi; sleep .3; done; fail "CDP unavailable"; }
 probe(){ LPOS_CDP_PORT=$PORT node v16-original-source/tools/cdp-webview-probe.js "$@"; }
+probe_value(){ probe rect-id "$1" | python3 -c 'import json,sys;p=json.load(sys.stdin) or {};print(p.get("value") or "")'; }
+probe_active(){ probe rect-id "$1" | python3 -c 'import json,sys;p=json.load(sys.stdin) or {};print("1" if p.get("active") else "0")'; }
 center(){ local mode="$1" sel="$2" json=/tmp/v307-rect.json xml=/tmp/v307-frame.xml; probe "$mode" "$sel" > "$json" || return 2; ui_dump "$xml"; read X1 Y1 X2 Y2 < <(frame "$xml") || return 2; python3 - "$json" "$X1" "$Y1" "$X2" "$Y2" <<'PY'
 import json,sys
 p=json.load(open(sys.argv[1])); x1,y1,x2,y2=map(float,sys.argv[2:]);
@@ -46,9 +48,28 @@ adb shell am start -W -n "$PKG/$ACTIVITY" >/dev/null || fail "launch"; sleep 6
 adb shell input tap 900 215 >/dev/null || fail "landing"; sleep 2; [[ "$(state_screen /tmp/v307-land.xml|tail -n1|tr -d '\r')" = 3 ]] || fail "landing did not open account"
 attach
 input_plain newName KaramQA
-# Email uses a physical @ key event instead of relying on adb special-character escaping.
-read EX EY < <(locate rect-id newEmail); adb shell input tap "$EX" "$EY" >/dev/null; sleep .35; adb shell input text qa >/dev/null; adb shell input keyevent 77 >/dev/null; adb shell input text lapause.test >/dev/null; sleep .7
-EMAIL="$(state_draft /tmp/v307-email.xml newEmail|tail -n1|tr -d '\r')"; [[ "$EMAIL" = 'qa@lapause.test' ]] || fail "email=$EMAIL"; log EMAIL_PHYSICAL_OK
+# Reuse the physically proven v303 sequence: own DOM focus first, then pace prefix/@/suffix.
+read EX EY < <(locate rect-id newEmail)
+EMAIL_ACTIVE=0
+for attempt in 1 2 3 4; do
+  log "EMAIL_FOCUS_ATTEMPT attempt=$attempt x=$EX y=$EY"
+  adb shell input tap "$EX" "$EY" >/dev/null || fail "focus newEmail"
+  sleep .35
+  EMAIL_ACTIVE="$(probe_active newEmail)"
+  [[ "$EMAIL_ACTIVE" = 1 ]] && break
+  sleep .25
+  read EX EY < <(locate rect-id newEmail)
+done
+[[ "$EMAIL_ACTIVE" = 1 ]] || fail "newEmail did not become DOM activeElement"
+adb shell input keyevent KEYCODE_MOVE_END >/dev/null 2>&1 || true
+for _ in $(seq 1 50); do adb shell input keyevent KEYCODE_DEL >/dev/null 2>&1 || true; done
+adb shell input text qa >/dev/null || fail "type email prefix"; sleep .35
+PREFIX="$(probe_value newEmail)"; [[ "$PREFIX" = qa ]] || fail "email prefix=$PREFIX"; log "EMAIL_PREFIX_OK"
+adb shell input keyevent KEYCODE_AT >/dev/null || fail "type email @"; sleep .25
+AT_VALUE="$(probe_value newEmail)"; [[ "$AT_VALUE" = 'qa@' ]] || fail "email after-at=$AT_VALUE"; log "EMAIL_AT_OK"
+adb shell input text lapause.test >/dev/null || fail "type email suffix"; sleep .6
+EMAIL="$(probe_value newEmail)"; [[ "$EMAIL" = 'qa@lapause.test' ]] || fail "email=$EMAIL"; log "EMAIL_PHYSICAL_OK"
+EMAIL_STATE="$(state_draft /tmp/v307-email.xml newEmail|tail -n1|tr -d '\r')"; [[ "$EMAIL_STATE" = 'qa@lapause.test' ]] || fail "email state=$EMAIL_STATE"; log "EMAIL_STATE_OK"
 input_plain newPassword Pass1234
 # Do not send Android Back merely to hide IME: on devices where IME has already
 # collapsed that becomes navigation. Keep the keyboard state untouched and prove
