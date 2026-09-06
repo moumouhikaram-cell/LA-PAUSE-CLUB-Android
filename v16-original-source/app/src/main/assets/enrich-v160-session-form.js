@@ -36,7 +36,8 @@
     const q=X.billing.quote(st,d);
     if(d.mode!=='open'&&(!q||q.known!==true||n(q.amount,0)<=0))errors.push('PRICE_NOT_CONFIGURED');
     if(d.mode==='open'&&!['CONSOLE','PC_GAMING','TABLE_TENNIS'].includes(desc.type))errors.push('OPEN_MODE_NOT_SUPPORTED');
-    return {ok:errors.length===0,errors,quote:q||null,draft:d,descriptor:desc};
+    if(d.mode==='open'&&(!q||n(q.rate,0)<=0))errors.push('PRICE_NOT_CONFIGURED');
+    return {ok:errors.length===0,errors:[...new Set(errors)],quote:q||null,draft:d,descriptor:desc};
   }
   function prepare(stationId,input={}){
     const st=station(stationId);if(!st)throw new Error('Poste introuvable');
@@ -52,8 +53,8 @@
     if(opt.operatorExplicit!==true)throw new Error('Validation opérateur explicite obligatoire');
     const st=station(stationId),v=validate(st,input);if(!v.ok)throw new Error(`Session invalide: ${v.errors.join(', ')}`);
     if(v.descriptor.legacyForm)throw new Error('PS5/SIM doivent utiliser le démarrage historique v1.6');
-    return clone({kind:'START_CONTEXTUAL_SESSION',stationId:st.id,resourceType:v.descriptor.type,draft:v.draft,quote:v.quote,requiresOperator:true,createdAt:Date.now(),executor:'NOT_BOUND_UNTIL_DOMAIN_START_GATE'});
+    return clone({kind:'START_CONTEXTUAL_SESSION',stationId:st.id,resourceType:v.descriptor.type,draft:v.draft,quote:v.quote,requiresOperator:true,createdAt:Date.now(),executor:'V160_CONTEXTUAL_START_GATE'});
   }
   X.sessionForm={LEGACY_TYPES,descriptor,draft,validate,prepare,route,buildSessionIntent};
-  X.register('session-form-contextual',{mode:'ROUTING_AND_VALIDATION',legacyPs5Sim:'DELEGATE_UNCHANGED',newResourceStart:'FAIL_CLOSED_UNTIL_START_GATE',ui:'NO_GLOBAL_REPLACEMENT'});
+  X.register('session-form-contextual',{mode:'ROUTING_AND_VALIDATION',legacyPs5Sim:'DELEGATE_UNCHANGED',newResourceStart:'REQUIRES_CONTEXTUAL_START_GATE',ui:'NO_GLOBAL_REPLACEMENT'});
 })();
