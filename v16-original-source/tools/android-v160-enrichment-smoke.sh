@@ -8,6 +8,7 @@ APK="$GITHUB_WORKSPACE/v16-original-source/app/build/outputs/apk/debug/app-debug
 APK_ENTRIES="$GITHUB_WORKSPACE/android-v160-enrichment-apk-entries.txt"
 ASSETS="$GITHUB_WORKSPACE/v16-original-source/app/src/main/assets"
 INDEX="$ASSETS/index.html"
+MANIFEST="$GITHUB_WORKSPACE/v16-original-source/app/src/main/AndroidManifest.xml"
 CORE_STATUS="$ASSETS/enrich-v160-core-status.js"
 PKG="com.lapauseclub.manager"
 ACT="$PKG/.MainActivity"
@@ -82,6 +83,15 @@ log "PHASE_INSTALL_BEGIN"
 timeout --foreground 60s adb install -r "$APK" >> "$TRACE" 2>&1 || fail "install failed or timed out"
 log "PHASE_INSTALL_OK"
 timeout --foreground 15s adb shell pm clear "$PKG" >/dev/null || true
+# API 33 shows the historic POST_NOTIFICATIONS runtime dialog on a clean first launch.
+# This smoke is validating the app/runtime stack, not Android's permission UI, so pre-grant
+# the permission already declared by the untouched v1.6 manifest before launching.
+grep -q 'android.permission.POST_NOTIFICATIONS' "$MANIFEST" || fail "historic notification permission declaration missing"
+timeout --foreground 10s adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS >/dev/null || fail "cannot pregrant POST_NOTIFICATIONS"
+if ! timeout --foreground 10s adb shell dumpsys package "$PKG" 2>/dev/null | grep -q 'android.permission.POST_NOTIFICATIONS: granted=true'; then
+  fail "POST_NOTIFICATIONS pregrant not effective"
+fi
+log "POST_NOTIFICATIONS_PREGRANTED_OK"
 timeout --foreground 10s adb logcat -c || true
 log "PHASE_LAUNCH_BEGIN"
 timeout --foreground 20s adb shell am start -W -n "$ACT" >> "$TRACE" 2>&1 || fail "launch failed or timed out"
