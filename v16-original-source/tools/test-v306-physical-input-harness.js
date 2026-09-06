@@ -10,9 +10,13 @@ must(form.includes('focusEpoch')&&form.includes('focusStable(el,true,true)'),'di
 must(form.includes("version:'v306'")&&form.includes("dataset.formInputStability='v306'"),'v306 form stability marker missing');
 must(probe.includes('active:a===e')&&probe.includes('activeId:a?'),'CDP probe must expose activeElement truth');
 must(wrapper.includes('did not become active after physical tap'),'onboarding harness must fail closed on missing focus');
-must(wrapper.includes('adb shell input keyevent 77'),'email @ must use a physical key event');
+must(wrapper.includes('adb shell input keyevent KEYCODE_AT')||wrapper.includes('adb shell input keyevent 77'),'email @ must use a physical key event');
 must(wrapper.includes('FOCUS_ATTEMPT'),'focus retries must be traceable');
+must(wrapper.includes('LOCATE_SCROLL direction=UP')&&wrapper.includes('LOCATE_SCROLL direction=DOWN'),'offscreen controls must be reachable in both scroll directions');
+must(wrapper.includes('V308_CONSOLE_RATE_DOM_OK')&&wrapper.includes('CONSOLE_RATE_DIAG'),'commercial rate reachability must expose physical DOM/viewport evidence');
 console.log('V306_PHYSICAL_FIELD_OWNERSHIP_OK');
 console.log('V306_CDP_ACTIVE_ELEMENT_PROBE_OK');
 console.log('V306_ONBOARDING_FOCUS_RETRY_OK');
 console.log('V306_EMAIL_PHYSICAL_KEYEVENT_OK');
+console.log('V308_BIDIRECTIONAL_PHYSICAL_LOCATOR_OK');
+console.log('V308_CONSOLE_RATE_DIAGNOSTIC_GATE_OK');
