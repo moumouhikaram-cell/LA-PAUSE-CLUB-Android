@@ -87,6 +87,7 @@ jobs:
           done
           node v16-original-source/tools/test-v160-enrichment.js
           node v16-original-source/tools/test-v160-device-control.js
+          node v16-original-source/tools/test-v160-floor-builder.js
 
       - name: Park non-v1.6 modules outside APK build
         shell: bash
