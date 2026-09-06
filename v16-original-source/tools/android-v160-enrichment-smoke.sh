@@ -17,12 +17,44 @@ ACT="$PKG/.MainActivity"
 log(){ printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" | tee -a "$TRACE"; }
 fail(){ log "ANDROID_V160_ENRICHMENT_FAIL: $*"; timeout --foreground 15s adb logcat -d > "$LOGCAT" 2>/dev/null || true; exit 1; }
 
+activity_snapshot(){ timeout --foreground 5s adb shell dumpsys activity activities 2>/dev/null || true; }
+
+foreground_line(){
+  local snap
+  snap="$(activity_snapshot)"
+  printf '%s\n' "$snap" | grep -E 'mResumedActivity|topResumedActivity' | head -n 1 || true
+}
+
 wait_resumed(){
-  local i
-  for i in $(seq 1 30); do
-    if timeout --foreground 4s adb shell dumpsys activity activities 2>/dev/null | grep -Eq "mResumedActivity.*${PKG//./\\.}.*MainActivity|topResumedActivity=.*${PKG//./\\.}.*MainActivity"; then return 0; fi
-    sleep 0.5
+  local i snap
+  for i in $(seq 1 20); do
+    snap="$(activity_snapshot)"
+    if printf '%s\n' "$snap" | grep -Eq "mResumedActivity.*${PKG//./\\.}.*MainActivity|topResumedActivity=.*${PKG//./\\.}.*MainActivity"; then return 0; fi
+    sleep 0.4
   done
+  return 1
+}
+
+ensure_main_foreground(){
+  local line i
+  for i in $(seq 1 5); do
+    line="$(foreground_line)"
+    if printf '%s\n' "$line" | grep -Eq "${PKG//./\\.}.*MainActivity"; then return 0; fi
+    if [[ -n "$line" ]]; then break; fi
+    sleep 0.4
+  done
+  log "FOREGROUND_DIAG line=${line:-NONE}"
+  # Historical MainActivity may open Android's exact-alarm special-access Settings on first
+  # launch. Treat only that system-owned excursion as recoverable, using a physical Back key.
+  # Any other foreground owner remains a hard failure so the smoke cannot hide real navigation.
+  if printf '%s\n' "$line" | grep -q 'com.android.settings'; then
+    log "SYSTEM_SETTINGS_EXCURSION_DETECTED"
+    timeout --foreground 8s adb shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || return 1
+    if wait_resumed; then
+      log "SYSTEM_SETTINGS_PHYSICAL_BACK_RETURNED_MAIN"
+      return 0
+    fi
+  fi
   return 1
 }
 
@@ -55,9 +87,9 @@ PY
 }
 
 wait_floor_painted(){
-  local attempt tmp
+  local attempt tmp line
   for attempt in $(seq 1 12); do
-    wait_resumed || return 1
+    ensure_main_foreground || { log "PHYSICAL_FOREGROUND_NOT_MAIN attempt=$attempt"; return 1; }
     tmp="$GITHUB_WORKSPACE/android-v160-floor-attempt-${attempt}.png"
     timeout --foreground 10s adb exec-out screencap -p > "$tmp" || { log "PHYSICAL_SCREENSHOT_ATTEMPT_FAIL attempt=$attempt"; sleep 2; continue; }
     [[ -s "$tmp" ]] || { log "PHYSICAL_SCREENSHOT_ATTEMPT_EMPTY attempt=$attempt"; sleep 2; continue; }
@@ -67,7 +99,18 @@ wait_floor_painted(){
       return 0
     fi
     cp "$tmp" "$PNG"
-    log "PHYSICAL_FLOOR_STILL_UNPAINTED attempt=$attempt"
+    line="$(foreground_line)"
+    log "PHYSICAL_FLOOR_STILL_UNPAINTED attempt=$attempt foreground=${line:-NONE}"
+    # The exact-alarm Settings intent is launched asynchronously from onCreate and can win the
+    # foreground just after MainActivity first resumes. Recover only that known system detour.
+    if printf '%s\n' "$line" | grep -q 'com.android.settings'; then
+      log "SYSTEM_SETTINGS_EXCURSION_AFTER_FRAME attempt=$attempt"
+      timeout --foreground 8s adb shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || return 1
+      wait_resumed || return 1
+      log "SYSTEM_SETTINGS_PHYSICAL_BACK_RETURNED_MAIN attempt=$attempt"
+    elif [[ -n "$line" ]] && ! printf '%s\n' "$line" | grep -Eq "${PKG//./\\.}.*MainActivity"; then
+      return 1
+    fi
     sleep 2
   done
   return 1
@@ -124,10 +167,10 @@ log "MAIN_ACTIVITY_READY"
 
 # Android reports the Activity as displayed before a cold WebView has necessarily painted the
 # document. Prove readiness from repeated physical screenshots rather than one transient frame.
-# This remains fail-closed: the final captured frame must become visibly non-uniform within the
-# bounded window or the run fails as a real blank-Floor defect.
+# The historical exact-alarm Settings excursion is recovered only when the foreground owner is
+# explicitly com.android.settings; all other foreign foreground activities fail closed.
 if ! wait_floor_painted; then
-  fail "physical Gaming Floor remained blank after bounded WebView paint wait"
+  fail "physical Gaming Floor not visibly painted while MainActivity owns foreground"
 fi
 log "PHYSICAL_FLOOR_VISUAL_CONTENT_OK"
 
