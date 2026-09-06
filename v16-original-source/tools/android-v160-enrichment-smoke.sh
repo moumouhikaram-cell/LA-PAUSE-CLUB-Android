@@ -4,14 +4,16 @@ TRACE="$GITHUB_WORKSPACE/android-v160-enrichment-trace.txt"
 LOGCAT="$GITHUB_WORKSPACE/android-v160-enrichment-logcat.txt"
 XML="$GITHUB_WORKSPACE/android-v160-enrichment-window.xml"
 PNG="$GITHUB_WORKSPACE/android-v160-enrichment-screen.png"
+RUNTIME="$GITHUB_WORKSPACE/android-v160-enrichment-runtime.json"
 APK="$GITHUB_WORKSPACE/v16-original-source/app/build/outputs/apk/debug/app-debug.apk"
 APK_ENTRIES="$GITHUB_WORKSPACE/android-v160-enrichment-apk-entries.txt"
 ASSETS="$GITHUB_WORKSPACE/v16-original-source/app/src/main/assets"
 INDEX="$ASSETS/index.html"
-MANIFEST="$GITHUB_WORKSPACE/v16-original-source/app/src/main/AndroidManifest.xml"
 CORE_STATUS="$ASSETS/enrich-v160-core-status.js"
+PROBE="$GITHUB_WORKSPACE/v16-original-source/tools/cdp-v160-runtime-probe.js"
 PKG="com.lapauseclub.manager"
 ACT="$PKG/.MainActivity"
+CDP_PORT=9228
 : > "$TRACE"
 log(){ printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" | tee -a "$TRACE"; }
 fail(){ log "ANDROID_V160_ENRICHMENT_FAIL: $*"; timeout --foreground 15s adb logcat -d > "$LOGCAT" 2>/dev/null || true; exit 1; }
@@ -23,6 +25,45 @@ wait_resumed(){
     sleep 0.5
   done
   return 1
+}
+
+attach_cdp(){
+  local sock="" i
+  timeout --foreground 5s adb forward --remove "tcp:$CDP_PORT" >/dev/null 2>&1 || true
+  for i in $(seq 1 30); do
+    sock="$(timeout --foreground 4s adb shell cat /proc/net/unix 2>/dev/null | awk '/webview_devtools_remote/{print $NF}' | tail -n1 | tr -d '\r@' || true)"
+    if [[ -n "$sock" ]]; then
+      timeout --foreground 5s adb forward "tcp:$CDP_PORT" "localabstract:$sock" >/dev/null 2>&1 || true
+      if curl -fsS --max-time 2 "http://127.0.0.1:$CDP_PORT/json" >/dev/null 2>&1; then log "CDP_ATTACHED socket=$sock"; return 0; fi
+    fi
+    sleep 0.3
+  done
+  return 1
+}
+
+runtime_snapshot(){
+  test -f "$PROBE" || fail "runtime probe missing"
+  node --check "$PROBE" || fail "runtime probe syntax invalid"
+  attach_cdp || fail "debug WebView unavailable for read-only runtime probe"
+  LP160_CDP_PORT="$CDP_PORT" timeout --foreground 12s node "$PROBE" > "$RUNTIME" 2>>"$TRACE" || fail "runtime CDP snapshot failed"
+  log "RUNTIME_SNAPSHOT $(cat "$RUNTIME")"
+  python3 - "$RUNTIME" <<'PY' || exit 2
+import json,sys
+p=json.load(open(sys.argv[1],encoding='utf-8'))
+assert p.get('readyState') in ('interactive','complete'),p
+assert p.get('viewExists') is True,p
+assert p.get('renderViewType')=='function',p
+assert p.get('renderFloorType')=='function',p
+assert p.get('currentView')=='floor',p
+assert (p.get('stations') or 0)>=7,p
+assert (p.get('viewChildCount') or 0)>0,p
+assert (p.get('viewHtmlLength') or 0)>100,p
+assert len(p.get('visibleSample') or [])>0,p
+print('RUNTIME_FLOOR_DOM_OK viewChildren=%s html=%s visible=%s modules=%s' % (p.get('viewChildCount'),p.get('viewHtmlLength'),len(p.get('visibleSample') or []),len(p.get('modules') or [])))
+PY
+  local rc=$?
+  if [[ $rc -ne 0 ]]; then fail "historical floor DOM is empty or unhealthy"; fi
+  log "RUNTIME_FLOOR_DOM_OK"
 }
 
 dump_ui(){
@@ -83,32 +124,40 @@ log "PHASE_INSTALL_BEGIN"
 timeout --foreground 60s adb install -r "$APK" >> "$TRACE" 2>&1 || fail "install failed or timed out"
 log "PHASE_INSTALL_OK"
 timeout --foreground 15s adb shell pm clear "$PKG" >/dev/null || true
-# API 33 shows the historic POST_NOTIFICATIONS runtime dialog on a clean first launch.
-# This smoke is validating the app/runtime stack, not Android's permission UI, so pre-grant
-# the permission already declared by the untouched v1.6 manifest before launching.
-grep -q 'android.permission.POST_NOTIFICATIONS' "$MANIFEST" || fail "historic notification permission declaration missing"
-timeout --foreground 10s adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS >/dev/null || fail "cannot pregrant POST_NOTIFICATIONS"
-if ! timeout --foreground 10s adb shell dumpsys package "$PKG" 2>/dev/null | grep -q 'android.permission.POST_NOTIFICATIONS: granted=true'; then
-  fail "POST_NOTIFICATIONS pregrant not effective"
+# Android 13 first launch otherwise surfaces GrantPermissionsActivity above the historical
+# MainActivity. This permission is already declared by v1.6; pregrant it only in the test fixture.
+if grep -q 'android.permission.POST_NOTIFICATIONS' "$GITHUB_WORKSPACE/v16-original-source/app/src/main/AndroidManifest.xml"; then
+  timeout --foreground 8s adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || fail "cannot pregrant declared notification permission"
+  if timeout --foreground 8s adb shell dumpsys package "$PKG" 2>/dev/null | grep -A12 'runtime permissions:' | grep -q 'android.permission.POST_NOTIFICATIONS: granted=true'; then
+    log "POST_NOTIFICATIONS_PREGRANTED_OK"
+  else
+    fail "notification permission pregrant not reflected by package manager"
+  fi
 fi
-log "POST_NOTIFICATIONS_PREGRANTED_OK"
 timeout --foreground 10s adb logcat -c || true
 log "PHASE_LAUNCH_BEGIN"
 timeout --foreground 20s adb shell am start -W -n "$ACT" >> "$TRACE" 2>&1 || fail "launch failed or timed out"
 wait_resumed || fail "MainActivity not resumed after launch"
 log "MAIN_ACTIVITY_READY"
-sleep 3
+sleep 2
+runtime_snapshot || fail "runtime floor snapshot unhealthy"
 timeout --foreground 10s adb exec-out screencap -p > "$PNG" || true
-dump_ui || fail "uiautomator dump failed or timed out"
-grep -q "$PKG" "$XML" || log "UI_XML_PACKAGE_NOT_EXPOSED_BY_WEBVIEW"
-if grep -Eqi 'Gaming Floor|Salle|Sessions|LA PAUSE CLUB' "$XML"; then
-  log "WEBVIEW_ACCESSIBILITY_READY"
+
+# UIAutomator can legitimately hang on WebView accessibility trees. It is useful for a
+# best-effort physical text tap, but CDP runtime proof above is the fail-closed render gate.
+if dump_ui; then
+  grep -q "$PKG" "$XML" || log "UI_XML_PACKAGE_NOT_EXPOSED_BY_WEBVIEW"
+  if grep -Eqi 'Gaming Floor|Salle|Sessions|LA PAUSE CLUB' "$XML"; then
+    log "WEBVIEW_ACCESSIBILITY_READY"
+  else
+    log "WEBVIEW_TEXT_NOT_EXPOSED_BUT_RUNTIME_READY"
+  fi
 else
-  log "WEBVIEW_TEXT_NOT_EXPOSED_BUT_ACTIVITY_READY"
+  log "UIAUTOMATOR_OPTIONAL_UNAVAILABLE"
 fi
 
 # Physical navigation only when WebView accessibility exposes the label.
-if tap_text "Sessions"; then
+if [[ -s "$XML" ]] && tap_text "Sessions"; then
   sleep 1
   wait_resumed || fail "MainActivity lost after Sessions tap"
   dump_ui || true
