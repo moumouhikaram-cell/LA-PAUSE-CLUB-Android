@@ -83,6 +83,11 @@ jobs:
           assert pos==sorted(pos), (order,pos)
           print('V160_SCRIPT_ORDER_OK')
           PY
+          # The frozen v1.6 runtime itself must remain executable, not merely hash-identical.
+          for f in app.js v13.js v14.js v15.js; do
+            node --check "v16-original-source/app/src/main/assets/$f"
+          done
+          echo V160_FROZEN_RUNTIME_SYNTAX_OK
           for f in v16-original-source/app/src/main/assets/enrich-v160-*.js; do
             node --check "$f"
             ! grep -q 'location.reload' "$f"
