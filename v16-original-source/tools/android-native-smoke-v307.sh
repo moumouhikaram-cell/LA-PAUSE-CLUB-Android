@@ -53,7 +53,31 @@ PY
 }
 locate(){ local mode="$1" sel="$2" x y v; for _ in $(seq 1 10); do if read x y v < <(center "$mode" "$sel"); then [[ "$v" = 1 ]] && { echo "$x $y"; return; }; fi; adb shell input swipe 540 1450 540 720 260 >/dev/null 2>&1 || true; sleep .35; done; fail "not reachable: $mode $sel"; }
 tap(){ local x y; read x y < <(locate "$1" "$2"); log "TAP $1 $2 x=$x y=$y"; foreground || fail "app lost foreground before tap $2"; adb shell input tap "$x" "$y" >/dev/null 2>&1 || fail "tap $2"; sleep .7; }
-input_plain(){ local id="$1" val="$2" x y got; read x y < <(locate rect-id "$id"); adb shell input tap "$x" "$y" >/dev/null; sleep .35; adb shell input text "$val" >/dev/null || fail "type $id"; sleep .6; got="$(state_draft /tmp/v307-$id.xml "$id"|tail -n1|tr -d '\r')"; [[ "$got" = "$val" ]] || fail "$id value=$got expected=$val"; log "INPUT_OK $id"; }
+input_plain(){
+  local id="$1" val="$2" x y got="" state="" active="0" attempt
+  for attempt in 1 2 3 4; do
+    read x y < <(locate rect-id "$id")
+    log "PLAIN_FOCUS_ATTEMPT id=$id attempt=$attempt x=$x y=$y"
+    adb shell input tap "$x" "$y" >/dev/null || fail "focus $id"
+    sleep .35
+    active="$(probe_active "$id")"
+    [[ "$active" = 1 ]] && break
+    sleep .25
+  done
+  [[ "$active" = 1 ]] || fail "$id did not become DOM activeElement"
+  adb shell input keyevent KEYCODE_MOVE_END >/dev/null 2>&1 || true
+  for _ in $(seq 1 50); do adb shell input keyevent KEYCODE_DEL >/dev/null 2>&1 || true; done
+  adb shell input text "$val" >/dev/null || fail "type $id"
+  sleep .55
+  got="$(probe_value "$id")"
+  [[ "$got" = "$val" ]] || fail "$id DOM value=$got expected=$val"
+  for attempt in $(seq 1 12); do
+    state="$(state_draft /tmp/v307-$id.xml "$id" 2>/dev/null|tail -n1|tr -d '\r' || true)"
+    if [[ "$state" = "$val" ]]; then log "INPUT_OK $id=$state"; return 0; fi
+    sleep .2
+  done
+  fail "$id persisted value=$state expected=$val"
+}
 wait_exit_dialog(){ local xml=/tmp/v307-back.xml; for attempt in $(seq 1 18); do ui_dump "$xml"; if grep -Fq 'Quitter LA PAUSE OS' "$xml" || grep -Fq 'Voulez-vous vraiment fermer' "$xml"; then log "ROOT_EXIT_DIALOG_READY attempt=$attempt"; return 0; fi; sleep .3; done; fail "root exit confirmation missing"; }
 
 [[ -f "$APK" ]] || fail "APK missing"; adb install -r "$APK" >/dev/null || fail "install"; adb shell pm clear "$PKG" >/dev/null || fail "clear"; adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || true

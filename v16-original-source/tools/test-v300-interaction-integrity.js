@@ -13,12 +13,15 @@ const v291=read('app/src/main/assets/v250/canonical-batch-01-10-v291.js');
 const safety=read('app/src/main/assets/v250/screens-99-runtime-safety-v271.js');
 const activity=read('app/src/main/java/com/lapauseclub/manager/NewAppActivity.java');
 const canonical=read('app/src/main/assets/v250/canonical-app.js');
+const packagesPath=path.join(root,'app/src/main/assets/v250/packages-touch-v315.js');
+const packages=read('app/src/main/assets/v250/packages-touch-v315.js');
 cp.execFileSync(process.execPath,['--check',jsPath],{stdio:'inherit'});
+cp.execFileSync(process.execPath,['--check',packagesPath],{stdio:'inherit'});
 
 must(html.includes('interaction-integrity-v300.css'),'v300 CSS missing from entry');
 must(html.includes('interaction-integrity-v300.js'),'v300 JS missing from entry');
 must(html.indexOf('interaction-integrity-v300.css')>html.indexOf('mobile-foundation-v299.css'),'v300 CSS must load after mobile foundation');
-must(html.indexOf('interaction-integrity-v300.js')>html.indexOf('mobile-foundation-v299.js'),'v300 JS must load last');
+must(html.indexOf('interaction-integrity-v300.js')>html.indexOf('mobile-foundation-v299.js'),'v300 JS must load after mobile foundation');
 
 for(const t of [
   "FORM='input,textarea,select,[contenteditable=\"true\"]'",
@@ -34,6 +37,9 @@ for(const t of [
 ])must(js.includes(t),'global interaction token missing '+t);
 
 must(js.includes('function nativeToggle(el)')&&js.includes("type==='checkbox'||type==='radio'")&&js.includes('if(nativeToggle(form))return false')&&js.includes('if(nativeToggle(f))return false'),'checkbox/radio labels must retain native toggle semantics instead of keyboard-focus routing');
+
+must(html.includes('packages-touch-v315.js')&&html.indexOf('packages-touch-v315.js')>html.indexOf('platform-truth-v305.js'),'v315 packages touch owner must load last after platform truth');
+for(const t of ['v301PackagesOn','touchstart','touchend','dx>24||dy>24||dt>900','input.checked=!input.checked',"dispatchEvent(new Event('change',{bubbles:true}))",'ev.preventDefault()','ev.stopImmediatePropagation()','packagesTouchIntegrity'])must(packages.includes(t),'v315 packages physical toggle token missing '+t);
 
 must(!v298.includes("[data-v298-go],[data-v298-action],[data-go],[data-action],[data-v291],[data-v296]"),'v298 must not intercept the whole application');
 must(v298.includes("closest('[data-v298-go],[data-v298-action]')"),'v298 landing-only touch selector missing');
@@ -66,3 +72,4 @@ console.log('V300_CLICKABLE_AUDIT_OK');
 console.log('V300_ACCOUNT_FLOW_WIRING_OK');
 console.log('V300_SAMSUNG_WEBVIEW_KEYBOARD_OK');
 console.log('V314_NATIVE_CHECKBOX_LABEL_DEFAULT_OK');
+console.log('V315_PACKAGES_PHYSICAL_TOUCH_OWNER_OK');
