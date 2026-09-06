@@ -44,7 +44,7 @@
     try{
       if(typeof syncDraftInputsV14==='function')syncDraftInputsV14();
       if(!selectedStationId||!sheetDraft)return null;
-      const p={schema:1,stationId:selectedStationId,draft:clone(sheetDraft),capturedAt:nowMs(),source:'SHIFT_REQUIRED'};
+      const p={schema:2,stationId:selectedStationId,draft:clone(sheetDraft),capturedAt:nowMs(),source:'SHIFT_REQUIRED',returnView:typeof currentView==='string'?currentView:'floor'};
       window.__LP160_PENDING_SESSION_START=p;
       return p;
     }catch(_){return null}
@@ -53,7 +53,8 @@
   function restorePending(){
     const p=getPending();
     if(!p||!compatibleCurrentShift()||!stationFree(p.stationId))return false;
-    try{if(typeof setView==='function')setView('floor')}catch(_){}
+    const target=p.returnView||'floor';
+    try{if(typeof setView==='function')setView(target)}catch(_){}
     try{selectedStationId=p.stationId;sheetDraft=clone(p.draft)}catch(_){return false}
     try{if(typeof drawStartSheet!=='function')return false;drawStartSheet()}catch(_){return false}
     // Clear only after the historical sheet has actually been rebuilt.
@@ -66,7 +67,7 @@
   if(typeof originalStart==='function'&&!originalStart.__lp160Stabilized){
     const wrappedStart=function(){
       try{if(typeof syncDraftInputsV14==='function')syncDraftInputsV14()}catch(_){}
-      // Prevent orphan client/payment/session creation if stock changed while the sheet was open.
+      // Prevalidate stock before resolveSessionClient/addPayment persist anything.
       if(!draftStockOk(typeof sheetDraft==='undefined'?null:sheetDraft,true))return false;
       let needsShift=false;
       try{needsShift=state?.cashSettings?.shiftRequired===true&&!compatibleCurrentShift()}catch(_){}
@@ -111,6 +112,42 @@
     window.openShiftModal=wrappedOpenShift;try{openShiftModal=wrappedOpenShift}catch(_){}
   }
 
+  // ORDER_STATUS_CASE_INSENSITIVE: v15 POS may emit PAID while v14 cash/reporting reads paid.
+  function normalizeOrderStatuses(){
+    let changed=false;
+    try{for(const o of state?.orders||[]){const s=status(o?.status);if(['open','paid','cancelled'].includes(s)&&o.status!==s){o.status=s;changed=true;}}}catch(_){}
+    return changed;
+  }
+  normalizeOrderStatuses();
+  const originalMarkOrderPaid=window.markOrderPaidV14;
+  if(typeof originalMarkOrderPaid==='function'&&!originalMarkOrderPaid.__lp160StatusStabilized){
+    const wrapped=function(){const out=originalMarkOrderPaid.apply(this,arguments),o=arguments[0];if(o&&status(o.status)==='paid')o.status='paid';return out;};
+    wrapped.__lp160StatusStabilized=true;wrapped.__lp160Original=originalMarkOrderPaid;window.markOrderPaidV14=wrapped;try{markOrderPaidV14=wrapped}catch(_){}
+  }
+  const originalCheckout=window.v14CheckoutPos;
+  if(typeof originalCheckout==='function'&&!originalCheckout.__lp160StatusStabilized){
+    const wrapped=function(){const out=originalCheckout.apply(this,arguments);if(normalizeOrderStatuses()){try{if(typeof saveState==='function')saveState()}catch(_){}}return out;};
+    wrapped.__lp160StatusStabilized=true;wrapped.__lp160Original=originalCheckout;window.v14CheckoutPos=wrapped;try{v14CheckoutPos=wrapped}catch(_){}
+  }
+
+  // DRAWER_DOM_GUARD: #drawerBusiness does not exist in current HTML; opening menu must never throw.
+  function safeDrawerKpis(){
+    const byId=id=>{try{return typeof $==='function'?$(id):document.getElementById(id)}catch(_){return null}};
+    try{const k=byId('drawerKpis');if(k)k.innerHTML=`<div class="drawer-kpi"><span>ACTIVES</span><b class="green">${typeof activeCount==='function'?activeCount():0}</b></div><div class="drawer-kpi"><span>CA JOUR</span><b>${typeof fmtMoney==='function'&&typeof todayRevenue==='function'?fmtMoney(todayRevenue()):'0 DH'}</b></div>`;}catch(_){}
+    try{const b=byId('drawerBusiness');if(b)b.textContent=state?.business?.name||'LA PAUSE CLUB';}catch(_){}
+    try{const m=byId('drawerMode');if(m)m.textContent=state?.sync?.enabled?'Synchronisation configurée':'Données locales protégées';}catch(_){}
+    return true;
+  }
+  safeDrawerKpis.__lp160Stabilized=true;
+  window.renderDrawerKpis=safeDrawerKpis;try{renderDrawerKpis=safeDrawerKpis}catch(_){}
+
+  // Ensure old v14 cash/order/report renderers always see canonical lowercase order state.
+  const originalRenderView=window.renderView;
+  if(typeof originalRenderView==='function'&&!originalRenderView.__lp160StatusStabilized){
+    const wrapped=function(){normalizeOrderStatuses();return originalRenderView.apply(this,arguments)};
+    wrapped.__lp160StatusStabilized=true;wrapped.__lp160Original=originalRenderView;window.renderView=wrapped;try{renderView=wrapped}catch(_){}
+  }
+
   function tabButtons(){try{return [...document.querySelectorAll('[data-v15-tab]')]}catch(_){return []}}
   function bindCompetitionRouteState(renderFn){
     const buttons=tabButtons(),ids=new Set(buttons.map(b=>b?.dataset?.v15Tab));
@@ -138,10 +175,12 @@
   }
 
   window.LP160Stabilization=Object.freeze({
-    version:'1.6.0-stabilization-3',
+    version:'1.6.0-stabilization-4',
     currentShift:compatibleCurrentShift,
     openShiftCandidates,
     draftStockOk,
+    normalizeOrderStatuses,
+    safeDrawerKpis,
     getPendingSessionStart:getPending,
     clearPendingSessionStart:clearPending,
     restorePendingSessionStart:restorePending,
