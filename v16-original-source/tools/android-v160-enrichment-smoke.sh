@@ -54,6 +54,25 @@ PY
   log "PHYSICAL_TAP text=$text x=$x y=$y"
 }
 
+wait_floor_painted(){
+  local attempt tmp
+  for attempt in $(seq 1 12); do
+    wait_resumed || return 1
+    tmp="$GITHUB_WORKSPACE/android-v160-floor-attempt-${attempt}.png"
+    timeout --foreground 10s adb exec-out screencap -p > "$tmp" || { log "PHYSICAL_SCREENSHOT_ATTEMPT_FAIL attempt=$attempt"; sleep 2; continue; }
+    [[ -s "$tmp" ]] || { log "PHYSICAL_SCREENSHOT_ATTEMPT_EMPTY attempt=$attempt"; sleep 2; continue; }
+    if python3 "$SCREEN_PROBE" "$tmp" >> "$TRACE" 2>&1; then
+      cp "$tmp" "$PNG"
+      log "PHYSICAL_FLOOR_PAINT_READY attempt=$attempt"
+      return 0
+    fi
+    cp "$tmp" "$PNG"
+    log "PHYSICAL_FLOOR_STILL_UNPAINTED attempt=$attempt"
+    sleep 2
+  done
+  return 1
+}
+
 # Same-source contract: physical APK must carry the exact contextual session stack that CI validated.
 for f in enrich-v160-session-form.js enrich-v160-session-start.js enrich-v160-session-form-ui.js; do
   test -f "$ASSETS/$f" || fail "session stack source missing: $f"
@@ -103,14 +122,12 @@ timeout --foreground 20s adb shell am start -W -n "$ACT" >> "$TRACE" 2>&1 || fai
 wait_resumed || fail "MainActivity not resumed after launch"
 log "MAIN_ACTIVITY_READY"
 
-# A prior physical run proved that the static header/dock could be alive while the whole Floor
-# center stayed a uniform blank surface. Screenshot variance is therefore the fail-closed render
-# proof for this historical WebView, which intentionally does not expose CDP debugging.
-sleep 3
-timeout --foreground 10s adb exec-out screencap -p > "$PNG" || fail "physical screenshot failed"
-test -s "$PNG" || fail "physical screenshot empty"
-if ! python3 "$SCREEN_PROBE" "$PNG" >> "$TRACE" 2>&1; then
-  fail "physical screenshot shows blank Gaming Floor"
+# Android reports the Activity as displayed before a cold WebView has necessarily painted the
+# document. Prove readiness from repeated physical screenshots rather than one transient frame.
+# This remains fail-closed: the final captured frame must become visibly non-uniform within the
+# bounded window or the run fails as a real blank-Floor defect.
+if ! wait_floor_painted; then
+  fail "physical Gaming Floor remained blank after bounded WebView paint wait"
 fi
 log "PHYSICAL_FLOOR_VISUAL_CONTENT_OK"
 
