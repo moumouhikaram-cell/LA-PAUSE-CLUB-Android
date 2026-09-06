@@ -85,6 +85,7 @@ jobs:
           node v16-original-source/tools/test-v160-stabilization-routes.js
           node v16-original-source/tools/test-v160-stabilization-interactions.js
           node v16-original-source/tools/test-v160-stabilization-shift-session.js
+          node v16-original-source/tools/test-v160-stabilization-cash-dom.js
           # Existing enrichment gates still protect against regression while we stabilize the visible v1.6 product.
           node v16-original-source/tools/test-v160-enrichment.js
           node v16-original-source/tools/test-v160-core-recovery.js
