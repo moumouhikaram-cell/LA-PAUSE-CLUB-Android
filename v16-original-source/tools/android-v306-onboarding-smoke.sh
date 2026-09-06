@@ -88,10 +88,10 @@ except ValueError as e:
     print('V306_HARNESS_FAIL helper anchors not found: '+str(e),file=sys.stderr);sys.exit(3)
 s2=s[:rect_start]+new_rect+s[rect_end:input_start]+new_input+s[input_end:]
 
-# v310: startup readiness is two-stage. First prove the app is foreground with
-# a debuggable WebView; then wait for the final canonical landing renderer to
-# expose its semantic data-go=3 CTA. CDP remains read-only; the transition is
-# still performed by a real adb tap on the resolved screen coordinates.
+# v311: startup readiness is two-stage. First prove the app is foreground with
+# a debuggable WebView; then wait for the actual final phone landing renderer.
+# v298 is loaded after v291 and owns screen 01 on phones, so its data-v298-go=3
+# CTA is authoritative. CDP remains read-only; navigation is still a real adb tap.
 state_start=s2.index('state_file(){')
 state_end=s2.index('ui_dump(){',state_start)
 new_state=r'''state_file(){ timeout 8s adb shell run-as "$PKG" cat shared_prefs/gaming_floor_store.xml > "$1" 2>>"$TRACE" || fail "state unavailable"; }
@@ -123,11 +123,11 @@ s2=s2[:cdp_start]+new_cdp+s2[cdp_end:]
 old_fail='fail(){ log "ANDROID_V301_ONBOARDING_FAIL: $*"; adb shell dumpsys window >>"$TRACE" 2>&1 || true; exit 1; }'
 new_fail='fail(){ log "ANDROID_V301_ONBOARDING_FAIL: $*"; adb shell dumpsys window >>"$TRACE" 2>&1 || true; adb logcat -d -t 500 >>"$TRACE" 2>&1 || true; exit 1; }'
 if old_fail not in s2:
-    print('V310_HARNESS_FAIL fail anchor not found',file=sys.stderr);sys.exit(4)
+    print('V311_HARNESS_FAIL fail anchor not found',file=sys.stderr);sys.exit(4)
 s2=s2.replace(old_fail,new_fail,1)
 old_start='adb shell am start -W -n "$PKG/$ACTIVITY" >>"$TRACE" 2>&1||fail "launch"; sleep 7; need_adb launch\nlog "LANDING_PHYSICAL_TAP"; adb shell input tap 900 215 >>"$TRACE" 2>&1||fail "landing tap"; wait_screen 3; cdp_attach'
 new_start=r'''launch_ready; need_adb launch
-LANDING_SEL='.b291-hero [data-go="3"],.b010-sales-hero [data-go="3"]'
+LANDING_SEL='.v298-landing [data-v298-go="3"],.b291-hero [data-go="3"],.b010-sales-hero [data-go="3"]'
 LANDING=""
 for attempt in $(seq 1 30); do
   foreground || launch_ready
@@ -142,7 +142,7 @@ done
 printf '%s' "$LANDING" | python3 -c 'import json,sys;p=json.load(sys.stdin);assert p and float(p.get("width") or 0)>0 and float(p.get("height") or 0)>0 and not p.get("disabled") and p.get("pointerEvents")!="none"' || fail "landing CTA not ready"
 tap rect-css "$LANDING_SEL"; wait_screen 3; log "LANDING_PHYSICAL_TAP_OK"'''
 if old_start not in s2:
-    print('V310_HARNESS_FAIL startup anchor not found',file=sys.stderr);sys.exit(5)
+    print('V311_HARNESS_FAIL startup anchor not found',file=sys.stderr);sys.exit(5)
 s2=s2.replace(old_start,new_start,1)
 
 anchor="input_css '[data-v301-rate=\"CONSOLE\"]' 22"
@@ -154,7 +154,7 @@ if anchor not in s2:
     print('V306_HARNESS_FAIL console rate anchor not found',file=sys.stderr);sys.exit(6)
 s2=s2.replace(anchor,diag+anchor,1)
 open(out,'w',encoding='utf-8').write(s2)
-print('V310_HARNESS_PATCH_OK')
+print('V311_HARNESS_PATCH_OK')
 PY
 chmod +x "$OUT"
 exec bash "$OUT" "$@"
