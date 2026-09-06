@@ -117,3 +117,5 @@ log "NO_FATAL_RUNTIME_SIGNAL"
 # enrichment APK installs, launches, accepts real input and stays alive without a product fatal.
 log "HOSTED_EMULATOR_ROTATION_DIAGNOSTIC_SKIPPED"
 log "ANDROID_V160_ENRICHMENT_NATIVE_SMOKE_OK"
+
+# FINAL_V160_CI_NATIVE_SIGNED_PARITY_TRIGGER
