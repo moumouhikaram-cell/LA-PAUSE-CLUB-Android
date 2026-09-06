@@ -30,7 +30,9 @@ PY
   fail "CDP endpoint unavailable"
 }
 center(){
-  local id="$1" out="/tmp/v303-$id.json" dump="/tmp/v303-$id.xml"
+  local id="$1"
+  local out="/tmp/v303-${id}.json"
+  local dump="/tmp/v303-${id}.xml"
   probe rect-id "$id" > "$out" || fail "cannot probe $id"
   adb shell uiautomator dump /sdcard/v303.xml >/dev/null 2>&1 || fail "uiautomator dump failed"
   adb pull /sdcard/v303.xml "$dump" >/dev/null 2>&1 || fail "cannot pull ui dump"
