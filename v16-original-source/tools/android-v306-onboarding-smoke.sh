@@ -4,7 +4,7 @@ SRC="v16-original-source/tools/android-v301-onboarding-smoke.sh"
 OUT="/tmp/android-v306-onboarding-smoke.sh"
 [[ -f "$SRC" ]] || { echo "V306_HARNESS_FAIL missing $SRC"; exit 2; }
 python3 - "$SRC" "$OUT" <<'PY'
-import re,sys
+import sys
 src,out=sys.argv[1:]
 s=open(src,encoding='utf-8').read()
 new_input=r'''input_value(){
@@ -55,11 +55,12 @@ input_css(){
   log "INPUT_OK $sel=$got"
 }
 '''
-pat=r'input_value\(\)\{.*?\ninput_css\(\)\{.*?\n\}\nhide_ime\(\)'
-m=re.search(pat,s,flags=re.S)
-if not m:
-    print('V306_HARNESS_FAIL helper block not found',file=sys.stderr);sys.exit(3)
-s2=s[:m.start()]+new_input+'hide_ime()'+s[m.end():]
+try:
+    start=s.index('input_value(){')
+    end=s.index('hide_ime(){',start)
+except ValueError as e:
+    print('V306_HARNESS_FAIL helper anchors not found: '+str(e),file=sys.stderr);sys.exit(3)
+s2=s[:start]+new_input+s[end:]
 open(out,'w',encoding='utf-8').write(s2)
 print('V306_HARNESS_PATCH_OK')
 PY
