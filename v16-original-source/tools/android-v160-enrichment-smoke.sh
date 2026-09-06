@@ -5,6 +5,9 @@ LOGCAT="$GITHUB_WORKSPACE/android-v160-enrichment-logcat.txt"
 XML="$GITHUB_WORKSPACE/android-v160-enrichment-window.xml"
 PNG="$GITHUB_WORKSPACE/android-v160-enrichment-screen.png"
 APK="$GITHUB_WORKSPACE/v16-original-source/app/build/outputs/apk/debug/app-debug.apk"
+ASSETS="$GITHUB_WORKSPACE/v16-original-source/app/src/main/assets"
+INDEX="$ASSETS/index.html"
+CORE_STATUS="$ASSETS/enrich-v160-core-status.js"
 PKG="com.lapauseclub.manager"
 ACT="$PKG/.MainActivity"
 : > "$TRACE"
@@ -48,7 +51,29 @@ PY
   log "PHYSICAL_TAP text=$text x=$x y=$y"
 }
 
+# Same-source contract: physical APK must carry the exact contextual session stack that CI validated.
+for f in enrich-v160-session-form.js enrich-v160-session-start.js enrich-v160-session-form-ui.js; do
+  test -f "$ASSETS/$f" || fail "session stack source missing: $f"
+  node --check "$ASSETS/$f" || fail "session stack syntax invalid: $f"
+  grep -q "<script src=\"$f\"></script>" "$INDEX" || fail "session stack not loaded by index: $f"
+done
+python3 - "$INDEX" <<'PY' || exit 1
+import sys
+s=open(sys.argv[1],encoding='utf-8').read()
+order=['enrich-v160-billing.js','enrich-v160-session-profiles.js','enrich-v160-session-form.js','enrich-v160-session-start.js','enrich-v160-session-form-ui.js','enrich-v160-revenue.js']
+pos=[s.index(x) for x in order]
+assert pos==sorted(pos),(order,pos)
+PY
+grep -q 'REQUIRED_SESSION_STACK' "$CORE_STATUS" || fail "runtime session stack health contract missing"
+grep -q 'session-start-contextual' "$CORE_STATUS" || fail "runtime start-gate health member missing"
+log "SESSION_STACK_SOURCE_CONTRACT_OK"
+
 test -f "$APK" || fail "APK missing"
+for f in enrich-v160-session-form.js enrich-v160-session-start.js enrich-v160-session-form-ui.js; do
+  unzip -Z1 "$APK" | grep -qx "assets/$f" || fail "APK missing session stack asset: $f"
+done
+log "SESSION_STACK_APK_CONTENT_OK"
+
 log "PHASE_INSTALL_BEGIN"
 timeout --foreground 60s adb install -r "$APK" >> "$TRACE" 2>&1 || fail "install failed or timed out"
 log "PHASE_INSTALL_OK"
