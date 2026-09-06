@@ -1,0 +1,18 @@
+'use strict';
+const fs=require('fs'),path=require('path');
+const root=path.resolve(__dirname,'..');
+const read=p=>fs.readFileSync(path.join(root,p),'utf8');
+const must=(ok,msg)=>{if(!ok){console.error('V303_FORM_STABILITY_FAIL',msg);process.exit(1);}};
+const html=read('app/src/main/assets/v250/index.html');
+const js=read('app/src/main/assets/v250/form-input-stability-v303.js');
+const css=read('app/src/main/assets/v250/form-input-stability-v303.css');
+const activity=read('app/src/main/java/com/lapauseclub/manager/NewAppActivity.java');
+for(const f of ['form-input-stability-v303.css','form-input-stability-v303.js'])must(html.includes(f),'entry missing '+f);
+must(html.indexOf('saas-runtime-integrity-v302.css')<html.indexOf('form-input-stability-v303.css'),'v303 CSS must load after v302');
+must(html.indexOf('saas-runtime-integrity-v302.js')<html.indexOf('form-input-stability-v303.js'),'v303 JS must load after v302');
+for(const token of ['document.activeElement','visualViewport','focusStable','scrollIntoView','behavior:\'auto\'','requestKeyboard','pointerup','touchend'])must(js.includes(token),'focus runtime token missing '+token);
+must(!js.includes('preventDefault()'),'v303 must not cancel native form gestures');
+for(const token of ['pointer-events:auto','touch-action:manipulation','scroll-margin-bottom:210px','input:disabled'])must(css.includes(token),'form CSS token missing '+token);
+must(activity.includes('SOFT_INPUT_ADJUST_RESIZE'),'Android activity must resize for IME');
+must(activity.includes('setFocusableInTouchMode(true)'),'WebView touch focus support missing');
+console.log('V303_ANDROID_WEBVIEW_FORM_FOCUS_STABILITY_OK');
