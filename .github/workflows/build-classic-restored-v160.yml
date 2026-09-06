@@ -100,15 +100,15 @@ jobs:
           node --check v16-original-source/app/src/main/assets/v14.js
           node --check v16-original-source/app/src/main/assets/v15.js
 
-      - name: Park modern Java modules outside historical compile set
+      - name: Park modern modules outside historical package
         shell: bash
         run: |
           set -euxo pipefail
-          ROOT="v16-original-source/app/src/main/java/com/lapauseclub/manager"
-          PARK="$RUNNER_TEMP/parked-modern-java"
-          mkdir -p "$PARK"
 
-          # Keep ONLY the exact Java runtime that existed in historical v1.6.
+          # Java: keep ONLY the exact runtime that existed in historical v1.6.
+          ROOT="v16-original-source/app/src/main/java/com/lapauseclub/manager"
+          PARK_JAVA="$RUNNER_TEMP/parked-modern-java"
+          mkdir -p "$PARK_JAVA"
           while IFS= read -r -d '' src; do
             rel="${src#$ROOT/}"
             case "$rel" in
@@ -116,26 +116,48 @@ jobs:
                 echo "KEEP historical Java: $rel"
                 ;;
               *)
-                mkdir -p "$PARK/$(dirname "$rel")"
-                mv "$src" "$PARK/$rel"
+                mkdir -p "$PARK_JAVA/$(dirname "$rel")"
+                mv "$src" "$PARK_JAVA/$rel"
                 echo "PARK modern Java: $rel"
                 ;;
             esac
           done < <(find "$ROOT" -type f -name '*.java' -print0)
+          mapfile -t LEFT_JAVA < <(find "$ROOT" -type f -name '*.java' | sort)
+          test "${#LEFT_JAVA[@]}" -eq 4
+          test -f "$PARK_JAVA/NewAppActivity.java"
+          test -f "$PARK_JAVA/PremiumActivity.java"
+          test -f "$PARK_JAVA/SyncBridgeV12.java"
+          test -f "$PARK_JAVA/core/CoreAuthorityGuardV12.java"
+          test -f "$PARK_JAVA/security/EntitlementVerifier.java"
 
-          # Compile tree must now be exactly the historical four Java files.
-          mapfile -t LEFT < <(find "$ROOT" -type f -name '*.java' | sort)
-          printf '%s\n' "${LEFT[@]}"
-          test "${#LEFT[@]}" -eq 4
-          test -f "$ROOT/MainActivity.java"
-          test -f "$ROOT/BootReceiver.java"
-          test -f "$ROOT/SessionAlarmReceiver.java"
-          test -f "$ROOT/core/CoreStore.java"
-          test -f "$PARK/NewAppActivity.java"
-          test -f "$PARK/PremiumActivity.java"
-          test -f "$PARK/SyncBridgeV12.java"
-          test -f "$PARK/core/CoreAuthorityGuardV12.java"
-          test -f "$PARK/security/EntitlementVerifier.java"
+          # Assets: package ONLY the exact 42 files present in historical v1.6 APK.
+          ASSETS="v16-original-source/app/src/main/assets"
+          PARK_ASSETS="$RUNNER_TEMP/parked-modern-assets"
+          mkdir -p "$PARK_ASSETS"
+          while IFS= read -r -d '' src; do
+            rel="${src#$ASSETS/}"
+            case "$rel" in
+              app.css|app.js|index.html|logo.svg|v13.css|v13.js|v14.css|v14.js|v15.css|v15.js|\
+              media/combat-dynamic.png|media/combat.svg|media/esport-dynamic.png|media/esport-team.jpg|media/esport.svg|\
+              media/football-dynamic.png|media/football.svg|media/idle.svg|\
+              media/products/chips.svg|media/products/chocolate.svg|media/products/cocacola.jpg|media/products/coffee.svg|media/products/cola.svg|media/products/energy.svg|media/products/fanta.jpg|media/products/lays.jpg|media/products/oreo.jpg|media/products/redbull.jpg|media/products/snickers.jpg|media/products/sprite.jpg|media/products/twix.jpg|media/products/water.svg|\
+              media/ps5-available.png|media/ps5-default.jpg|media/racing-dynamic.png|media/racing.svg|media/sim-racing.jpg|media/sim-vip.png|media/sim.svg|media/tactical-dynamic.png|media/tactical.jpg|media/tactical.svg)
+                echo "KEEP historical asset: $rel"
+                ;;
+              *)
+                mkdir -p "$PARK_ASSETS/$(dirname "$rel")"
+                mv "$src" "$PARK_ASSETS/$rel"
+                echo "PARK modern asset: $rel"
+                ;;
+            esac
+          done < <(find "$ASSETS" -type f -print0)
+          mapfile -t LEFT_ASSETS < <(find "$ASSETS" -type f | sort)
+          printf '%s\n' "${LEFT_ASSETS[@]}"
+          test "${#LEFT_ASSETS[@]}" -eq 42
+          test -f "$PARK_ASSETS/v250/index.html"
+          test -f "$PARK_ASSETS/client-operator-v230.js"
+          test -f "$PARK_ASSETS/p2-device-control-v240.js"
+          test -f "$PARK_ASSETS/client-saas-workspaces-v240.js"
 
       - name: Restore permanent signing key
         shell: bash
@@ -176,11 +198,18 @@ jobs:
           grep "package: name='com.lapauseclub.manager'" restored-v160-badging.txt
           grep "versionCode='19'" restored-v160-badging.txt
           grep "versionName='1.6.0'" restored-v160-badging.txt
-          unzip -l "$S" | tee restored-v160-files.txt
-          grep -q 'assets/v15.js' restored-v160-files.txt
-          grep -q 'assets/media/ps5-available.png' restored-v160-files.txt
-          grep -q 'assets/media/sim-vip.png' restored-v160-files.txt
-          grep -q 'assets/media/products/redbull.jpg' restored-v160-files.txt
+
+          unzip -Z1 "$S" | grep '^assets/' | sort > restored-v160-assets.txt
+          test "$(wc -l < restored-v160-assets.txt)" -eq 42
+          grep -qx 'assets/app.js' restored-v160-assets.txt
+          grep -qx 'assets/v15.js' restored-v160-assets.txt
+          grep -qx 'assets/media/ps5-available.png' restored-v160-assets.txt
+          grep -qx 'assets/media/sim-vip.png' restored-v160-assets.txt
+          grep -qx 'assets/media/products/redbull.jpg' restored-v160-assets.txt
+          ! grep -q '^assets/v250/' restored-v160-assets.txt
+          ! grep -qi 'saas' restored-v160-assets.txt
+          ! grep -qi 'onboarding' restored-v160-assets.txt
+
           unzip -p "$S" assets/index.html > restored-v160-index.html
           ! grep -qi 'v250/' restored-v160-index.html
           ! grep -qi 'saas' restored-v160-index.html
@@ -200,6 +229,7 @@ jobs:
             LA-PAUSE-CLUB-Manager-v1.6.0-FINAL-RESTORED-SIGNED.apk
             restored-v160-certificate.txt
             restored-v160-badging.txt
+            restored-v160-assets.txt
             restored-v160-sha256.txt
             restored-v160-size.txt
           if-no-files-found: error
