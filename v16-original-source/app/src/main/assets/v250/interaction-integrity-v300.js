@@ -1,5 +1,5 @@
 'use strict';
-/* LA PAUSE OS v300 — global interaction integrity.
+/* LA PAUSE OS v307 — global interaction integrity.
    Physical Android/WebView interaction only; product state and renderers stay intact.
    Native form controls retain default focus/IME behaviour. Every short touch on an
    application control is routed exactly once to its owning runtime, with click as
@@ -8,7 +8,7 @@
   var A=window.LPOS,S=A&&A.state;
   if(!A||!S)return;
   var FORM='input,textarea,select,[contenteditable="true"]';
-  var APP_CONTROL='button,a[href],[role="button"],[data-go],[data-action],[data-v291],[data-v294],[data-v296],[data-v299],.tab,.canon-tabs button';
+  var APP_CONTROL='button,a[href],[role="button"],[data-go],[data-action],[data-v291],[data-v294],[data-v296],[data-v299],[data-v301],.tab,.canon-tabs button';
   var touch=null,lastSyntheticEl=null,lastSyntheticAt=0,lastDirectEl=null,lastDirectAt=0;
   function closest(target,sel){return target&&target.closest?target.closest(sel):null;}
   function disabled(el){return !el||el.disabled===true||el.getAttribute('aria-disabled')==='true';}
@@ -22,7 +22,8 @@
   function directAction(el){var action=el&&el.getAttribute('data-action');if(!action)return false;var safety=window.__LPOS_SAFETY_ACTIONS;if(safety&&typeof safety.handle==='function'){try{if(safety.handle(action,el)===true){rememberDirect(el);return true;}}catch(_e){}}
     var rt=window.__LPOS_CANONICAL_RUNTIME;if(rt&&typeof rt.act==='function'){try{rt.act(action,{preventDefault:function(){},stopPropagation:function(){},stopImmediatePropagation:function(){},target:el,currentTarget:el});rememberDirect(el);return true;}catch(_e2){}}return false;}
   function directV299(el){var a=el&&el.getAttribute('data-v299');if(!a||!window.__LPOS_V299)return false;if(a==='more'&&typeof __LPOS_V299.openMore==='function'){__LPOS_V299.openMore();rememberDirect(el);return true;}if(a==='close'&&typeof __LPOS_V299.closeMore==='function'){__LPOS_V299.closeMore();rememberDirect(el);return true;}if(a.indexOf('go:')===0&&typeof __LPOS_V299.go==='function'){__LPOS_V299.go(a.slice(3));rememberDirect(el);return true;}return false;}
-  function routePhysical(el){if(!el||disabled(el))return false;if(el.hasAttribute('data-v298-go')||el.hasAttribute('data-v298-action'))return false;if(directV299(el))return true;if(directAction(el))return true;if(directGo(el))return true;return syntheticClick(el);}
+  function directV301(el){var a=el&&el.getAttribute('data-v301');if(!a)return false;rememberDirect(el);return syntheticClick(el);}
+  function routePhysical(el){if(!el||disabled(el))return false;if(el.hasAttribute('data-v298-go')||el.hasAttribute('data-v298-action'))return false;if(directV301(el))return true;if(directV299(el))return true;if(directAction(el))return true;if(directGo(el))return true;return syntheticClick(el);}
 
   document.addEventListener('focusin',function(ev){var el=nativeForm(ev.target);if(!el||disabled(el)||el.readOnly)return;var tag=String(el.tagName||'').toLowerCase();if((tag==='input'||tag==='textarea')&&window.Android&&typeof window.Android.requestKeyboard==='function')setTimeout(function(){try{window.Android.requestKeyboard();}catch(_e){}},55);},true);
   document.addEventListener('touchstart',function(ev){var t=ev.changedTouches&&ev.changedTouches[0];if(!t)return;touch={x:t.clientX,y:t.clientY,at:Date.now(),target:ev.target};},{capture:true,passive:true});
@@ -34,8 +35,8 @@
   /* Dynamic action fallback for controls inserted after canonical-app's render bind. */
   document.addEventListener('click',function(ev){var el=closest(ev.target,'[data-action]');if(!el||disabled(el)||typeof el.onclick==='function')return;var safety=window.__LPOS_SAFETY_ACTIONS,action=el.getAttribute('data-action')||'';if(safety&&typeof safety.handle==='function'&&safety.handle(action,el)===true){ev.preventDefault();ev.stopImmediatePropagation();return;}var rt=window.__LPOS_CANONICAL_RUNTIME;if(!rt||typeof rt.act!=='function')return;rt.act(action,ev);ev.preventDefault();ev.stopImmediatePropagation();},true);
 
-  function isKnownBound(el){if(!el)return false;var tag=String(el.tagName||'').toLowerCase();if(tag==='input'||tag==='textarea'||tag==='select')return !disabled(el);if(tag==='a'&&el.getAttribute('href'))return true;if(typeof el.onclick==='function')return true;if(el.matches('[data-go],[data-action],[data-v291],[data-v294],[data-v296],[data-v299],.tab,.canon-tabs button'))return true;if(tag==='button'&&el.type==='submit'&&closest(el,'form'))return true;return false;}
+  function isKnownBound(el){if(!el)return false;var tag=String(el.tagName||'').toLowerCase();if(tag==='input'||tag==='textarea'||tag==='select')return !disabled(el);if(tag==='a'&&el.getAttribute('href'))return true;if(typeof el.onclick==='function')return true;if(el.matches('[data-go],[data-action],[data-v291],[data-v294],[data-v296],[data-v299],[data-v301],.tab,.canon-tabs button'))return true;if(tag==='button'&&el.type==='submit'&&closest(el,'form'))return true;return false;}
   function audit(root){root=root||document;var nodes=Array.prototype.slice.call(root.querySelectorAll(APP_CONTROL+','+FORM));var out={screen:Number(S.ui&&S.ui.screen||0),total:0,visible:0,disabled:0,unbound:0,unboundItems:[]};nodes.forEach(function(el){out.total++;if(!visible(el))return;out.visible++;if(disabled(el)){out.disabled++;return;}if(!isKnownBound(el)){out.unbound++;out.unboundItems.push({tag:String(el.tagName||'').toLowerCase(),text:String(el.textContent||el.getAttribute('aria-label')||'').trim().slice(0,80),id:el.id||'',cls:String(el.className||'').slice(0,100)});}});document.documentElement.dataset.v300InteractionUnbound=String(out.unbound);document.documentElement.dataset.v300InteractionDisabled=String(out.disabled);window.__LPOS_V300_LAST_AUDIT=out;return out;}
   var auditTimer=null;function scheduleAudit(){clearTimeout(auditTimer);auditTimer=setTimeout(function(){audit(document);},50);}var app=document.getElementById('app'),modal=document.getElementById('modalRoot');if(app)new MutationObserver(scheduleAudit).observe(app,{childList:true,subtree:true});if(modal)new MutationObserver(scheduleAudit).observe(modal,{childList:true,subtree:true});window.addEventListener('load',scheduleAudit,{once:true});window.addEventListener('orientationchange',scheduleAudit);scheduleAudit();
-  window.__LPOS_V300={audit:audit,requestKeyboard:requestKeyboard,routePhysical:routePhysical,version:'v300'};document.documentElement.dataset.interactionIntegrity='v300';
+  window.__LPOS_V300={audit:audit,requestKeyboard:requestKeyboard,routePhysical:routePhysical,version:'v307'};document.documentElement.dataset.interactionIntegrity='v307';
 })();
