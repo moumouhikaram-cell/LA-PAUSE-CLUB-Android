@@ -8,7 +8,7 @@
   const hooks={afterRender:[],afterSheet:[],afterModal:[]};
   const api={
     base:'LA_PAUSE_CLUB_V1_6_0_FINAL_EXACT',
-    runtime:'v160-enrichment.1',
+    runtime:'v160-enrichment.2',
     modules,
     hooks,
     register(name,meta={}){
@@ -50,5 +50,28 @@
   wrap('showSheet','afterSheet');
   wrap('showModal','afterModal');
 
-  api.register('core-runtime',{mode:'ADDITIVE',ui:'UNCHANGED',navigation:'V1.6_NATIVE'});
+  // Physical Android smoke proved that the static shell can survive while #view remains
+  // completely empty after the historical boot. Do not redraw healthy screens: recover once
+  // only when the final historical renderer has loaded and the actual view is still empty.
+  api.recoverEmptyView=function(){
+    if(typeof document==='undefined'||!document||typeof document.getElementById!=='function')return false;
+    const view=document.getElementById('view');
+    if(!view)return false;
+    const html=String(view.innerHTML||'').trim();
+    const childCount=view.children&&Number.isFinite(view.children.length)?view.children.length:0;
+    if(html||childCount>0)return false;
+    if(typeof window.renderView!=='function')return false;
+    try{
+      window.renderView();
+      const recovered=!!String(view.innerHTML||'').trim()||!!(view.children&&view.children.length);
+      if(recovered)console.info('[LP160] empty historical view recovered');
+      return recovered;
+    }catch(e){
+      console.error('[LP160] empty historical view recovery failed',e);
+      return false;
+    }
+  };
+  if(typeof setTimeout==='function')setTimeout(()=>api.recoverEmptyView(),0);
+
+  api.register('core-runtime',{mode:'ADDITIVE',ui:'UNCHANGED',navigation:'V1.6_NATIVE',emptyViewRecovery:'CONDITIONAL_ONCE'});
 })();
