@@ -57,7 +57,8 @@ input_plain(){ local id="$1" val="$2" x y got; read x y < <(locate rect-id "$id"
 
 [[ -f "$APK" ]] || fail "APK missing"; adb install -r "$APK" >/dev/null || fail "install"; adb shell pm clear "$PKG" >/dev/null || fail "clear"; adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || true
 launch_ready
-LANDING_SEL='.b291-hero [data-go="3"],.b010-sales-hero [data-go="3"]'
+# v298 is the final screen-01 renderer on physical phones; keep older fallbacks for non-phone renderers.
+LANDING_SEL='.v298-landing [data-v298-go="3"],.b291-hero [data-go="3"],.b010-sales-hero [data-go="3"]'
 LANDING="$(wait_rect rect-css "$LANDING_SEL" LANDING_CTA)"; log "LANDING_CTA_READY $LANDING"
 tap rect-css "$LANDING_SEL"; wait_screen 3; log "LANDING_PHYSICAL_TAP_OK"
 input_plain newName KaramQA
