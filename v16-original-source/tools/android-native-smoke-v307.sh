@@ -54,6 +54,7 @@ PY
 locate(){ local mode="$1" sel="$2" x y v; for _ in $(seq 1 10); do if read x y v < <(center "$mode" "$sel"); then [[ "$v" = 1 ]] && { echo "$x $y"; return; }; fi; adb shell input swipe 540 1450 540 720 260 >/dev/null 2>&1 || true; sleep .35; done; fail "not reachable: $mode $sel"; }
 tap(){ local x y; read x y < <(locate "$1" "$2"); log "TAP $1 $2 x=$x y=$y"; foreground || fail "app lost foreground before tap $2"; adb shell input tap "$x" "$y" >/dev/null 2>&1 || fail "tap $2"; sleep .7; }
 input_plain(){ local id="$1" val="$2" x y got; read x y < <(locate rect-id "$id"); adb shell input tap "$x" "$y" >/dev/null; sleep .35; adb shell input text "$val" >/dev/null || fail "type $id"; sleep .6; got="$(state_draft /tmp/v307-$id.xml "$id"|tail -n1|tr -d '\r')"; [[ "$got" = "$val" ]] || fail "$id value=$got expected=$val"; log "INPUT_OK $id"; }
+wait_exit_dialog(){ local xml=/tmp/v307-back.xml; for attempt in $(seq 1 18); do ui_dump "$xml"; if grep -Fq 'Quitter LA PAUSE OS' "$xml" || grep -Fq 'Voulez-vous vraiment fermer' "$xml"; then log "ROOT_EXIT_DIALOG_READY attempt=$attempt"; return 0; fi; sleep .3; done; fail "root exit confirmation missing"; }
 
 [[ -f "$APK" ]] || fail "APK missing"; adb install -r "$APK" >/dev/null || fail "install"; adb shell pm clear "$PKG" >/dev/null || fail "clear"; adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || true
 launch_ready
@@ -93,8 +94,10 @@ echo ANDROID_V307_PHYSICAL_FORM_SUBMIT_OK | tee android-native-v307-smoke.txt
 
 # Root Back + rotation are tested independently from form/IME state.
 adb forward --remove tcp:$PORT >/dev/null 2>&1 || true; adb shell pm clear "$PKG" >/dev/null; adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || true; launch_ready
+# V312_ROOT_BACK_READY: prove the unsigned screen-01 renderer and nativeBack JS are loaded before Back.
+ROOT_LANDING="$(wait_rect rect-css "$LANDING_SEL" ROOT_LANDING)"; log "ROOT_LANDING_READY $ROOT_LANDING"
 PID="$(adb shell pidof "$PKG"|tr -d '\r')"; [[ -n "$PID" ]] || fail "pid missing"
-adb shell input keyevent KEYCODE_BACK >/dev/null; sleep 1; ui_dump /tmp/v307-back.xml; grep -q 'Voulez-vous vraiment fermer' /tmp/v307-back.xml || fail "root exit confirmation missing"; echo ANDROID_V307_ROOT_BACK_OK | tee -a android-native-v307-smoke.txt
+adb shell input keyevent KEYCODE_BACK >/dev/null; wait_exit_dialog; echo ANDROID_V307_ROOT_BACK_OK | tee -a android-native-v307-smoke.txt
 adb shell input keyevent KEYCODE_BACK >/dev/null; sleep .5; adb shell settings put system accelerometer_rotation 0; adb shell settings put system user_rotation 1; sleep 3; [[ "$(adb shell pidof "$PKG"|tr -d '\r')" = "$PID" ]] || fail "pid changed landscape"; adb shell settings put system user_rotation 0; sleep 3; [[ "$(adb shell pidof "$PKG"|tr -d '\r')" = "$PID" ]] || fail "pid changed portrait"; echo ANDROID_V307_ROTATION_OK | tee -a android-native-v307-smoke.txt
 adb logcat -d --pid="$PID" > android-v307-logcat.txt || true; ! grep -E 'FATAL EXCEPTION|Process: com\.lapauseclub\.manager.*has died' android-v307-logcat.txt || fail "fatal runtime"
 echo ANDROID_NATIVE_V307_SMOKE_OK | tee -a android-native-v307-smoke.txt
