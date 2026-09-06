@@ -8,11 +8,13 @@ const state={stations:[
   {id:'sim-1',name:'SIM VIP',type:'SIM',enabled:true,sort:3}
 ],sessions:[{id:'s1',stationId:'ps5-1',status:'active'}],meta:{}};
 const stationSnapshot=JSON.stringify(state.stations),modules=new Map();
-const ctx={console,Date,Set,Map,Math,JSON,Number,String,Object,Array,state,uid:p=>`${p}_${++seq}`,window:null};
+const originalRenderFloor=()=> 'HISTORIC_V1_6_FLOOR';
+const ctx={console,Date,Set,Map,Math,JSON,Number,String,Object,Array,state,uid:p=>`${p}_${++seq}`,renderFloor:originalRenderFloor,window:null};
 ctx.LP160={safeState:()=>state,persist:(eventType,entityId,payload)=>{events.push({eventType,entityId,payload});return true},register:(name,meta)=>{modules.set(name,meta);return meta}};
 ctx.window=ctx;vm.createContext(ctx);vm.runInContext(src,ctx,{filename:'enrich-v160-floor-builder.js'});
 function ok(v,msg){if(!v)throw new Error(msg)}
 const F=ctx.LP160.floorBuilder;ok(F,'floor builder API missing');ok(modules.has('floor-builder'),'floor builder module not registered');
+ok(ctx.renderFloor===originalRenderFloor&&ctx.renderFloor()==='HISTORIC_V1_6_FLOOR','floor builder replaced historic v1.6 renderFloor');
 ok(state.v160FloorPlan===undefined&&state.v160FloorSnapshots===undefined,'floor module mutated ClubState on load');
 let draft=F.draftFromLegacy();ok(draft.schema==='LP160_FLOOR_V1','floor schema mismatch');ok(Object.keys(draft.placements).length===3,'legacy projection missed stations');ok(state.v160FloorPlan===undefined,'draft must not persist automatically');ok(JSON.stringify(state.stations)===stationSnapshot,'draft changed station truth');
 const projected=F.projection(draft);ok(projected.length===3&&projected.every(x=>x.station&&x.station.id===x.stationId),'projection detached from v1.6 station ids');
@@ -30,6 +32,7 @@ const missing=F.normalize(restored);delete missing.placements['sim-1'];const mis
 const unknown=F.normalize(restored);unknown.placements.ghost={stationId:'ghost',zoneId:'zone-main',x:1,y:1,w:10,h:10,rotation:0};const unknownCheck=F.validate(unknown,{requireAllStations:false});ok(!unknownCheck.ok&&unknownCheck.errors.includes('UNKNOWN_STATION:ghost'),'unknown station placement not rejected');
 let shortWallBlocked=false;try{F.addWall(restored,{x:5,y:5},{x:5.1,y:5.1})}catch(_){shortWallBlocked=true}ok(shortWallBlocked,'zero/short wall accepted');
 ok(events.filter(e=>e.eventType==='v160.floor.committed').length===2,'floor commit audit events missing');ok(events.some(e=>e.eventType==='v160.floor.rolled_back'),'floor rollback audit event missing');
+console.log('V160_FLOOR_RENDERER_PRESERVED_OK');
 console.log('V160_FLOOR_DRAFT_NO_SIDE_EFFECT_OK');
 console.log('V160_FLOOR_STATION_AUTHORITY_OK');
 console.log('V160_FLOOR_GEOMETRY_VALIDATION_OK');
