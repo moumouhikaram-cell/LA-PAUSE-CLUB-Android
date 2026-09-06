@@ -1,5 +1,5 @@
 'use strict';
-// Canonical recovery gates: v305 platform truth + v304 operational truth + v303 Android form stability + v302 SaaS runtime authority + v301 SaaS lifecycle isolation + v300 interaction integrity + v299 universal mobile foundation + v298 strict landing viewport + v297 physical-phone recovery + v296 unified product graph + v295 unified operational shell + v294 confirmed premium mobile home + v291 corrected batch 01-10.
+// Canonical recovery gates (v305 rerun): v305 platform truth + v304 operational truth + v303 Android form stability + v302 SaaS runtime authority + v301 SaaS lifecycle isolation + v300 interaction integrity + v299 universal mobile foundation + v298 strict landing viewport + v297 physical-phone recovery + v296 unified product graph + v295 unified operational shell + v294 confirmed premium mobile home + v291 corrected batch 01-10.
 const fs=require('fs'),path=require('path');
 const root=path.resolve(__dirname,'..');
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
