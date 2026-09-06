@@ -11,6 +11,7 @@ on:
       - "v16-original-source/tools/test-v301-saas-lifecycle.js"
       - "v16-original-source/tools/cdp-v301-probe.js"
       - "v16-original-source/tools/android-v301-onboarding-smoke.sh"
+      - "v16-original-source/tools/android-v306-onboarding-smoke.sh"
       - ".github/workflows/android-v301-onboarding-smoke.yml"
 
 permissions:
@@ -73,7 +74,7 @@ jobs:
           heap-size: 384M
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
-          script: bash v16-original-source/tools/android-v301-onboarding-smoke.sh
+          script: bash v16-original-source/tools/android-v306-onboarding-smoke.sh
 
       - name: Upload v301 onboarding evidence
         if: always()
