@@ -82,7 +82,8 @@ try:
     rect_start=s.index('rect(){')
     rect_end=s.index('tap(){',rect_start)
     input_start=s.index('input_value(){')
-    input_end=s.index('hide_ime(){',input_start)
+    start=input_start
+    input_end=s.index('hide_ime(){',start)
 except ValueError as e:
     print('V306_HARNESS_FAIL helper anchors not found: '+str(e),file=sys.stderr);sys.exit(3)
 s2=s[:rect_start]+new_rect+s[rect_end:input_start]+new_input+s[input_end:]
