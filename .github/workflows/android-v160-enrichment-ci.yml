@@ -94,6 +94,7 @@ jobs:
             ! grep -q 'v250/' "$f"
           done
           node v16-original-source/tools/test-v160-enrichment.js
+          node v16-original-source/tools/test-v160-core-recovery.js
           node v16-original-source/tools/test-v160-device-control.js
           node v16-original-source/tools/test-v160-floor-builder.js
           node v16-original-source/tools/test-v160-control-center.js
