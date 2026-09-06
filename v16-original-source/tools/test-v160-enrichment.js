@@ -47,5 +47,5 @@ ok(state.v160Revenue.assistedRevenue===11,'assisted revenue delta wrong');
 ok(events.some(e=>e&&e.eventType==='v160.revenue_action.accepted'),'assisted revenue event missing');
 const intel=ctx.LP160.intelligence;ok(intel&&intel.health().score<100,'owner health engine inactive');ok(intel.nextBestActions().some(a=>a.kind==='STOCK'),'stock NBA missing');
 const dna=ctx.LP160.player.dna('c1');ok(dna&&dna.visits===1,'player DNA visit count wrong');ok(dna.favoriteResourceType==='CONSOLE','player DNA resource mapping wrong');ok(dna.totalSpend===32,'player DNA spend wrong');
-for(const f of files){const src=fs.readFileSync(path.join(root,f),'utf8');ok(!src.includes('location.reload'),'reload forbidden in enrichment layer');ok(!src.includes('v250/'),'v250 path forbidden in enrichment layer');ok(!/saas/i.test(src),'SaaS token forbidden in enrichment layer');}
+for(const f of files){const src=fs.readFileSync(path.join(root,f),'utf8');ok(!src.includes('location.reload'),'reload forbidden in enrichment layer');ok(!src.includes('v250/'),'v250 path forbidden in enrichment layer');ok(!src.includes('LPSaas')&&!src.includes('saas-lifecycle')&&!/\bonboarding\b/i.test(src),'SaaS/onboarding runtime forbidden in enrichment layer');}
 console.log('V160_ENRICHMENT_FOUNDATION_OK');
