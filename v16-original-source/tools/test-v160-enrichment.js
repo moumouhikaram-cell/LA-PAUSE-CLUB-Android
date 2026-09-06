@@ -4,8 +4,8 @@ const root=path.resolve(__dirname,'../app/src/main/assets');
 const events=[];
 const now=Date.now();let seq=0;
 const state={
-  business:{name:'LA PAUSE CLUB',branchName:'El Hajeb',currency:'MAD'},cashSettings:{defaultMethod:'cash'},
-  rates:{ps5Solo:22,ps5Duo:28,sim:45,rounding:.5},v160RatePlans:[],
+  business:{name:'LA PAUSE CLUB',branchName:'El Hajeb',currency:'MAD',timezone:'Africa/Casablanca',closeTime:'00:00'},cashSettings:{defaultMethod:'cash'},paritySettings:{ownerDisplayName:'Propriétaire LA PAUSE CLUB'},
+  rates:{ps5Solo:22,ps5Duo:28,sim:45,rounding:.5},v160RatePlans:[],audit:[],journal:[],
   stations:[{id:'ps5-1',name:'PS5 1',type:'PS5',enabled:true},{id:'sim-1',name:'SIM RACING VIP',type:'SIM',enabled:true},{id:'bill-1',name:'Billard 1',type:'BILLIARD',osResourceType:'BILLIARD_TABLE',enabled:true}],
   sessions:[
     {id:'s1',stationId:'ps5-1',customerId:'c1',status:'active',mode:'fixed',startAt:now-20*60000,plannedMinutes:60,endAt:now+40*60000,totalAmount:22},
@@ -13,7 +13,7 @@ const state={
     {id:'s3',stationId:'sim-1',customerId:'c2',status:'completed',mode:'fixed',startAt:now-2*86400000,finishedAt:now-2*86400000+30*60000,totalAmount:22.5,gameTitle:'Gran Turismo'}
   ],
   payments:[{id:'p1',sessionId:'s2',amount:22,method:'cash',at:now-86400000},{id:'p2',sessionId:'s3',amount:22.5,method:'cash',at:now-2*86400000}],orders:[{id:'o1',customerId:'c1',status:'paid',total:10,paidAt:now-86400000}],
-  clients:[{id:'c1',name:'Karam',firstName:'Karam',lastName:'M',phone:'0600000000',status:'ACTIVE',points:0},{id:'c2',name:'Yassine',firstName:'Yassine',lastName:'A',phone:'0611111111',status:'ACTIVE',points:0}],products:[{id:'prod1',name:'Coca',enabled:true,stock:1,alertStock:2}],queue:[],incidents:[],meta:{}
+  clients:[{id:'c1',name:'Karam',firstName:'Karam',lastName:'M',phone:'0600000000',email:'karam@example.test',status:'ACTIVE',points:0},{id:'c2',name:'Yassine',firstName:'Yassine',lastName:'A',phone:'0611111111',status:'ACTIVE',points:0}],products:[{id:'prod1',name:'Coca',enabled:true,stock:1,alertStock:2}],queue:[],incidents:[],prepaidPasses:[],meta:{}
 };
 const stations=Object.fromEntries(state.stations.map(x=>[x.id,x]));
 const uid=p=>`${p}_${++seq}`;
@@ -32,16 +32,20 @@ function addPayment(s,amount,method,note=''){const p={id:uid('pay'),sessionId:s.
 function memberNoV15(c){return `LPC-${String(c.id).slice(-4).toUpperCase()}`}
 function tierFromPointsV15(points){return Number(points||0)>=1000?'GOLD':Number(points||0)>=300?'SILVER':'BRONZE'}
 function hashPin(v){let h=2166136261;for(const ch of String(v)){h^=ch.charCodeAt(0);h=Math.imul(h,16777619)}return (h>>>0).toString(16)}
+function originalAuditV15(action,target,detail='',severity='INFO'){const a={id:uid('audit'),at:new Date().toISOString(),actor:'Propriétaire LA PAUSE CLUB',action,target,detail,severity};state.audit.push(a);state.journal.push({id:a.id,type:action,label:target,at:Date.now()});return a}
 const ctx={console,Date,Map,Math,JSON,Number,String,Object,Array,Set,queueMicrotask:fn=>fn(),state,uid,
   rateFor:originalRateFor,roundTo:(x,step=.5)=>Math.round(x/step)*step,fmtMoney:v=>`${Number(v||0)} DH`,dateKey,
   saveState:e=>{events.push(e);return true},sessionById,clientById,paymentsForSession,paidForSession,dueForSession,sessionElapsedMinutes,stationLabel,currentShift,addPayment,memberNoV15,tierFromPointsV15,hashPin,
-  extendSession:originalExtend,renderView(){},showSheet(){},showModal(){},window:null};
+  auditV15:originalAuditV15,extendSession:originalExtend,renderView(){},showSheet(){},showModal(){},window:null};
 ctx.window=ctx;vm.createContext(ctx);
-const files=['enrich-v160-core.js','enrich-v160-billing.js','enrich-v160-session-profiles.js','enrich-v160-revenue.js','enrich-v160-intelligence.js','enrich-v160-player.js','enrich-v160-finance.js','enrich-v160-client.js','enrich-v160-catalog.js','enrich-v160-community.js'];
+const index=fs.readFileSync(path.join(root,'index.html'),'utf8');
+const files=[...index.matchAll(/<script src="(enrich-v160-[^"]+\.js)"><\/script>/g)].map(m=>m[1]);
+if(!files.length)throw new Error('No enrichment modules loaded by index.html');
+if(new Set(files).size!==files.length)throw new Error('Duplicate enrichment script in index.html');
 for(const f of files)vm.runInContext(fs.readFileSync(path.join(root,f),'utf8'),ctx,{filename:f});
 function ok(v,msg){if(!v)throw new Error(msg)}
 ok(ctx.LP160,'LP160 runtime missing');
-ok(ctx.LP160.modules.size===10,'unexpected module count');
+ok(ctx.LP160.modules.size===files.length,`module registration mismatch ${ctx.LP160.modules.size}/${files.length}`);
 ok(ctx.LP160.billing.typeOf(stations['ps5-1'])==='CONSOLE','PS5 mapping changed');
 ok(ctx.LP160.billing.typeOf(stations['sim-1'])==='SIM_RACING','SIM mapping changed');
 let q=ctx.LP160.billing.quote(stations['ps5-1'],{mode:'fixed',duration:60,players:1});ok(q.amount===22&&q.rate===22,'PS5 solo parity failed');
@@ -71,5 +75,10 @@ ok(ctx.LP160.community.matchSuggestions().length===1,'matchmaker did not use v1.
 const srv=ctx.LP160.community.serviceRequest('c1','s1','TECHNICAL','Manette');ok(srv.priority==='HIGH'&&srv.resourceId==='ps5-1','service request mapping failed');ctx.LP160.community.updateService(srv.id,'DONE');ok(srv.status==='DONE'&&srv.doneAt,'service request completion failed');
 const ref=ctx.LP160.community.referral('c1');ok(ref.code.startsWith('LPC-'),'referral code failed');
 const progress=ctx.LP160.community.refreshMissions('c2');ok(progress.some(p=>p.missionId==='mission-try-sim'&&p.status==='COMPLETED'),'SIM mission not completed from v1.6 session');ok(state.clients.find(c=>c.id==='c2').points===20,'mission reward not credited to v1.6 client points');
+const legacyAudit=ctx.auditV15('SESSION_TEST','PS5 1','test','INFO');ok(state.audit.includes(legacyAudit),'v1.6 audit must still execute');ok(state.v160AuditChain.length===1,'trust chain did not mirror legacy audit');ok(ctx.LP160.trust.integrity().ok,'trust chain integrity failed');
+const sus=ctx.LP160.trust.suspicious('TEST_SIGNAL','LOW','Test uniquement','s1',{safe:true});ok(sus.status==='OPEN','suspicious event create failed');ctx.LP160.trust.resolve(sus.id,'OK');ok(sus.status==='RESOLVED','suspicious event resolve failed');ok(ctx.LP160.trust.integrity().ok,'trust chain broken after resolution');
+const locale=ctx.LP160.platform.setLocale('ar');ok(locale.locale==='ar'&&locale.dir==='rtl','locale preference failed');ok(!ctx.document,'platform utility must not require or mutate DOM in test');
+const redacted=ctx.LP160.platform.redact({phone:'0612345678',email:'x@y.test',token:'secret',nested:{password:'pw'}});ok(redacted.phone==='[PII_REDACTED]'&&redacted.email==='[PII_REDACTED]'&&redacted.token==='[REDACTED]'&&redacted.nested.password==='[REDACTED]','support redaction failed');
+const notif=ctx.LP160.platform.notify('Test','Message','INFO','test-once');ok(notif.status==='QUEUED','notification should stay queued without explicit native send');const bundle=ctx.LP160.platform.supportBundle();ok(bundle.base===ctx.LP160.base&&bundle.counts.clients===2,'support bundle failed');
 for(const f of files){const src=fs.readFileSync(path.join(root,f),'utf8');ok(!src.includes('location.reload'),'reload forbidden in enrichment layer');ok(!src.includes('v250/'),'v250 path forbidden in enrichment layer');ok(!src.includes('LPSaas')&&!src.includes('saas-lifecycle')&&!/\bonboarding\b/i.test(src),'SaaS/onboarding runtime forbidden in enrichment layer');}
-console.log('V160_ENRICHMENT_FOUNDATION_OK');
+console.log(`V160_ENRICHMENT_FOUNDATION_OK modules=${files.length}`);
