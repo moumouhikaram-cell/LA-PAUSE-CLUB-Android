@@ -95,6 +95,7 @@ jobs:
           node v16-original-source/tools/test-v160-session-form.js
           node v16-original-source/tools/test-v160-session-start.js
           node v16-original-source/tools/test-v160-session-form-ui.js
+          node v16-original-source/tools/test-v160-session-stack-health.js
 
       - name: Park non-v1.6 modules outside APK build
         shell: bash
