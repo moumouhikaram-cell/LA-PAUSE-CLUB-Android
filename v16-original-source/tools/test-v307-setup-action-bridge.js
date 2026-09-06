@@ -1,0 +1,16 @@
+'use strict';
+const fs=require('fs'),path=require('path'),root=path.resolve(__dirname,'..');
+const read=p=>fs.readFileSync(path.join(root,p),'utf8');
+const must=(x,m)=>{if(!x){console.error('V307_SETUP_BRIDGE_FAIL',m);process.exit(1);}};
+const html=read('app/src/main/assets/v250/index.html');
+const bridge=read('app/src/main/assets/v250/setup-action-bridge-v307.js');
+const interaction=read('app/src/main/assets/v250/interaction-integrity-v300.js');
+must(html.includes('setup-action-bridge-v307.js'),'bridge missing from index');
+must(html.indexOf('saas-lifecycle-v301-hardlock.js')<html.indexOf('setup-action-bridge-v307.js'),'bridge must load after lifecycle');
+must(html.indexOf('setup-action-bridge-v307.js')<html.indexOf('interaction-integrity-v300.js'),'bridge must load before physical touch router');
+for(const t of ['V307_BUSINESS_SAVED_PHYSICAL','businessSaved=true','commercialSaved=false','A.setScreen(9)','window.__LPOS_V307_SETUP'])must(bridge.includes(t),'bridge token missing '+t);
+must(interaction.includes("a==='save-business'&&window.__LPOS_V307_SETUP"),'physical router does not invoke setup bridge');
+must(interaction.includes("'[data-v301]" )||interaction.includes('[data-v301]'),'v301 controls absent from physical control set');
+console.log('V307_SETUP_BUSINESS_BRIDGE_OK');
+console.log('V307_SETUP_BRIDGE_LOAD_ORDER_OK');
+console.log('V307_PHYSICAL_V301_ROUTING_OK');
