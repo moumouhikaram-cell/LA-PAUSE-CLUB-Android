@@ -5,6 +5,7 @@ LOGCAT="$GITHUB_WORKSPACE/android-v160-enrichment-logcat.txt"
 XML="$GITHUB_WORKSPACE/android-v160-enrichment-window.xml"
 PNG="$GITHUB_WORKSPACE/android-v160-enrichment-screen.png"
 APK="$GITHUB_WORKSPACE/v16-original-source/app/build/outputs/apk/debug/app-debug.apk"
+APK_ENTRIES="$GITHUB_WORKSPACE/android-v160-enrichment-apk-entries.txt"
 ASSETS="$GITHUB_WORKSPACE/v16-original-source/app/src/main/assets"
 INDEX="$ASSETS/index.html"
 CORE_STATUS="$ASSETS/enrich-v160-core-status.js"
@@ -69,8 +70,11 @@ grep -q 'session-start-contextual' "$CORE_STATUS" || fail "runtime start-gate he
 log "SESSION_STACK_SOURCE_CONTRACT_OK"
 
 test -f "$APK" || fail "APK missing"
+# Avoid `unzip | grep -q` under pipefail: grep closes the pipe on first match and unzip
+# can return SIGPIPE (141), producing a false "asset missing" result.
+unzip -Z1 "$APK" > "$APK_ENTRIES" || fail "cannot list APK entries"
 for f in enrich-v160-session-form.js enrich-v160-session-start.js enrich-v160-session-form-ui.js; do
-  unzip -Z1 "$APK" | grep -qx "assets/$f" || fail "APK missing session stack asset: $f"
+  grep -qx "assets/$f" "$APK_ENTRIES" || fail "APK missing session stack asset: $f"
 done
 log "SESSION_STACK_APK_CONTENT_OK"
 
