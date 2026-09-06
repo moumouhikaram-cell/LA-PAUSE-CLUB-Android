@@ -4,13 +4,21 @@ APK="${1:-v16-original-source/app/build/outputs/apk/debug/app-debug.apk}"
 PKG="com.lapauseclub.manager"; ACTIVITY=".NewAppActivity"; PORT=9227
 TRACE="android-native-v307-trace.txt"; : > "$TRACE"
 log(){ printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" | tee -a "$TRACE"; }
-fail(){ log "ANDROID_NATIVE_V307_FAIL: $*"; adb shell dumpsys window >>"$TRACE" 2>&1 || true; exit 1; }
+fail(){ log "ANDROID_NATIVE_V307_FAIL: $*"; adb shell dumpsys window >>"$TRACE" 2>&1 || true; adb logcat -d -t 500 >>"$TRACE" 2>&1 || true; exit 1; }
 state_file(){ timeout 8s adb shell run-as "$PKG" cat shared_prefs/gaming_floor_store.xml > "$1" 2>>"$TRACE" || fail "state unavailable"; }
+try_state_screen(){ local out="$1"; timeout 4s adb shell run-as "$PKG" cat shared_prefs/gaming_floor_store.xml > "$out" 2>/dev/null || return 1; python3 - "$out" <<'PY' 2>/dev/null
+import json,sys,xml.etree.ElementTree as ET
+try:
+ r=ET.parse(sys.argv[1]).getroot(); s=next((x.text or '' for x in r.findall('string') if x.attrib.get('name')=='state_json'),''); d=json.loads(s); print(int((d.get('ui') or {}).get('screen') or 0))
+except Exception: raise SystemExit(1)
+PY
+}
 state_screen(){ state_file "$1"; python3 - "$1" <<'PY'
 import json,sys,xml.etree.ElementTree as ET
 r=ET.parse(sys.argv[1]).getroot(); s=next((x.text or '' for x in r.findall('string') if x.attrib.get('name')=='state_json'),''); d=json.loads(s); print(int((d.get('ui') or {}).get('screen') or 0))
 PY
 }
+wait_screen(){ local want="$1" got=""; for attempt in $(seq 1 30); do got="$(try_state_screen /tmp/v307-wait.xml 2>/dev/null || true)"; [[ "$got" = "$want" ]] && { log "SCREEN_READY screen=$want attempt=$attempt"; return 0; }; sleep .4; done; fail "screen $want not reached last=$got"; }
 state_draft(){ state_file "$1"; python3 - "$1" "$2" <<'PY'
 import json,sys,xml.etree.ElementTree as ET
 r=ET.parse(sys.argv[1]).getroot(); s=next((x.text or '' for x in r.findall('string') if x.attrib.get('name')=='state_json'),''); d=json.loads(s); print(((((d.get('ui') or {}).get('draftForms') or {}).get(sys.argv[2]) or {}).get('value')) or '')
@@ -27,7 +35,10 @@ for n in r.iter('node'):
 raise SystemExit(2)
 PY
 }
-attach(){ local sock=""; adb forward --remove tcp:$PORT >/dev/null 2>&1 || true; for _ in $(seq 1 25); do sock="$(adb shell cat /proc/net/unix 2>/dev/null|awk '/webview_devtools_remote/{print $NF}'|tail -n1|tr -d '\r@')"; if [[ -n "$sock" ]]; then adb forward tcp:$PORT localabstract:$sock >/dev/null 2>&1 || true; curl -fsS --max-time 2 http://127.0.0.1:$PORT/json >/dev/null 2>&1 && { log "CDP_ATTACHED $sock"; return; }; fi; sleep .3; done; fail "CDP unavailable"; }
+foreground(){ adb shell dumpsys activity activities 2>/dev/null | grep -m1 -E 'mResumedActivity|topResumedActivity' | grep -q "$PKG"; }
+attach_try(){ local sock=""; sock="$(adb shell cat /proc/net/unix 2>/dev/null|awk '/webview_devtools_remote/{print $NF}'|tail -n1|tr -d '\r@')"; [[ -n "$sock" ]] || return 1; adb forward tcp:$PORT localabstract:$sock >/dev/null 2>&1 || return 1; curl -fsS --max-time 2 http://127.0.0.1:$PORT/json >/dev/null 2>&1 || return 1; printf '%s' "$sock"; }
+launch_ready(){ local sock=""; adb forward --remove tcp:$PORT >/dev/null 2>&1 || true; for attempt in $(seq 1 8); do if ! foreground; then log "APP_RELAUNCH attempt=$attempt"; adb shell am start -W -n "$PKG/$ACTIVITY" >>"$TRACE" 2>&1 || true; fi; for probe_attempt in $(seq 1 12); do if foreground; then sock="$(attach_try || true)"; if [[ -n "$sock" ]]; then log "APP_READY foreground=1 cdp=$sock attempt=$attempt.$probe_attempt"; return 0; fi; fi; sleep .5; done; done; fail "app/WebView never became ready in foreground"; }
+attach(){ local sock=""; adb forward --remove tcp:$PORT >/dev/null 2>&1 || true; for _ in $(seq 1 25); do sock="$(attach_try || true)"; [[ -n "$sock" ]] && { log "CDP_ATTACHED $sock"; return; }; sleep .3; done; fail "CDP unavailable"; }
 probe(){ LPOS_CDP_PORT=$PORT node v16-original-source/tools/cdp-webview-probe.js "$@"; }
 probe_value(){ probe rect-id "$1" | python3 -c 'import json,sys;p=json.load(sys.stdin) or {};print(p.get("value") or "")'; }
 probe_active(){ probe rect-id "$1" | python3 -c 'import json,sys;p=json.load(sys.stdin) or {};print("1" if p.get("active") else "0")'; }
@@ -40,13 +51,13 @@ print(round(x1+(p['left']+p['right'])*.5*sc),round(y1+(p['top']+p['bottom'])*.5*
 PY
 }
 locate(){ local mode="$1" sel="$2" x y v; for _ in $(seq 1 10); do if read x y v < <(center "$mode" "$sel"); then [[ "$v" = 1 ]] && { echo "$x $y"; return; }; fi; adb shell input swipe 540 1450 540 720 260 >/dev/null 2>&1 || true; sleep .35; done; fail "not reachable: $mode $sel"; }
-tap(){ local x y; read x y < <(locate "$1" "$2"); log "TAP $1 $2 x=$x y=$y"; adb shell input tap "$x" "$y" >/dev/null 2>&1 || fail "tap $2"; sleep .7; }
+tap(){ local x y; read x y < <(locate "$1" "$2"); log "TAP $1 $2 x=$x y=$y"; foreground || fail "app lost foreground before tap $2"; adb shell input tap "$x" "$y" >/dev/null 2>&1 || fail "tap $2"; sleep .7; }
 input_plain(){ local id="$1" val="$2" x y got; read x y < <(locate rect-id "$id"); adb shell input tap "$x" "$y" >/dev/null; sleep .35; adb shell input text "$val" >/dev/null || fail "type $id"; sleep .6; got="$(state_draft /tmp/v307-$id.xml "$id"|tail -n1|tr -d '\r')"; [[ "$got" = "$val" ]] || fail "$id value=$got expected=$val"; log "INPUT_OK $id"; }
 
 [[ -f "$APK" ]] || fail "APK missing"; adb install -r "$APK" >/dev/null || fail "install"; adb shell pm clear "$PKG" >/dev/null || fail "clear"; adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || true
-adb shell am start -W -n "$PKG/$ACTIVITY" >/dev/null || fail "launch"; sleep 6
-adb shell input tap 900 215 >/dev/null || fail "landing"; sleep 2; [[ "$(state_screen /tmp/v307-land.xml|tail -n1|tr -d '\r')" = 3 ]] || fail "landing did not open account"
-attach
+launch_ready
+LANDING="$(probe rect-text 'Start Free Trial')"; printf '%s' "$LANDING" | python3 -c 'import json,sys;p=json.load(sys.stdin);assert p and float(p.get("width") or 0)>0 and float(p.get("height") or 0)>0 and not p.get("disabled")' || fail "landing CTA not ready"; log "LANDING_CTA_READY $LANDING"
+tap rect-text 'Start Free Trial'; wait_screen 3; log "LANDING_PHYSICAL_TAP_OK"
 input_plain newName KaramQA
 # Reuse the physically proven v303 sequence: own DOM focus first, then pace prefix/@/suffix.
 read EX EY < <(locate rect-id newEmail)
@@ -74,11 +85,11 @@ input_plain newPassword Pass1234
 # Do not send Android Back merely to hide IME: on devices where IME has already
 # collapsed that becomes navigation. Keep the keyboard state untouched and prove
 # the submit CTA itself remains reachable by physical scroll/tap.
-tap rect-text 'Create account'; sleep 2; [[ "$(state_screen /tmp/v307-account.xml|tail -n1|tr -d '\r')" = 4 ]] || fail "account submit did not reach setup"
+tap rect-text 'Create account'; wait_screen 4
 echo ANDROID_V307_PHYSICAL_FORM_SUBMIT_OK | tee android-native-v307-smoke.txt
 
 # Root Back + rotation are tested independently from form/IME state.
-adb forward --remove tcp:$PORT >/dev/null 2>&1 || true; adb shell pm clear "$PKG" >/dev/null; adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || true; adb shell am start -W -n "$PKG/$ACTIVITY" >/dev/null; sleep 5
+adb forward --remove tcp:$PORT >/dev/null 2>&1 || true; adb shell pm clear "$PKG" >/dev/null; adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || true; launch_ready
 PID="$(adb shell pidof "$PKG"|tr -d '\r')"; [[ -n "$PID" ]] || fail "pid missing"
 adb shell input keyevent KEYCODE_BACK >/dev/null; sleep 1; ui_dump /tmp/v307-back.xml; grep -q 'Voulez-vous vraiment fermer' /tmp/v307-back.xml || fail "root exit confirmation missing"; echo ANDROID_V307_ROOT_BACK_OK | tee -a android-native-v307-smoke.txt
 adb shell input keyevent KEYCODE_BACK >/dev/null; sleep .5; adb shell settings put system accelerometer_rotation 0; adb shell settings put system user_rotation 1; sleep 3; [[ "$(adb shell pidof "$PKG"|tr -d '\r')" = "$PID" ]] || fail "pid changed landscape"; adb shell settings put system user_rotation 0; sleep 3; [[ "$(adb shell pidof "$PKG"|tr -d '\r')" = "$PID" ]] || fail "pid changed portrait"; echo ANDROID_V307_ROTATION_OK | tee -a android-native-v307-smoke.txt
