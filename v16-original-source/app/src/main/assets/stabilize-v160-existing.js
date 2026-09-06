@@ -112,6 +112,20 @@
     window.openShiftModal=wrappedOpenShift;try{openShiftModal=wrappedOpenShift}catch(_){}
   }
 
+  // CASH_ENTRY_SHIFT_GUARD: no accounting movement may be created with shiftId=null.
+  const originalCashEntry=window.openCashEntry;
+  if(typeof originalCashEntry==='function'&&!originalCashEntry.__lp160ShiftGuarded){
+    const wrappedCashEntry=function(){
+      if(!compatibleCurrentShift()){
+        try{if(typeof toast==='function')toast('Ouvre la caisse avant ce mouvement')}catch(_){}
+        return false;
+      }
+      return originalCashEntry.apply(this,arguments);
+    };
+    wrappedCashEntry.__lp160ShiftGuarded=true;wrappedCashEntry.__lp160Original=originalCashEntry;
+    window.openCashEntry=wrappedCashEntry;try{openCashEntry=wrappedCashEntry}catch(_){}
+  }
+
   // ORDER_STATUS_CASE_INSENSITIVE: v15 POS may emit PAID while v14 cash/reporting reads paid.
   function normalizeOrderStatuses(){
     let changed=false;
@@ -144,7 +158,20 @@
   // Ensure old v14 cash/order/report renderers always see canonical lowercase order state.
   const originalRenderView=window.renderView;
   if(typeof originalRenderView==='function'&&!originalRenderView.__lp160StatusStabilized){
-    const wrapped=function(){normalizeOrderStatuses();return originalRenderView.apply(this,arguments)};
+    const wrapped=function(){
+      normalizeOrderStatuses();
+      const out=originalRenderView.apply(this,arguments);
+      // When cash is closed, visual controls must match the transaction guard.
+      try{
+        if(String(typeof currentView==='string'?currentView:'')==='cash'&&!compatibleCurrentShift()){
+          for(const id of ['addRevenueBtn','addCashInBtn','addExpenseBtn']){
+            const el=typeof $==='function'?$(id):document.getElementById(id);
+            if(el){el.disabled=true;el.setAttribute?.('aria-disabled','true');}
+          }
+        }
+      }catch(_){}
+      return out;
+    };
     wrapped.__lp160StatusStabilized=true;wrapped.__lp160Original=originalRenderView;window.renderView=wrapped;try{renderView=wrapped}catch(_){}
   }
 
@@ -175,7 +202,7 @@
   }
 
   window.LP160Stabilization=Object.freeze({
-    version:'1.6.0-stabilization-4',
+    version:'1.6.0-stabilization-5',
     currentShift:compatibleCurrentShift,
     openShiftCandidates,
     draftStockOk,
