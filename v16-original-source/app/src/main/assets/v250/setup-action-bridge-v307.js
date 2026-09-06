@@ -1,11 +1,12 @@
 'use strict';
-/* LA PAUSE OS v320 — deterministic physical-action bridge for critical SaaS setup.
-   Business, commercial and floor-save transitions are callable directly from the
-   Android physical-touch router. Transactions mirror canonical v301 state semantics,
-   removing dependence on synthetic click ordering without changing UI. */
+/* LA PAUSE OS v321 — deterministic physical-action bridge for critical SaaS setup.
+   Business, commercial, floor-save and trial activation transitions are callable
+   directly from the Android physical-touch router. Transactions mirror canonical
+   v301 state semantics, removing dependence on synthetic click ordering without UI changes. */
 (function(){
   var A=window.LPOS,S=A&&A.state;
   if(!A||!S)return;
+  var DAY=86400000;
   function n(v,d){var x=Number(v);return Number.isFinite(x)?x:(d||0);}
   function val(id,fallback){var el=document.getElementById(id);return String((el&&el.value)!=null?el.value:(fallback||''));}
   function toast(msg){var r=document.getElementById('toastRoot');if(!r)return;r.innerHTML='<div class="toast">'+String(msg||'')+'</div>';setTimeout(function(){if(r)r.innerHTML='';},2300);}
@@ -53,7 +54,14 @@
     window.__LPOS_V320_LAST_FLOOR_RESULT={ok:true,zones:S.zones.length,resources:resources.length,walls:S.floorLayout.walls.length,screen:8,at:Date.now()};
     A.setScreen(8);location.reload();return true;
   }
-  window.__LPOS_V307_SETUP={saveBusiness:saveBusiness,saveCommercial:saveCommercial,saveFloor:saveFloor,version:'v317',floorVersion:'v320'};
+  function activateTrial(){
+    var v301=window.__LPOS_V301,orgOk=!!(v301&&typeof v301.orgReady==='function'&&v301.orgReady()),floorOk=!!(v301&&typeof v301.floorReady==='function'&&v301.floorReady());
+    window.__LPOS_V321_LAST_ACTIVATION_ATTEMPT={orgReady:orgOk,commercialSaved:!!(S.setupV301&&S.setupV301.commercialSaved),floorReady:floorOk,at:Date.now()};
+    if(!orgOk||!(S.setupV301&&S.setupV301.commercialSaved)||!floorOk){toast('Configuration incomplète.');if(typeof A.setScreen==='function')A.setScreen(v301&&typeof v301.setupScreen==='function'?v301.setupScreen():8);location.reload();return false;}
+    var at=A.now();S.lifecycle=S.lifecycle||{};S.lifecycle.setupComplete=true;S.lifecycle.trialActivatedAt=at;S.lifecycle.stage='LIVE';S.saas=S.saas||{};S.saas.trial=true;S.saas.trialEndsAt=at+14*DAY;S.saas.billingState='TRIAL';S.saas.plan='PRO_TRIAL';S.saas.providerAdapter=S.saas.providerAdapter||'LOCAL_TRIAL';(S.tenants||[]).forEach(function(t){t.status='ACTIVE';t.plan='PRO_TRIAL';});(S.venues||[]).forEach(function(v){v.status='ONLINE';});(S.branches||[]).forEach(function(b){b.status='ONLINE';});S.onboarding={step:4,total:4,readiness:100,blockers:[],completed:['BUSINESS','COMMERCIAL','FLOOR','ACTIVATED']};persist('V301_TRIAL_ACTIVATED',{trialEndsAt:S.saas.trialEndsAt});window.__LPOS_V321_LAST_ACTIVATION_RESULT={ok:true,trialEndsAt:S.saas.trialEndsAt,plan:S.saas.plan,screen:42,at:Date.now()};A.setScreen(42);location.reload();return true;
+  }
+  window.__LPOS_V307_SETUP={saveBusiness:saveBusiness,saveCommercial:saveCommercial,saveFloor:saveFloor,activateTrial:activateTrial,version:'v317',floorVersion:'v320',activationVersion:'v321'};
   document.documentElement.dataset.setupActionBridge='v317';
   document.documentElement.dataset.floorSaveBridge='v320';
+  document.documentElement.dataset.trialActivationBridge='v321';
 })();

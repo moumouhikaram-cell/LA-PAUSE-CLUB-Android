@@ -1,7 +1,7 @@
 'use strict';
 const fs=require('fs'),path=require('path'),root=path.resolve(__dirname,'..');
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
-const must=(x,m)=>{if(!x){console.error('V320_SETUP_BRIDGE_FAIL',m);process.exit(1);}};
+const must=(x,m)=>{if(!x){console.error('V321_SETUP_BRIDGE_FAIL',m);process.exit(1);}};
 const html=read('app/src/main/assets/v250/index.html');
 const bridge=read('app/src/main/assets/v250/setup-action-bridge-v307.js');
 const interaction=read('app/src/main/assets/v250/interaction-integrity-v300.js');
@@ -27,6 +27,11 @@ for(const t of ['function saveFloor()','if(!A.resources().length)',"S.setupV301.
 must(interaction.includes("a==='save-floor'&&window.__LPOS_V307_SETUP&&typeof window.__LPOS_V307_SETUP.saveFloor==='function'"),'physical router does not invoke floor-save bridge');
 must(interaction.includes('window.__LPOS_V320_LAST_FLOOR_ERROR')&&interaction.includes("dataset.v320FloorError='1'"),'floor-save bridge exception diagnostics missing');
 must(interaction.includes("floorSaveVersion:'v320'")&&interaction.includes("floorSaveIntegrity='v320'"),'v320 physical floor-save integrity marker missing');
+for(const t of ['var DAY=86400000','function activateTrial()','orgReady','floorReady','setupComplete=true','trialActivatedAt=at',"S.lifecycle.stage='LIVE'",'S.saas.trial=true','S.saas.trialEndsAt=at+14*DAY',"S.saas.billingState='TRIAL'","S.saas.plan='PRO_TRIAL'","t.status='ACTIVE'","v.status='ONLINE'","b.status='ONLINE'","readiness:100","'ACTIVATED'","persist('V301_TRIAL_ACTIVATED'",'A.setScreen(42)','activateTrial:activateTrial',"activationVersion:'v321'","trialActivationBridge='v321'"])must(bridge.includes(t),'v321 activation bridge token missing '+t);
+for(const t of ['function activateTrial()','orgReady()','floorReady()','S.lifecycle.setupComplete=true','S.lifecycle.trialActivatedAt=at',"S.lifecycle.stage='LIVE'",'S.saas.trial=true','S.saas.trialEndsAt=at+14*DAY',"S.saas.billingState='TRIAL'","S.saas.plan='PRO_TRIAL'","t.status='ACTIVE'","v.status='ONLINE'","b.status='ONLINE'","readiness:100","'ACTIVATED'","persist('V301_TRIAL_ACTIVATED'",'A.setScreen(42)'])must(lifecycle.includes(t),'canonical v301 activation token missing '+t);
+must(interaction.includes("a==='activate-trial'&&window.__LPOS_V307_SETUP&&typeof window.__LPOS_V307_SETUP.activateTrial==='function'"),'physical router does not invoke trial activation bridge');
+must(interaction.includes('window.__LPOS_V321_LAST_ACTIVATION_ERROR')&&interaction.includes("dataset.v321ActivationError='1'"),'trial activation bridge exception diagnostics missing');
+must(interaction.includes("activationVersion:'v321'")&&interaction.includes("trialActivationIntegrity='v321'"),'v321 physical activation integrity marker missing');
 console.log('V307_SETUP_BUSINESS_BRIDGE_OK');
 console.log('V307_SETUP_BRIDGE_LOAD_ORDER_OK');
 console.log('V307_PHYSICAL_V301_ROUTING_OK');
@@ -38,3 +43,5 @@ console.log('V319_FLOOR_CANVAS_VERTICAL_SCROLL_OK');
 console.log('V319_ZONE_DRAG_GESTURE_OWNERSHIP_OK');
 console.log('V320_FLOOR_SAVE_BRIDGE_PARITY_OK');
 console.log('V320_PHYSICAL_SAVE_FLOOR_ROUTING_OK');
+console.log('V321_TRIAL_ACTIVATION_BRIDGE_PARITY_OK');
+console.log('V321_PHYSICAL_TRIAL_ACTIVATION_ROUTING_OK');
