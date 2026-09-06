@@ -10,7 +10,8 @@ const activity=read('app/src/main/java/com/lapauseclub/manager/NewAppActivity.ja
 for(const f of ['form-input-stability-v303.css','form-input-stability-v303.js'])must(html.includes(f),'entry missing '+f);
 must(html.indexOf('saas-runtime-integrity-v302.css')<html.indexOf('form-input-stability-v303.css'),'v303 CSS must load after v302');
 must(html.indexOf('saas-runtime-integrity-v302.js')<html.indexOf('form-input-stability-v303.js'),'v303 JS must load after v302');
-for(const token of ['document.activeElement','visualViewport','focusStable','scrollIntoView','behavior:\'auto\'','requestKeyboard','pointerup','touchend'])must(js.includes(token),'focus runtime token missing '+token);
+for(const token of ['document.activeElement','visualViewport','focusStable','scrollIntoView','behavior:\'auto\'','native-touch','pointerup','touchend','!isEditable(active)'])must(js.includes(token),'focus runtime token missing '+token);
+must(!js.includes('Android.requestKeyboard()'),'v303 must not call native bridge that can advance DOM focus');
 must(!js.includes('preventDefault()'),'v303 must not cancel native form gestures');
 for(const token of ['pointer-events:auto','touch-action:manipulation','scroll-margin-bottom:210px','input:disabled'])must(css.includes(token),'form CSS token missing '+token);
 must(activity.includes('SOFT_INPUT_ADJUST_RESIZE'),'Android activity must resize for IME');
