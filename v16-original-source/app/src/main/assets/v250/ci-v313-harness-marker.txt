@@ -1,0 +1,3 @@
+LA PAUSE OS CI marker v313
+Purpose: trigger signed, native, and full physical authorities on one SHA after harness-only locator hardening.
+Runtime: not referenced by index.html and has no application behavior.
