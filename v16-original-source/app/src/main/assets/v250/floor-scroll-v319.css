@@ -1,0 +1,5 @@
+/* LA PAUSE OS v319 — floor canvas vertical scroll recovery on touch devices. */
+/* The canvas background must allow page pan-y; draggable zones keep exclusive gesture ownership. */
+.v301-floor-canvas{touch-action:pan-y!important}
+.v301-floor-canvas.wall-mode{touch-action:pan-y!important}
+.v301-zone{touch-action:none!important}
