@@ -38,8 +38,9 @@ for(const t of [
 
 must(js.includes('function nativeToggle(el)')&&js.includes("type==='checkbox'||type==='radio'")&&js.includes('if(nativeToggle(form))return false')&&js.includes('if(nativeToggle(f))return false'),'checkbox/radio labels must retain native toggle semantics instead of keyboard-focus routing');
 
-must(html.includes('packages-touch-v315.js')&&html.indexOf('packages-touch-v315.js')>html.indexOf('platform-truth-v305.js'),'v315 packages touch owner must load last after platform truth');
-for(const t of ['v301PackagesOn','touchstart','touchend','dx>24||dy>24||dt>900','input.checked=!input.checked',"dispatchEvent(new Event('change',{bubbles:true}))",'ev.preventDefault()','ev.stopImmediatePropagation()','packagesTouchIntegrity'])must(packages.includes(t),'v315 packages physical toggle token missing '+t);
+must(html.includes('packages-touch-v315.js')&&html.indexOf('packages-touch-v315.js')>html.indexOf('platform-truth-v305.js'),'packages touch owner must load last after platform truth');
+for(const t of ['v301PackagesOn','pointerdown','pointerup','touchstart','touchend',"document.addEventListener('click'",'dx>24||dy>24||dt>900','function recent(label)','Date.now()-lastAt<1200','input.checked=!input.checked',"dispatchEvent(new Event('change',{bubbles:true}))",'ev.preventDefault()','ev.stopImmediatePropagation()',"packagesTouchIntegrity='v316'"])must(packages.includes(t),'v316 packages idempotent physical toggle token missing '+t);
+must(packages.includes("activate(label,ev,'pointer')")&&packages.includes("activate(label,ev,'touch')")&&packages.includes("activate(label,ev,'click')"),'v316 must converge pointer/touch/click into one toggle owner');
 
 must(!v298.includes("[data-v298-go],[data-v298-action],[data-go],[data-action],[data-v291],[data-v296]"),'v298 must not intercept the whole application');
 must(v298.includes("closest('[data-v298-go],[data-v298-action]')"),'v298 landing-only touch selector missing');
@@ -72,4 +73,4 @@ console.log('V300_CLICKABLE_AUDIT_OK');
 console.log('V300_ACCOUNT_FLOW_WIRING_OK');
 console.log('V300_SAMSUNG_WEBVIEW_KEYBOARD_OK');
 console.log('V314_NATIVE_CHECKBOX_LABEL_DEFAULT_OK');
-console.log('V315_PACKAGES_PHYSICAL_TOUCH_OWNER_OK');
+console.log('V316_PACKAGES_IDEMPOTENT_TOUCH_OWNER_OK');
