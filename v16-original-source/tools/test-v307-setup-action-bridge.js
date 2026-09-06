@@ -1,7 +1,7 @@
 'use strict';
 const fs=require('fs'),path=require('path'),root=path.resolve(__dirname,'..');
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
-const must=(x,m)=>{if(!x){console.error('V317_SETUP_BRIDGE_FAIL',m);process.exit(1);}};
+const must=(x,m)=>{if(!x){console.error('V318_SETUP_BRIDGE_FAIL',m);process.exit(1);}};
 const html=read('app/src/main/assets/v250/index.html');
 const bridge=read('app/src/main/assets/v250/setup-action-bridge-v307.js');
 const interaction=read('app/src/main/assets/v250/interaction-integrity-v300.js');
@@ -15,9 +15,13 @@ for(const t of ['function saveCommercial()','data-v301-activity','data-v301-coun
 for(const t of ['syncManagedResources(a.key,q,r)','v301PackagesOn','v301Pack5','v301Pack10','buildPackages()','S.setupV301.commercialSaved=true','S.meta.pricingConfiguredV290=true',"S.lifecycle.stage='FLOOR'","persist('V301_COMMERCIAL_SAVED'",'A.setScreen(10)'])must(lifecycle.includes(t),'canonical v301 commercial token missing '+t);
 must(interaction.includes("a==='save-commercial'&&window.__LPOS_V307_SETUP&&typeof window.__LPOS_V307_SETUP.saveCommercial==='function'"),'physical router does not invoke commercial bridge');
 must(interaction.includes('window.__LPOS_V317_LAST_COMMERCIAL_ERROR')&&interaction.includes("dataset.v317CommercialError='1'"),'commercial bridge exception diagnostics missing');
+for(const t of ["a==='wall-mode'","V301_WALL_MODE","directWallPoint(ev.target,t.clientX,t.clientY)","#v301FloorCanvas","v301WallMode","[data-v301-zone]","__LPOS_V318_WALL_POINT","S.floorLayout.walls.push(wall)","persist('V301_WALL_CREATED'","A.setScreen(10)","version:'v318'","interactionIntegrity='v318'"])must(interaction.includes(t),'v318 wall touch token missing '+t);
+for(const t of ["S.ui.v301WallMode=!S.ui.v301WallMode","persist('V301_WALL_MODE'","S.floorLayout.walls.push","persist('V301_WALL_CREATED'","A.setScreen(10)"])must(lifecycle.includes(t),'canonical v301 wall token missing '+t);
 must(interaction.includes('[data-v301]'),'v301 controls absent from physical control set');
 console.log('V307_SETUP_BUSINESS_BRIDGE_OK');
 console.log('V307_SETUP_BRIDGE_LOAD_ORDER_OK');
 console.log('V307_PHYSICAL_V301_ROUTING_OK');
 console.log('V317_COMMERCIAL_BRIDGE_PARITY_OK');
 console.log('V317_PHYSICAL_SAVE_COMMERCIAL_ROUTING_OK');
+console.log('V318_WALL_TOUCH_OWNER_OK');
+console.log('V318_WALL_CANONICAL_PARITY_OK');
