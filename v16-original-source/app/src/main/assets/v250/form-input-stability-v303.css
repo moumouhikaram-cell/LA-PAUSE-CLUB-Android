@@ -1,0 +1,21 @@
+/* LA PAUSE OS v303 — physical phone form stability. */
+#app input,#app textarea,#app select,#modalRoot input,#modalRoot textarea,#modalRoot select{
+  position:relative!important;
+  z-index:1!important;
+  max-width:100%!important;
+  pointer-events:auto!important;
+  -webkit-user-select:text!important;
+  user-select:text!important;
+  touch-action:manipulation!important;
+  scroll-behavior:auto!important;
+  scroll-margin-top:96px!important;
+  scroll-margin-bottom:210px!important;
+}
+#app select,#modalRoot select{-webkit-user-select:auto!important;user-select:auto!important}
+#app input:disabled,#app textarea:disabled,#app select:disabled,#modalRoot input:disabled,#modalRoot textarea:disabled,#modalRoot select:disabled{pointer-events:none!important}
+.b291-control>svg,.b291-field>svg,.v301-field>svg,.input-wrap>svg{pointer-events:none!important}
+@media(max-width:700px){
+  #app input,#app textarea,#app select,#modalRoot input,#modalRoot textarea,#modalRoot select{font-size:16px!important;min-height:46px}
+  .b291-control,.v301-field,.input-wrap{max-width:100%!important;overflow:visible!important}
+  html,body{scroll-behavior:auto!important}
+}
