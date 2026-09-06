@@ -1,5 +1,5 @@
 'use strict';
-// Canonical recovery gates (v306): physical Android input ownership + v305 platform truth + v304 operational truth + v303 Android form stability + v302 SaaS runtime authority + v301 SaaS lifecycle isolation + v300 interaction integrity + v299 universal mobile foundation + v298 strict landing viewport + v297 physical-phone recovery + v296 unified product graph + v295 unified operational shell + v294 confirmed premium mobile home + v291 corrected batch 01-10.
+// Canonical recovery gates (v306.1): deterministic physical Android input harness + v305 platform truth + v304 operational truth + v303 Android form stability + v302 SaaS runtime authority + v301 SaaS lifecycle isolation + v300 interaction integrity + v299 universal mobile foundation + v298 strict landing viewport + v297 physical-phone recovery + v296 unified product graph + v295 unified operational shell + v294 confirmed premium mobile home + v291 corrected batch 01-10.
 const fs=require('fs'),path=require('path');
 const root=path.resolve(__dirname,'..');
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
@@ -12,6 +12,7 @@ const truth=read('app/src/main/assets/v250/screens-98-truthful-ui-v271.js');
 const safety=read('app/src/main/assets/v250/screens-99-runtime-safety-v271.js');
 const bootstrap=read('app/src/main/assets/v250/screens-00-truthful-bootstrap-v271.js');
 const activity=read('app/src/main/java/com/lapauseclub/manager/NewAppActivity.java');
+const v306Harness=read('tools/android-v306-onboarding-smoke.sh');
 for(const f of ['screens-00-truthful-bootstrap-v271.js','accounting-integrity-v271.js','screens-96-truthful-extended-v271.js','screens-97-auth-ui-v271.js','screens-98-truthful-ui-v271.js','screens-99-runtime-safety-v271.js']) must(html.includes(f),'entry missing '+f);
 const pos=x=>html.indexOf(x);
 must(pos('screens-00-truthful-bootstrap-v271.js')<pos('accounting-integrity-v271.js'),'accounting integrity must load after state truth bootstrap');
@@ -35,6 +36,7 @@ must(auth.includes('hasLocalCredential'),'auth UI credential state missing');
 must(safety.includes('verifyLocalCredential')&&safety.includes('SIGN_IN_REJECTED'),'verified sign-in rejection path missing');
 must(safety.includes("status:'PENDING'")&&safety.includes('verifiedByNative:false'),'pending pairing/backup truth missing');
 for(const token of ['PBKDF2WithHmacSHA256','MessageDigest.isEqual','createLocalCredential','verifyLocalCredential']) must(activity.includes(token),'native auth guarantee missing '+token);
+must(v306Harness.includes("s.index('input_value(){')")&&v306Harness.includes("s.index('hide_ime(){',start)"),'v306 harness must replace helper block by deterministic anchors');
 require('./test-v271-bootstrap-runtime.js');
 require('./test-v271-accounting-runtime.js');
 require('./test-v280-canonical-mobile.js');
@@ -76,3 +78,4 @@ console.log('V303_ANDROID_WEBVIEW_FORM_FOCUS_STABILITY_GATE_OK');
 console.log('V304_OPERATIONAL_TRUTH_GATE_OK');
 console.log('V305_PLATFORM_TRUTH_GATE_OK');
 console.log('V306_PHYSICAL_INPUT_HARNESS_GATE_OK');
+console.log('V306_DETERMINISTIC_HARNESS_PATCH_GATE_OK');
