@@ -87,16 +87,65 @@ try:
 except ValueError as e:
     print('V306_HARNESS_FAIL helper anchors not found: '+str(e),file=sys.stderr);sys.exit(3)
 s2=s[:rect_start]+new_rect+s[rect_end:input_start]+new_input+s[input_end:]
+
+# v309: startup is not ready merely because `am start -W` returned. The two
+# physical workflows independently proved that a blind coordinate could land on
+# Launcher/Quick Search while the app state file did not yet exist. Make startup
+# fail-open during readiness polling, relaunch if foreground is lost, attach to
+# the real WebView, then physically tap the actual landing CTA rect.
+state_start=s2.index('state_file(){')
+state_end=s2.index('ui_dump(){',state_start)
+new_state=r'''state_file(){ timeout 8s adb shell run-as "$PKG" cat shared_prefs/gaming_floor_store.xml > "$1" 2>>"$TRACE" || fail "state unavailable"; }
+try_state_screen(){ local out="$1"; timeout 4s adb shell run-as "$PKG" cat shared_prefs/gaming_floor_store.xml > "$out" 2>/dev/null || return 1; python3 - "$out" <<'PYSTATE' 2>/dev/null
+import json,sys,xml.etree.ElementTree as ET
+try:
+ r=ET.parse(sys.argv[1]).getroot(); s=next((x.text or '' for x in r.findall('string') if x.attrib.get('name')=='state_json'),''); d=json.loads(s); print(int((d.get('ui') or {}).get('screen') or 0))
+except Exception: raise SystemExit(1)
+PYSTATE
+}
+state_screen(){ state_file "$1"; python3 - "$1" <<'PYSTATE'
+import json,sys,xml.etree.ElementTree as ET
+r=ET.parse(sys.argv[1]).getroot(); s=next((x.text or '' for x in r.findall('string') if x.attrib.get('name')=='state_json'),''); d=json.loads(s); print(int((d.get('ui') or {}).get('screen') or 0))
+PYSTATE
+}
+wait_screen(){ local want="$1" got=""; for attempt in $(seq 1 30); do got="$(try_state_screen /tmp/v301-state.xml 2>/dev/null || true)"; [[ "$got" = "$want" ]]&&{ log "SCREEN_READY screen=$want attempt=$attempt"; return 0; }; sleep .4; done; fail "screen $want not reached last=$got"; }
+'''
+s2=s2[:state_start]+new_state+s2[state_end:]
+
+cdp_start=s2.index('cdp_attach(){')
+cdp_end=s2.index('probe(){',cdp_start)
+new_cdp=r'''foreground(){ adb shell dumpsys activity activities 2>/dev/null | grep -m1 -E 'mResumedActivity|topResumedActivity' | grep -q "$PKG"; }
+cdp_try_attach(){ local sock=""; sock="$(adb shell cat /proc/net/unix 2>/dev/null|awk '/webview_devtools_remote/{print $NF}'|tail -n1|tr -d '\r@')"; [[ -n "$sock" ]] || return 1; adb forward tcp:$PORT localabstract:$sock >/dev/null 2>&1 || return 1; curl -fsS --max-time 2 http://127.0.0.1:$PORT/json >/dev/null 2>&1 || return 1; printf '%s' "$sock"; }
+launch_ready(){ local sock=""; adb forward --remove tcp:$PORT >/dev/null 2>&1||true; for attempt in $(seq 1 8); do if ! foreground; then log "APP_RELAUNCH attempt=$attempt"; adb shell am start -W -n "$PKG/$ACTIVITY" >>"$TRACE" 2>&1||true; fi; for probe_attempt in $(seq 1 12); do if foreground; then sock="$(cdp_try_attach || true)"; if [[ -n "$sock" ]]; then log "APP_READY foreground=1 cdp=$sock attempt=$attempt.$probe_attempt"; return 0; fi; fi; sleep .5; done; done; fail "app/WebView never became ready in foreground"; }
+cdp_attach(){ local sock=""; adb forward --remove tcp:$PORT >/dev/null 2>&1||true; for _ in $(seq 1 25); do sock="$(cdp_try_attach || true)"; [[ -n "$sock" ]]&&{ log "CDP_ATTACHED $sock"; return; }; sleep .4; done; fail "CDP unavailable"; }
+'''
+s2=s2[:cdp_start]+new_cdp+s2[cdp_end:]
+
+old_fail='fail(){ log "ANDROID_V301_ONBOARDING_FAIL: $*"; adb shell dumpsys window >>"$TRACE" 2>&1 || true; exit 1; }'
+new_fail='fail(){ log "ANDROID_V301_ONBOARDING_FAIL: $*"; adb shell dumpsys window >>"$TRACE" 2>&1 || true; adb logcat -d -t 500 >>"$TRACE" 2>&1 || true; exit 1; }'
+if old_fail not in s2:
+    print('V309_HARNESS_FAIL fail anchor not found',file=sys.stderr);sys.exit(4)
+s2=s2.replace(old_fail,new_fail,1)
+old_start='adb shell am start -W -n "$PKG/$ACTIVITY" >>"$TRACE" 2>&1||fail "launch"; sleep 7; need_adb launch\nlog "LANDING_PHYSICAL_TAP"; adb shell input tap 900 215 >>"$TRACE" 2>&1||fail "landing tap"; wait_screen 3; cdp_attach'
+new_start=r'''launch_ready; need_adb launch
+LANDING="$(probe rect-text 'Start Free Trial')"
+printf '%s' "$LANDING" | python3 -c 'import json,sys;p=json.load(sys.stdin);assert p and float(p.get("width") or 0)>0 and float(p.get("height") or 0)>0 and not p.get("disabled")' || fail "landing CTA not ready"
+log "LANDING_CTA_READY $LANDING"
+tap rect-text 'Start Free Trial'; wait_screen 3; log "LANDING_PHYSICAL_TAP_OK"'''
+if old_start not in s2:
+    print('V309_HARNESS_FAIL startup anchor not found',file=sys.stderr);sys.exit(5)
+s2=s2.replace(old_start,new_start,1)
+
 anchor="input_css '[data-v301-rate=\"CONSOLE\"]' 22"
 diag=r'''RATE_DIAG="$(probe rect-css '[data-v301-rate="CONSOLE"]')"
 log "CONSOLE_RATE_DIAG $RATE_DIAG"
 printf '%s' "$RATE_DIAG" | python3 -c 'import json,sys; p=json.load(sys.stdin); assert p is not None,"missing DOM"; assert not p.get("disabled"),"disabled"; assert p.get("pointerEvents")!="none","pointer-events none"; assert float(p.get("width") or 0)>0 and float(p.get("height") or 0)>0,"zero rect"; print("V308_CONSOLE_RATE_DOM_OK top=%s bottom=%s scrollY=%s innerHeight=%s"%(p.get("top"),p.get("bottom"),p.get("scrollY"),p.get("innerHeight")))' | tee -a "$TRACE"
 '''
 if anchor not in s2:
-    print('V306_HARNESS_FAIL console rate anchor not found',file=sys.stderr);sys.exit(4)
+    print('V306_HARNESS_FAIL console rate anchor not found',file=sys.stderr);sys.exit(6)
 s2=s2.replace(anchor,diag+anchor,1)
 open(out,'w',encoding='utf-8').write(s2)
-print('V308_HARNESS_PATCH_OK')
+print('V309_HARNESS_PATCH_OK')
 PY
 chmod +x "$OUT"
 exec bash "$OUT" "$@"
