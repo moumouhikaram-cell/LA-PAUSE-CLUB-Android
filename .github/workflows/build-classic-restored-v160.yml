@@ -84,16 +84,58 @@ jobs:
           test -f v16-original-source/app/src/main/assets/media/products/sprite.jpg
           test -f v16-original-source/app/src/main/assets/media/products/twix.jpg
 
-          # Modern modules are preserved in the repository but must stay parked/unloaded.
+          # Modern modules must still exist in the repository, but stay parked/unloaded.
           test -f v16-original-source/app/src/main/assets/v250/index.html
           test -f v16-original-source/app/src/main/assets/client-operator-v230.js
           test -f v16-original-source/app/src/main/assets/p2-device-control-v240.js
           test -f v16-original-source/app/src/main/assets/client-saas-workspaces-v240.js
+          test -f v16-original-source/app/src/main/java/com/lapauseclub/manager/NewAppActivity.java
+          test -f v16-original-source/app/src/main/java/com/lapauseclub/manager/PremiumActivity.java
+          test -f v16-original-source/app/src/main/java/com/lapauseclub/manager/SyncBridgeV12.java
+          test -d v16-original-source/app/src/main/java/com/lapauseclub/manager/security
+          test -f v16-original-source/app/src/main/java/com/lapauseclub/manager/core/CoreAuthorityGuardV12.java
 
           node --check v16-original-source/app/src/main/assets/app.js
           node --check v16-original-source/app/src/main/assets/v13.js
           node --check v16-original-source/app/src/main/assets/v14.js
           node --check v16-original-source/app/src/main/assets/v15.js
+
+      - name: Park modern Java modules outside historical compile set
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ROOT="v16-original-source/app/src/main/java/com/lapauseclub/manager"
+          PARK="$RUNNER_TEMP/parked-modern-java"
+          mkdir -p "$PARK"
+
+          # Keep ONLY the exact Java runtime that existed in historical v1.6.
+          while IFS= read -r -d '' src; do
+            rel="${src#$ROOT/}"
+            case "$rel" in
+              MainActivity.java|BootReceiver.java|SessionAlarmReceiver.java|core/CoreStore.java)
+                echo "KEEP historical Java: $rel"
+                ;;
+              *)
+                mkdir -p "$PARK/$(dirname "$rel")"
+                mv "$src" "$PARK/$rel"
+                echo "PARK modern Java: $rel"
+                ;;
+            esac
+          done < <(find "$ROOT" -type f -name '*.java' -print0)
+
+          # Compile tree must now be exactly the historical four Java files.
+          mapfile -t LEFT < <(find "$ROOT" -type f -name '*.java' | sort)
+          printf '%s\n' "${LEFT[@]}"
+          test "${#LEFT[@]}" -eq 4
+          test -f "$ROOT/MainActivity.java"
+          test -f "$ROOT/BootReceiver.java"
+          test -f "$ROOT/SessionAlarmReceiver.java"
+          test -f "$ROOT/core/CoreStore.java"
+          test -f "$PARK/NewAppActivity.java"
+          test -f "$PARK/PremiumActivity.java"
+          test -f "$PARK/SyncBridgeV12.java"
+          test -f "$PARK/core/CoreAuthorityGuardV12.java"
+          test -f "$PARK/security/EntitlementVerifier.java"
 
       - name: Restore permanent signing key
         shell: bash
