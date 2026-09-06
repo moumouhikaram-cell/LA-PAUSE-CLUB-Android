@@ -14,9 +14,14 @@ must(wrapper.includes('adb shell input keyevent KEYCODE_AT')||wrapper.includes('
 must(wrapper.includes('FOCUS_ATTEMPT'),'focus retries must be traceable');
 must(wrapper.includes('LOCATE_SCROLL direction=UP')&&wrapper.includes('LOCATE_SCROLL direction=DOWN'),'offscreen controls must be reachable in both scroll directions');
 must(wrapper.includes('V308_CONSOLE_RATE_DOM_OK')&&wrapper.includes('CONSOLE_RATE_DIAG'),'commercial rate reachability must expose physical DOM/viewport evidence');
+must(wrapper.includes('APP_RELAUNCH')&&wrapper.includes('APP_READY foreground=1'),'physical startup must prove foreground WebView readiness and recover if focus is lost');
+must(wrapper.includes("probe rect-text 'Start Free Trial'")&&wrapper.includes("tap rect-text 'Start Free Trial'"),'landing must use the real CTA geometry followed by a physical ADB tap');
+must(wrapper.includes('try_state_screen')&&wrapper.includes('LANDING_PHYSICAL_TAP_OK'),'startup state polling must tolerate delayed first persistence and prove landing transition');
 console.log('V306_PHYSICAL_FIELD_OWNERSHIP_OK');
 console.log('V306_CDP_ACTIVE_ELEMENT_PROBE_OK');
 console.log('V306_ONBOARDING_FOCUS_RETRY_OK');
 console.log('V306_EMAIL_PHYSICAL_KEYEVENT_OK');
 console.log('V308_BIDIRECTIONAL_PHYSICAL_LOCATOR_OK');
 console.log('V308_CONSOLE_RATE_DIAGNOSTIC_GATE_OK');
+console.log('V309_FOREGROUND_WEBVIEW_STARTUP_GATE_OK');
+console.log('V309_PHYSICAL_LANDING_CTA_GATE_OK');
