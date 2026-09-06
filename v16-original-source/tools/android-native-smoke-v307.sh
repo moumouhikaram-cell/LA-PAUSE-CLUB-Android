@@ -42,6 +42,7 @@ attach(){ local sock=""; adb forward --remove tcp:$PORT >/dev/null 2>&1 || true;
 probe(){ LPOS_CDP_PORT=$PORT node v16-original-source/tools/cdp-webview-probe.js "$@"; }
 probe_value(){ probe rect-id "$1" | python3 -c 'import json,sys;p=json.load(sys.stdin) or {};print(p.get("value") or "")'; }
 probe_active(){ probe rect-id "$1" | python3 -c 'import json,sys;p=json.load(sys.stdin) or {};print("1" if p.get("active") else "0")'; }
+wait_rect(){ local mode="$1" sel="$2" label="$3" json=""; for attempt in $(seq 1 30); do if ! foreground; then log "WAIT_RECT_RELAUNCH label=$label attempt=$attempt"; launch_ready; fi; json="$(probe "$mode" "$sel" 2>/dev/null || printf 'null')"; if printf '%s' "$json" | python3 -c 'import json,sys;p=json.load(sys.stdin); ok=bool(p) and float(p.get("width") or 0)>0 and float(p.get("height") or 0)>0 and not p.get("disabled") and p.get("display")!="none" and p.get("visibility")!="hidden" and p.get("pointerEvents")!="none" and float(p.get("opacity") or 1)>0; raise SystemExit(0 if ok else 1)' >/dev/null 2>&1; then log "CONTROL_READY label=$label attempt=$attempt $json"; printf '%s' "$json"; return 0; fi; log "CONTROL_WAIT label=$label attempt=$attempt value=$json"; sleep .4; done; fail "$label not ready"; }
 center(){ local mode="$1" sel="$2" json=/tmp/v307-rect.json xml=/tmp/v307-frame.xml; probe "$mode" "$sel" > "$json" || return 2; ui_dump "$xml"; read X1 Y1 X2 Y2 < <(frame "$xml") || return 2; python3 - "$json" "$X1" "$Y1" "$X2" "$Y2" <<'PY'
 import json,sys
 p=json.load(open(sys.argv[1])); x1,y1,x2,y2=map(float,sys.argv[2:]);
@@ -56,8 +57,9 @@ input_plain(){ local id="$1" val="$2" x y got; read x y < <(locate rect-id "$id"
 
 [[ -f "$APK" ]] || fail "APK missing"; adb install -r "$APK" >/dev/null || fail "install"; adb shell pm clear "$PKG" >/dev/null || fail "clear"; adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || true
 launch_ready
-LANDING="$(probe rect-text 'Start Free Trial')"; printf '%s' "$LANDING" | python3 -c 'import json,sys;p=json.load(sys.stdin);assert p and float(p.get("width") or 0)>0 and float(p.get("height") or 0)>0 and not p.get("disabled")' || fail "landing CTA not ready"; log "LANDING_CTA_READY $LANDING"
-tap rect-text 'Start Free Trial'; wait_screen 3; log "LANDING_PHYSICAL_TAP_OK"
+LANDING_SEL='.b291-hero [data-go="3"],.b010-sales-hero [data-go="3"]'
+LANDING="$(wait_rect rect-css "$LANDING_SEL" LANDING_CTA)"; log "LANDING_CTA_READY $LANDING"
+tap rect-css "$LANDING_SEL"; wait_screen 3; log "LANDING_PHYSICAL_TAP_OK"
 input_plain newName KaramQA
 # Reuse the physically proven v303 sequence: own DOM focus first, then pace prefix/@/suffix.
 read EX EY < <(locate rect-id newEmail)
