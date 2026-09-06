@@ -4,7 +4,9 @@
   const n=(v,d=0)=>Number.isFinite(+v)?+v:d;
   function ensure(){const s=X.safeState();if(!s)return null;for(const k of ['creditNotes','receipts','groupTabs'])if(!Array.isArray(s[k]))s[k]=[];s.v160FinanceRules={partialRefundApprovalDh:100,creditNoteValidityDays:365,...(s.v160FinanceRules||{})};return s;}
   function refundedForPayment(paymentId){const s=ensure();return Math.abs((s?.payments||[]).filter(p=>p.refundOfPaymentId===paymentId||String(p.note||'').includes(paymentId)).filter(p=>n(p.amount)<0).reduce((a,p)=>a+n(p.amount),0));}
-  function refundable(paymentId){const s=ensure(),p=(s?.payments||[]).find(x=>x.id===paymentId);if(!p||n(p.amount)<=0)return 0;return Math.max(0,n(p.amount)-refundedForPayment(paymentId));}
+  function creditedForPayment(paymentId){const s=ensure();return (s?.creditNotes||[]).filter(c=>c.sourcePaymentId===paymentId&&!['VOID','CANCELLED'].includes(String(c.status||'').toUpperCase())).reduce((a,c)=>a+n(c.amount),0);}
+  function compensatedForPayment(paymentId){return refundedForPayment(paymentId)+creditedForPayment(paymentId);}
+  function refundable(paymentId){const s=ensure(),p=(s?.payments||[]).find(x=>x.id===paymentId);if(!p||n(p.amount)<=0)return 0;return Math.max(0,n(p.amount)-compensatedForPayment(paymentId));}
   function partialRefund(paymentId,amount,reason='',toCredit=false){
     const s=ensure(),original=(s?.payments||[]).find(x=>x.id===paymentId),max=refundable(paymentId),amt=Math.min(max,Math.max(0,n(amount)));
     if(!original||amt<=0)throw new Error('Montant de remboursement invalide');
@@ -35,6 +37,6 @@
     for(const x of valid){if(typeof addPayment==='function')addPayment(session,n(x.amount),x.method||s.cashSettings?.defaultMethod||'cash',`Split bill ${valid.length} parts`);else{s.payments.push({id:typeof uid==='function'?uid('pay'):`pay_${Date.now()}_${Math.random()}`,sessionId,amount:n(x.amount),method:x.method||'cash',at:Date.now(),note:`Split bill ${valid.length} parts`});}}
     X.persist('payment.split_bill.completed',sessionId,{parts:valid});return valid.length;
   }
-  X.finance={ensure,refundedForPayment,refundable,partialRefund,redeemCredit,receipt,splitPay};
+  X.finance={ensure,refundedForPayment,creditedForPayment,compensatedForPayment,refundable,partialRefund,redeemCredit,receipt,splitPay};
   X.register('finance-gap-fill',{mode:'PRIMITIVES_ONLY',ui:'V1.6_UNCHANGED',features:['partial-refund','credit-note','receipt','split-bill']});
 })();
