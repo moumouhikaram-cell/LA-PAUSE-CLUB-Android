@@ -33,6 +33,8 @@ for(const t of [
   'v300InteractionDisabled'
 ])must(js.includes(t),'global interaction token missing '+t);
 
+must(js.includes('function nativeToggle(el)')&&js.includes("type==='checkbox'||type==='radio'")&&js.includes('if(nativeToggle(form))return false')&&js.includes('if(nativeToggle(f))return false'),'checkbox/radio labels must retain native toggle semantics instead of keyboard-focus routing');
+
 must(!v298.includes("[data-v298-go],[data-v298-action],[data-go],[data-action],[data-v291],[data-v296]"),'v298 must not intercept the whole application');
 must(v298.includes("closest('[data-v298-go],[data-v298-action]')"),'v298 landing-only touch selector missing');
 
@@ -63,3 +65,4 @@ console.log('V300_GLOBAL_TOUCH_ROUTING_OK');
 console.log('V300_CLICKABLE_AUDIT_OK');
 console.log('V300_ACCOUNT_FLOW_WIRING_OK');
 console.log('V300_SAMSUNG_WEBVIEW_KEYBOARD_OK');
+console.log('V314_NATIVE_CHECKBOX_LABEL_DEFAULT_OK');
