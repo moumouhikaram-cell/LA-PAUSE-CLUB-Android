@@ -63,7 +63,7 @@ wait_floor_dom(){
     sock="$(attach_try || true)"
     if [[ -n "$sock" ]]; then
       json="$(probe floor-state 2>/dev/null || printf 'null')"
-      if printf '%s' "$json" | python3 -c 'import json,sys;p=json.load(sys.stdin) or {};t=(p.get("viewText") or "").lower(); ok=p.get("readyState")=="complete" and p.get("viewExists") and int(p.get("viewChildCount") or 0)>0 and int(p.get("stationCount") or 0)>=7 and int(p.get("visibleStationCount") or 0)>=7 and "gaming floor" in t; raise SystemExit(0 if ok else 1)' >/dev/null 2>&1; then
+      if printf '%s' "$json" | python3 -c 'import json,sys;p=json.load(sys.stdin) or {};t=(p.get("viewText") or "").lower(); r=p.get("viewRect") or {}; state=p.get("readyState"); ok=state in ("interactive","complete") and p.get("viewExists") and int(p.get("viewChildCount") or 0)>0 and int(p.get("stationCount") or 0)>=7 and int(p.get("visibleStationCount") or 0)>=7 and float(r.get("width") or 0)>0 and float(r.get("height") or 0)>0 and "gaming floor" in t and "ps5 1" in t; raise SystemExit(0 if ok else 1)' >/dev/null 2>&1; then
         log "CDP_FLOOR_READY attempt=$attempt socket=$sock state=$json"
         return 0
       fi
@@ -121,7 +121,8 @@ wait_resumed || fail "MainActivity not resumed after launch"
 log "MAIN_ACTIVITY_READY"
 
 # Read-only CDP proves the document actually rendered. CDP never clicks/types/mutates state.
-# This avoids hosted-emulator instability observed immediately after `adb exec-out screencap`.
+# A fully populated interactive DOM is already physically renderable; waiting for complete can
+# falsely reject a healthy historical WebView while slow subresources are still finishing.
 wait_floor_dom || fail "Gaming Floor DOM never became ready in foreground WebView"
 log "WEBVIEW_FLOOR_DOM_READY"
 PID="$(timeout --foreground 5s adb shell pidof "$PKG" 2>/dev/null | tr -d '\r')"
