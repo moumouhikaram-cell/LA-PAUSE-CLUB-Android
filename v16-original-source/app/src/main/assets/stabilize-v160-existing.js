@@ -10,10 +10,11 @@
   const PENDING_TTL=15*60*1000;
 
   function shifts(){try{return Array.isArray(state?.shifts)?state.shifts:[]}catch(_){return []}}
-  function compatibleCurrentShift(){return shifts().find(s=>status(s?.status)==='open')||null;}
+  // SHIFT_STATUS_CASE_INSENSITIVE: v15 writes OPEN/CLOSED while v14 historically reads open/closed.
+  // If stale data contains more than one open shift, use the most recently opened unclosed shift.
+  function openShiftCandidates(){return shifts().filter(s=>status(s?.status)==='open'&&!s?.closedAt).sort((a,b)=>Number(b?.openedAt||0)-Number(a?.openedAt||0));}
+  function compatibleCurrentShift(){return openShiftCandidates()[0]||null;}
 
-  // v1.5 normalizes shift status to OPEN/CLOSED while the historical v1.4 helper
-  // only accepted lowercase "open". Make the shared helper case-insensitive.
   window.currentShift=compatibleCurrentShift;
   try{currentShift=compatibleCurrentShift}catch(_){}
 
@@ -24,8 +25,20 @@
     return p;
   }
   function clearPending(){delete window.__LP160_PENDING_SESSION_START;}
-  function stationFree(id){
-    try{return !!stationById(id)&&!activeSessionFor(id)}catch(_){return false}
+  function stationFree(id){try{return !!stationById(id)&&!activeSessionFor(id)}catch(_){return false}}
+  function draftStockOk(d,notify=true){
+    try{
+      const cart=d?.snackCart||{},products=Array.isArray(state?.products)?state.products:[];
+      for(const [productId,rawQty] of Object.entries(cart)){
+        const qty=Math.max(0,Math.round(Number(rawQty)||0));if(!qty)continue;
+        const p=products.find(x=>x.id===productId);
+        if(!p||p.enabled===false||Number(p.stock||0)<qty){
+          if(notify&&typeof toast==='function')toast(`Stock insuffisant · ${p?.name||'produit indisponible'}`);
+          return false;
+        }
+      }
+      return true;
+    }catch(_){return false}
   }
   function capturePending(){
     try{
@@ -36,13 +49,15 @@
       return p;
     }catch(_){return null}
   }
+  // SHIFT_SESSION_DRAFT_RESUME: exact client/payment/snack draft survives the cash detour.
   function restorePending(){
     const p=getPending();
     if(!p||!compatibleCurrentShift()||!stationFree(p.stationId))return false;
-    clearPending();
     try{if(typeof setView==='function')setView('floor')}catch(_){}
     try{selectedStationId=p.stationId;sheetDraft=clone(p.draft)}catch(_){return false}
-    try{if(typeof drawStartSheet==='function')drawStartSheet();else return false}catch(_){return false}
+    try{if(typeof drawStartSheet!=='function')return false;drawStartSheet()}catch(_){return false}
+    // Clear only after the historical sheet has actually been rebuilt.
+    clearPending();
     try{if(typeof toast==='function')toast('Shift ouvert · session restaurée, prête à encaisser')}catch(_){}
     return true;
   }
@@ -50,6 +65,9 @@
   const originalStart=window.startDraftSession;
   if(typeof originalStart==='function'&&!originalStart.__lp160Stabilized){
     const wrappedStart=function(){
+      try{if(typeof syncDraftInputsV14==='function')syncDraftInputsV14()}catch(_){}
+      // Prevent orphan client/payment/session creation if stock changed while the sheet was open.
+      if(!draftStockOk(typeof sheetDraft==='undefined'?null:sheetDraft,true))return false;
       let needsShift=false;
       try{needsShift=state?.cashSettings?.shiftRequired===true&&!compatibleCurrentShift()}catch(_){}
       if(needsShift){
@@ -68,7 +86,6 @@
   const originalOpenShift=window.openShiftModal;
   if(typeof originalOpenShift==='function'&&!originalOpenShift.__lp160Stabilized){
     const wrappedOpenShift=function(){
-      // Never create a second concurrent shift through a stale screen/button.
       if(compatibleCurrentShift()){
         try{if(typeof toast==='function')toast('Un shift est déjà ouvert')}catch(_){}
         return false;
@@ -121,8 +138,10 @@
   }
 
   window.LP160Stabilization=Object.freeze({
-    version:'1.6.0-stabilization-2',
+    version:'1.6.0-stabilization-3',
     currentShift:compatibleCurrentShift,
+    openShiftCandidates,
+    draftStockOk,
     getPendingSessionStart:getPending,
     clearPendingSessionStart:clearPending,
     restorePendingSessionStart:restorePending,
