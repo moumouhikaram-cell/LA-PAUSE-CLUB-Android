@@ -9,20 +9,21 @@ PKG="com.lapauseclub.manager"
 ACT="$PKG/.MainActivity"
 : > "$TRACE"
 log(){ printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" | tee -a "$TRACE"; }
-fail(){ log "ANDROID_V160_ENRICHMENT_FAIL: $*"; adb logcat -d > "$LOGCAT" 2>/dev/null || true; exit 1; }
+fail(){ log "ANDROID_V160_ENRICHMENT_FAIL: $*"; timeout --foreground 15s adb logcat -d > "$LOGCAT" 2>/dev/null || true; exit 1; }
 
 wait_resumed(){
   local i
   for i in $(seq 1 30); do
-    if adb shell dumpsys activity activities 2>/dev/null | grep -Eq "mResumedActivity.*${PKG//./\\.}.*MainActivity|topResumedActivity=.*${PKG//./\\.}.*MainActivity"; then return 0; fi
+    if timeout --foreground 4s adb shell dumpsys activity activities 2>/dev/null | grep -Eq "mResumedActivity.*${PKG//./\\.}.*MainActivity|topResumedActivity=.*${PKG//./\\.}.*MainActivity"; then return 0; fi
     sleep 0.5
   done
   return 1
 }
 
 dump_ui(){
-  adb shell uiautomator dump /sdcard/v160.xml >/dev/null 2>&1 || return 1
-  adb pull /sdcard/v160.xml "$XML" >/dev/null 2>&1 || return 1
+  log "PHASE_UI_DUMP_BEGIN"
+  timeout --foreground 12s adb shell uiautomator dump /sdcard/v160.xml >/dev/null 2>&1 || { log "PHASE_UI_DUMP_TIMEOUT_OR_FAIL"; return 1; }
+  timeout --foreground 10s adb pull /sdcard/v160.xml "$XML" >/dev/null 2>&1 || { log "PHASE_UI_PULL_TIMEOUT_OR_FAIL"; return 1; }
   test -s "$XML"
 }
 
@@ -43,20 +44,23 @@ sys.exit(2)
 PY
   local x y
   read -r x y < /tmp/v160-tap.txt || return 1
-  adb shell input tap "$x" "$y"
+  timeout --foreground 8s adb shell input tap "$x" "$y" || return 1
   log "PHYSICAL_TAP text=$text x=$x y=$y"
 }
 
 test -f "$APK" || fail "APK missing"
-adb install -r "$APK" >> "$TRACE" 2>&1 || fail "install failed"
-adb shell pm clear "$PKG" >/dev/null || true
-adb logcat -c || true
-adb shell am start -W -n "$ACT" >> "$TRACE" 2>&1 || fail "launch failed"
+log "PHASE_INSTALL_BEGIN"
+timeout --foreground 60s adb install -r "$APK" >> "$TRACE" 2>&1 || fail "install failed or timed out"
+log "PHASE_INSTALL_OK"
+timeout --foreground 15s adb shell pm clear "$PKG" >/dev/null || true
+timeout --foreground 10s adb logcat -c || true
+log "PHASE_LAUNCH_BEGIN"
+timeout --foreground 20s adb shell am start -W -n "$ACT" >> "$TRACE" 2>&1 || fail "launch failed or timed out"
 wait_resumed || fail "MainActivity not resumed after launch"
 log "MAIN_ACTIVITY_READY"
 sleep 3
-adb exec-out screencap -p > "$PNG" || true
-dump_ui || fail "uiautomator dump failed"
+timeout --foreground 10s adb exec-out screencap -p > "$PNG" || true
+dump_ui || fail "uiautomator dump failed or timed out"
 grep -q "$PKG" "$XML" || log "UI_XML_PACKAGE_NOT_EXPOSED_BY_WEBVIEW"
 if grep -Eqi 'Gaming Floor|Salle|Sessions|LA PAUSE CLUB' "$XML"; then
   log "WEBVIEW_ACCESSIBILITY_READY"
@@ -75,17 +79,19 @@ else
 fi
 
 # Rotation must not destroy/replace the v1.6 activity.
-adb shell settings put system accelerometer_rotation 0 >/dev/null || true
-adb shell settings put system user_rotation 1 >/dev/null || true
+log "PHASE_ROTATION_LANDSCAPE_BEGIN"
+timeout --foreground 8s adb shell settings put system accelerometer_rotation 0 >/dev/null || true
+timeout --foreground 8s adb shell settings put system user_rotation 1 >/dev/null || true
 sleep 2
 wait_resumed || fail "MainActivity lost in landscape"
 log "LANDSCAPE_ACTIVITY_OK"
-adb shell settings put system user_rotation 0 >/dev/null || true
+log "PHASE_ROTATION_PORTRAIT_BEGIN"
+timeout --foreground 8s adb shell settings put system user_rotation 0 >/dev/null || true
 sleep 2
 wait_resumed || fail "MainActivity lost returning portrait"
 log "PORTRAIT_ACTIVITY_OK"
 
-adb logcat -d > "$LOGCAT" 2>/dev/null || true
+timeout --foreground 15s adb logcat -d > "$LOGCAT" 2>/dev/null || true
 if grep -Eqi 'FATAL EXCEPTION|AndroidRuntime:.*FATAL|Process com\.lapauseclub\.manager .* has died|chromium.*(crash|Aw, Snap)' "$LOGCAT"; then
   fail "fatal runtime signal found"
 fi
