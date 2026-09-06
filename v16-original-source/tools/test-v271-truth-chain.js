@@ -1,6 +1,5 @@
 'use strict';
-// Canonical recovery gates (v310): semantic foreground-ready physical landing + proven physical email input + bidirectional onboarding locator + deterministic setup transition + v306 physical Android input harness + v305 platform truth + v304 operational truth + v303 Android form stability + v302 SaaS runtime authority + v301 SaaS lifecycle isolation + v300 interaction integrity + v299 universal mobile foundation + v298 strict landing viewport + v297 physical-phone recovery + v296 unified product graph + v295 unified operational shell + v294 confirmed premium mobile home + v291 corrected batch 01-10.
-// CI retrigger only: v310 semantic physical gates are synchronized; product/runtime code is unchanged.
+// Canonical recovery gates (v311): final v298 phone landing ownership + foreground-ready physical navigation + proven physical email input + bidirectional onboarding locator + deterministic setup transition + v306 physical Android input harness + v305 platform truth + v304 operational truth + v303 Android form stability + v302 SaaS runtime authority + v301 SaaS lifecycle isolation + v300 interaction integrity + v299 universal mobile foundation + v298 strict landing viewport + v297 physical-phone recovery + v296 unified product graph + v295 unified operational shell + v294 confirmed premium mobile home + v291 corrected batch 01-10.
 const fs=require('fs'),path=require('path');
 const root=path.resolve(__dirname,'..');
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
@@ -13,6 +12,8 @@ const truth=read('app/src/main/assets/v250/screens-98-truthful-ui-v271.js');
 const safety=read('app/src/main/assets/v250/screens-99-runtime-safety-v271.js');
 const bootstrap=read('app/src/main/assets/v250/screens-00-truthful-bootstrap-v271.js');
 const activity=read('app/src/main/java/com/lapauseclub/manager/NewAppActivity.java');
+const v298Phone=read('app/src/main/assets/v250/mobile-phone-shell-v298.js');
+const v300Interaction=read('app/src/main/assets/v250/interaction-integrity-v300.js');
 const v306Harness=read('tools/android-v306-onboarding-smoke.sh');
 const v307Native=read('tools/android-native-smoke-v307.sh');
 for(const f of ['screens-00-truthful-bootstrap-v271.js','accounting-integrity-v271.js','screens-96-truthful-extended-v271.js','screens-97-auth-ui-v271.js','screens-98-truthful-ui-v271.js','screens-99-runtime-safety-v271.js']) must(html.includes(f),'entry missing '+f);
@@ -21,6 +22,7 @@ must(pos('screens-00-truthful-bootstrap-v271.js')<pos('accounting-integrity-v271
 must(pos('accounting-integrity-v271.js')<pos('screens.js'),'accounting integrity must load before renderers');
 must(pos('screens-53-60.js')<pos('screens-96-truthful-extended-v271.js'),'extended truth must override legacy 53-60');
 must(pos('screens-96-truthful-extended-v271.js')<pos('canonical-app.js'),'extended truth must load before first app render');
+must(pos('canonical-batch-01-10-v291.js')<pos('mobile-phone-shell-v298.js'),'v298 phone landing must load after v291 renderer');
 for(const token of ['grossRevenueToday','refundsToday','postedPayment',"s==='PAID'||s==='REFUNDED'",'grossRevenueToday()-refundsToday()']) must(accounting.includes(token),'accounting integrity token missing '+token);
 for(const n of [45,49,52,53,54,55,56,57,58,59,60]) must(extended.includes(`register(${n},`),'truthful override missing screen '+n);
 for(const token of ["'EMPTY'","'NOT CONFIGURED'","'NO DATA'",'verifiedByNative===true','M15_AI_OPERATOR','actual pending events','dynamicPricingRules','Gross Sales','Refunds','Net after expenses','Partial Refund','Exportable diagnostic archive','Profit Autopilot','Scheduled Coverage']) must(extended.includes(token),'extended truth token missing '+token);
@@ -38,12 +40,14 @@ must(auth.includes('hasLocalCredential'),'auth UI credential state missing');
 must(safety.includes('verifyLocalCredential')&&safety.includes('SIGN_IN_REJECTED'),'verified sign-in rejection path missing');
 must(safety.includes("status:'PENDING'")&&safety.includes('verifiedByNative:false'),'pending pairing/backup truth missing');
 for(const token of ['PBKDF2WithHmacSHA256','MessageDigest.isEqual','createLocalCredential','verifyLocalCredential']) must(activity.includes(token),'native auth guarantee missing '+token);
+must(v298Phone.includes('U.register(1,')&&v298Phone.includes('v298-landing')&&v298Phone.includes('data-v298-go="3"'),'v311 final phone landing owner missing');
+must(v300Interaction.includes("el.hasAttribute('data-v298-go')")&&v300Interaction.includes('return false'),'v300 must preserve v298-owned physical landing controls');
 must(v306Harness.includes("s.index('input_value(){')")&&v306Harness.includes("s.index('hide_ime(){',start)"),'v306 harness must replace helper block by deterministic anchors');
 must(v306Harness.includes('LOCATE_SCROLL direction=UP')&&v306Harness.includes('LOCATE_SCROLL direction=DOWN'),'v308 onboarding locator must navigate both directions');
 must(v306Harness.includes('CONSOLE_RATE_DIAG')&&v306Harness.includes('V308_CONSOLE_RATE_DOM_OK'),'v308 console rate diagnostic evidence missing');
-for(const token of ['APP_RELAUNCH','APP_READY foreground=1','LANDING_SEL=','.b291-hero [data-go=','probe rect-css "$LANDING_SEL"','tap rect-css "$LANDING_SEL"','try_state_screen','LANDING_CTA_READY','LANDING_PHYSICAL_TAP_OK']) must(v306Harness.includes(token),'v310 onboarding semantic startup proof token missing '+token);
+for(const token of ['APP_RELAUNCH','APP_READY foreground=1','LANDING_SEL=','.v298-landing [data-v298-go=','probe rect-css "$LANDING_SEL"','tap rect-css "$LANDING_SEL"','try_state_screen','LANDING_CTA_READY','LANDING_PHYSICAL_TAP_OK']) must(v306Harness.includes(token),'v311 onboarding final-phone startup proof token missing '+token);
 for(const token of ['EMAIL_FOCUS_ATTEMPT','EMAIL_PREFIX_OK','EMAIL_AT_OK','EMAIL_PHYSICAL_OK','EMAIL_STATE_OK','KEYCODE_AT','ANDROID_NATIVE_V307_SMOKE_OK']) must(v307Native.includes(token),'v308 native physical email proof token missing '+token);
-for(const token of ['APP_RELAUNCH','APP_READY foreground=1','LANDING_SEL=','.b291-hero [data-go=','wait_rect rect-css','tap rect-css "$LANDING_SEL"','try_state_screen','LANDING_CTA_READY','LANDING_PHYSICAL_TAP_OK']) must(v307Native.includes(token),'v310 native semantic startup proof token missing '+token);
+for(const token of ['APP_RELAUNCH','APP_READY foreground=1','LANDING_SEL=','.v298-landing [data-v298-go=','wait_rect rect-css','tap rect-css "$LANDING_SEL"','try_state_screen','LANDING_CTA_READY','LANDING_PHYSICAL_TAP_OK']) must(v307Native.includes(token),'v311 native final-phone startup proof token missing '+token);
 require('./test-v271-bootstrap-runtime.js');
 require('./test-v271-accounting-runtime.js');
 require('./test-v280-canonical-mobile.js');
@@ -89,4 +93,4 @@ console.log('V306_PHYSICAL_INPUT_HARNESS_GATE_OK');
 console.log('V306_DETERMINISTIC_HARNESS_PATCH_GATE_OK');
 console.log('V307_SETUP_ACTION_BRIDGE_GATE_OK');
 console.log('V308_PHYSICAL_EMAIL_AND_BIDIRECTIONAL_LOCATOR_GATE_OK');
-console.log('V310_SEMANTIC_FOREGROUND_PHYSICAL_LANDING_GATE_OK');
+console.log('V311_FINAL_V298_FOREGROUND_PHYSICAL_LANDING_GATE_OK');
