@@ -1,5 +1,5 @@
 'use strict';
-// Canonical recovery gates (v305 rerun): v305 platform truth + v304 operational truth + v303 Android form stability + v302 SaaS runtime authority + v301 SaaS lifecycle isolation + v300 interaction integrity + v299 universal mobile foundation + v298 strict landing viewport + v297 physical-phone recovery + v296 unified product graph + v295 unified operational shell + v294 confirmed premium mobile home + v291 corrected batch 01-10.
+// Canonical recovery gates (v306): physical Android input ownership + v305 platform truth + v304 operational truth + v303 Android form stability + v302 SaaS runtime authority + v301 SaaS lifecycle isolation + v300 interaction integrity + v299 universal mobile foundation + v298 strict landing viewport + v297 physical-phone recovery + v296 unified product graph + v295 unified operational shell + v294 confirmed premium mobile home + v291 corrected batch 01-10.
 const fs=require('fs'),path=require('path');
 const root=path.resolve(__dirname,'..');
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
@@ -54,6 +54,7 @@ require('./test-v302-saas-runtime-integrity.js');
 require('./test-v303-form-input-stability.js');
 require('./test-v304-operational-truth.js');
 require('./test-v305-platform-truth.js');
+require('./test-v306-physical-input-harness.js');
 console.log('V271_EXTENDED_TRUTHFUL_STATES_OK');
 console.log('V271_SAFE_LEGACY_SEED_MIGRATION_OK');
 console.log('V271_VERIFIED_AUTH_CHAIN_OK');
@@ -74,3 +75,4 @@ console.log('V302_FINAL_SAAS_RUNTIME_AUTHORITY_OK');
 console.log('V303_ANDROID_WEBVIEW_FORM_FOCUS_STABILITY_GATE_OK');
 console.log('V304_OPERATIONAL_TRUTH_GATE_OK');
 console.log('V305_PLATFORM_TRUTH_GATE_OK');
+console.log('V306_PHYSICAL_INPUT_HARNESS_GATE_OK');
