@@ -39,6 +39,13 @@ wait_foreground(){
   done
   return 1
 }
+wait_not_foreground(){
+  for _ in $(seq 1 30); do
+    if ! foreground; then return 0; fi
+    sleep .25
+  done
+  return 1
+}
 launch_main(){
   for attempt in 1 2 3; do
     wait_device_ready "pre-launch-$attempt" || continue
@@ -112,6 +119,14 @@ locate(){
   fail "not reachable: $mode $arg"
 }
 tap(){ local x y; read x y < <(locate "$1" "$2"); log "PHYSICAL_TAP $1 $2 x=$x y=$y"; adb shell input tap "$x" "$y" >/dev/null 2>&1 || fail "tap $2"; sleep .55; wait_foreground || fail "app lost foreground after tap $2"; }
+android_back(){
+  local label="$1"
+  log "ANDROID_BACK_BEGIN $label"
+  adb shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || fail "Android back $label"
+  sleep .55
+  wait_foreground || fail "app unexpectedly left foreground after Android back $label"
+  log "ANDROID_BACK_HANDLED $label"
+}
 input_id(){
   local id="$1" val="$2" x y got=""
   read x y < <(locate rect-id "$id")
@@ -124,6 +139,7 @@ input_id(){
 }
 state_json(){ probe state; }
 assert_state(){ local py="$1" msg="$2" j; j="$(state_json)"; printf '%s' "$j" | python3 -c "$py" || fail "$msg state=$j"; log "$msg OK $j"; }
+metric(){ local key="$1"; state_json | python3 -c "import json,sys;p=json.load(sys.stdin);print(p[$(printf '%q' "'$key'")])"; }
 
 [[ -f "$APK" ]] || fail "APK missing"
 node --check "$PROBE" || fail "probe syntax"
@@ -137,6 +153,9 @@ wait_device_ready "post-clear" || fail "emulator lost after pm clear"
 launch_main || fail "MainActivity not foreground after retries"
 cdp_attach
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["stations"]>=7 and p["activeSessions"]==0 and p["shift"] is None' "FRESH_V160_READY"
+BASE_CLIENTS="$(state_json | python3 -c 'import json,sys;print(json.load(sys.stdin)["clients"])')"
+BASE_COCA="$(state_json | python3 -c 'import json,sys;print(json.load(sys.stdin)["cocaStock"])')"
+log "PERSISTENCE_BASELINE clients=$BASE_CLIENTS cocaStock=$BASE_COCA"
 
 # User-reported regression: prepare session + drink before any shift exists.
 tap rect-text "PS5 1"
@@ -160,18 +179,69 @@ log "RESTORED_DRINK_CONTROL $qty"
 # Second operator confirmation performs exactly one game payment + one paid drink order.
 tap rect-id startSessionBtn
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["activeSessions"]==1 and p["payments"]==1 and p["orders"]==1 and p["paidOrders"]==1 and p["shift"] is not None' "SESSION_DRINK_PAYMENT_STARTED_ONCE"
+POST_CLIENTS="$(state_json | python3 -c 'import json,sys;print(json.load(sys.stdin)["clients"])')"
+POST_COCA="$(state_json | python3 -c 'import json,sys;print(json.load(sys.stdin)["cocaStock"])')"
+[[ "$POST_CLIENTS" -eq $((BASE_CLIENTS+1)) ]] || fail "client creation mismatch baseline=$BASE_CLIENTS post=$POST_CLIENTS"
+[[ "$POST_COCA" -eq $((BASE_COCA-1)) ]] || fail "Coca stock mismatch baseline=$BASE_COCA post=$POST_COCA"
+log "SESSION_SIDE_EFFECTS_OK clients=$POST_CLIENTS cocaStock=$POST_COCA"
 
-# Re-render cash: the opened shift must still be recognized after v15 status normalization.
+# Hard process restart: persisted business data must survive Activity/WebView destruction and re-open.
+adb shell am force-stop "$PKG" >/dev/null 2>&1 || fail "force-stop persistence"
+sleep .7
+launch_main || fail "relaunch after persistence force-stop"
+cdp_attach
+assert_state 'import json,sys;p=json.load(sys.stdin);assert p["activeSessions"]==1 and p["payments"]==1 and p["orders"]==1 and p["paidOrders"]==1 and p["shift"] is not None and str(p["shift"]["status"]).lower()=="open"' "PROCESS_RESTART_BUSINESS_STATE_PRESERVED"
+REOPEN_CLIENTS="$(state_json | python3 -c 'import json,sys;print(json.load(sys.stdin)["clients"])')"
+REOPEN_COCA="$(state_json | python3 -c 'import json,sys;print(json.load(sys.stdin)["cocaStock"])')"
+[[ "$REOPEN_CLIENTS" -eq "$POST_CLIENTS" ]] || fail "clients lost after restart post=$POST_CLIENTS reopen=$REOPEN_CLIENTS"
+[[ "$REOPEN_COCA" -eq "$POST_COCA" ]] || fail "stock lost after restart post=$POST_COCA reopen=$REOPEN_COCA"
+log "PROCESS_RESTART_CLIENT_STOCK_OK clients=$REOPEN_CLIENTS cocaStock=$REOPEN_COCA"
+
+# Android Back must close an active station sheet before it can navigate or finish the Activity.
+tap rect-text "PS5 1"
+assert_state 'import json,sys;p=json.load(sys.stdin);assert p["sheetOpen"] is True' "ACTIVE_SESSION_SHEET_OPEN"
+android_back "sheet"
+assert_state 'import json,sys;p=json.load(sys.stdin);assert p["sheetOpen"] is False and p["activeSessions"]==1' "ANDROID_BACK_CLOSES_SHEET"
+
+# Android Back must close the drawer in-place.
+tap rect-id menuBtn
+assert_state 'import json,sys;p=json.load(sys.stdin);assert p["drawerOpen"] is True' "DRAWER_OPEN_FOR_BACK"
+android_back "drawer"
+assert_state 'import json,sys;p=json.load(sys.stdin);assert p["drawerOpen"] is False' "ANDROID_BACK_CLOSES_DRAWER"
+
+# A normal route change must be reversible through the v1.6 navigation stack.
 tap rect-css '[data-view="cash"]'
-assert_state 'import json,sys;p=json.load(sys.stdin);assert p["currentView"]=="cash" and p["shift"] is not None and str(p["shift"]["status"]).lower()=="open" and "SHIFT OUVERT" in p["viewText"]' "SHIFT_SURVIVES_CASH_RERENDER"
+assert_state 'import json,sys;p=json.load(sys.stdin);assert p["currentView"]=="cash" and p["shift"] is not None and "SHIFT OUVERT" in p["viewText"]' "SHIFT_SURVIVES_CASH_RERENDER"
+android_back "route-cash-to-floor"
+assert_state 'import json,sys;p=json.load(sys.stdin);assert p["currentView"]=="floor" and p["activeSessions"]==1' "ANDROID_BACK_RESTORES_PREVIOUS_ROUTE"
+
+# A confirmation modal has higher Back priority than route navigation and must not mutate the shift when dismissed.
+tap rect-css '[data-view="cash"]'
+tap rect-id closeShiftBtn
+assert_state 'import json,sys;p=json.load(sys.stdin);assert p["modalOpen"] is True and p["shift"] is not None' "CLOSE_SHIFT_MODAL_OPEN"
+android_back "modal"
+assert_state 'import json,sys;p=json.load(sys.stdin);assert p["modalOpen"] is False and p["shift"] is not None and str(p["shift"]["status"]).lower()=="open"' "ANDROID_BACK_DISMISSES_MODAL_WITHOUT_MUTATION"
 
 # Close shift physically and prove the cash state exits cleanly.
 tap rect-id closeShiftBtn
 tap rect-id modalOk
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["shift"] is None and "SHIFT FERM" in p["viewText"]' "SHIFT_CLOSE_OK"
 
+# Back from cash restores floor; a second Back with an empty JS stack must finish MainActivity.
+android_back "cash-to-floor-after-close"
+assert_state 'import json,sys;p=json.load(sys.stdin);assert p["currentView"]=="floor"' "ANDROID_BACK_AFTER_SHIFT_CLOSE"
+log "ANDROID_BACK_EXPECT_ACTIVITY_FINISH"
+adb shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || fail "final Android back"
+wait_not_foreground || fail "MainActivity did not finish when nativeBack returned false"
+log "ANDROID_BACK_ACTIVITY_FINISH_OK"
+
+# Relaunch after a true Activity exit: closed-shift state and prior paid session data must still exist.
+launch_main || fail "final relaunch after Activity finish"
+cdp_attach
+assert_state 'import json,sys;p=json.load(sys.stdin);assert p["shift"] is None and p["activeSessions"]==1 and p["payments"]==1 and p["orders"]==1 and p["paidOrders"]==1' "FINAL_REOPEN_PERSISTENCE_OK"
+
 PID="$(adb shell pidof "$PKG" 2>/dev/null | tr -d '\r')"
 [[ -n "$PID" ]] || fail "pid missing"
 timeout --foreground 10s adb logcat -d --pid="$PID" > "$LOGCAT" 2>/dev/null || true
 if grep -Eqi 'FATAL EXCEPTION|AndroidRuntime:.*FATAL|Process com\.lapauseclub\.manager .* has died|chromium.*(crash|Aw, Snap)' "$LOGCAT"; then fail "fatal runtime signal"; fi
-log "ANDROID_V160_PHYSICAL_SHIFT_SESSION_DRINKS_OK"
+log "ANDROID_V160_PHYSICAL_SHIFT_SESSION_DRINKS_BACK_PERSISTENCE_OK"
