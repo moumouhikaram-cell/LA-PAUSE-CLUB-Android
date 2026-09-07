@@ -45,18 +45,32 @@ function expression(){
   if(mode==='state')return `(()=>{let st=null,cv=null,shift=null,pending=null;try{st=(typeof state!=='undefined'&&state)||null}catch(_e){}try{cv=(typeof currentView!=='undefined')?String(currentView):null}catch(_e){}try{shift=(typeof currentShift==='function')?currentShift():null}catch(_e){}try{pending=window.LP160Stabilization&&LP160Stabilization.getPendingSessionStart?LP160Stabilization.getPendingSessionStart():null}catch(_e){}const active=(st?.sessions||[]).filter(s=>s.status==='active'||s.status==='paused');const paid=(st?.payments||[]);const orders=(st?.orders||[]);const coca=(st?.products||[]).find(p=>p.id==='prod-cocacola');return {currentView:cv,shift:shift?{id:shift.id,status:shift.status,openedAt:shift.openedAt,closedAt:shift.closedAt||null}:null,pending:pending?{stationId:pending.stationId,snackCart:pending.draft?.snackCart||{},customerId:pending.draft?.customerId||null}:null,sessions:(st?.sessions||[]).length,activeSessions:active.length,payments:paid.length,orders:orders.length,paidOrders:orders.filter(o=>String(o.status||'').toLowerCase()==='paid').length,clients:(st?.clients||[]).length,cocaStock:coca==null?null:Number(coca.stock),stations:(st?.stations||[]).length,products:(st?.products||[]).length,viewText:(document.getElementById('view')?.textContent||'').trim().slice(0,600),sheetOpen:document.getElementById('overlay')?.classList.contains('show')||document.getElementById('overlay')?.classList.contains('open')||false,modalOpen:document.getElementById('modalBackdrop')?.classList.contains('show')||document.getElementById('modalBackdrop')?.classList.contains('open')||false,drawerOpen:document.getElementById('drawer')?.classList.contains('show')||document.getElementById('drawer')?.classList.contains('open')||false};})()`;
   fail('unknown mode '+mode);
 }
+async function closeWebSocketGracefully(ws){
+  if(!ws||ws.readyState===WebSocket.CLOSED)return;
+  await new Promise(resolve=>{
+    let settled=false;
+    const finish=()=>{if(settled)return;settled=true;clearTimeout(timer);resolve();};
+    const timer=setTimeout(finish,1000);
+    try{ws.addEventListener('close',finish,{once:true});}catch(_){}
+    try{
+      if(ws.readyState===WebSocket.OPEN)ws.close(1000,'done');
+      else if(ws.readyState===WebSocket.CLOSING)return;
+      else ws.close();
+    }catch(_){finish();}
+  });
+}
 async function evaluateOnce(page){
   const ws=new WebSocket(page.webSocketDebuggerUrl),id=1;
   try{
     return await new Promise((resolve,reject)=>{
       let settled=false;
-      const done=(fn,value)=>{if(settled)return;settled=true;clearTimeout(timer);try{ws.close();}catch(_){}fn(value);};
+      const done=(fn,value)=>{if(settled)return;settled=true;clearTimeout(timer);fn(value);};
       const timer=setTimeout(()=>done(reject,new Error('Runtime.evaluate timeout')),4500);
       ws.onopen=()=>ws.send(JSON.stringify({id,method:'Runtime.evaluate',params:{expression:expression(),returnByValue:true,awaitPromise:true}}));
       ws.onerror=()=>done(reject,new Error('websocket error'));
       ws.onmessage=ev=>{let m;try{m=JSON.parse(String(ev.data));}catch(_){return;}if(m.id!==id)return;if(m.error)return done(reject,new Error(JSON.stringify(m.error)));if(m.result&&m.result.exceptionDetails)return done(reject,new Error('Runtime exception'));done(resolve,m.result?.result?.value??null);};
     });
-  }finally{try{ws.close();}catch(_){}}
+  }finally{await closeWebSocketGracefully(ws);}
 }
 async function main(){
   let lastError=null;
