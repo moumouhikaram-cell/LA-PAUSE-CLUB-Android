@@ -66,8 +66,13 @@ function dropCdpSession(reason){
 async function ensureCdpSession(){
   if(persistentSocket&&persistentSocket.readyState===WebSocket.OPEN)return persistentSocket;
   dropCdpSession('reconnecting CDP session');
-  repairForward();
-  const list=pages();
+  let list;
+  try{
+    list=pages();
+  }catch(initialDiscoveryError){
+    repairForward();
+    list=pages();
+  }
   const page=list.find(x=>x.type==='page'&&x.webSocketDebuggerUrl)||list.find(x=>x.webSocketDebuggerUrl);
   if(!page)throw new Error('no debuggable WebView page');
   const ws=new WebSocket(page.webSocketDebuggerUrl);
