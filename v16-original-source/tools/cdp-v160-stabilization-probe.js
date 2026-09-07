@@ -1,7 +1,7 @@
 'use strict';
 /* Read-only CDP locator/state probe for the historical v1.6 stabilization journey.
  * Never clicks, types, mutates storage, changes state or calls render functions.
- * Transport recovery may rebuild the local adb forward to the current WebView socket.
+ * Transport recovery rebuilds the local adb forward to the current WebView socket.
  */
 const {spawnSync}=require('child_process');
 const mode=process.argv[2]||'';
@@ -28,7 +28,7 @@ function repairForward(){
 }
 function pages(){
   const url=`http://127.0.0.1:${port}/json`;
-  const r=spawnSync('curl',['-fsS','--max-time','2',url],{encoding:'utf8',timeout:3500,maxBuffer:2*1024*1024});
+  const r=spawnSync('curl',['-fsS','--max-time','3',url],{encoding:'utf8',timeout:4500,maxBuffer:2*1024*1024});
   if(r.error)throw r.error;
   if(r.status!==0)throw new Error(`curl CDP discovery failed: ${(r.stderr||'').trim()||r.status}`);
   let parsed;
@@ -76,6 +76,7 @@ async function main(){
   let lastError=null;
   for(let attempt=1;attempt<=MAX_ATTEMPTS;attempt++){
     try{
+      repairForward();
       const list=pages(),page=list.find(x=>x.type==='page'&&x.webSocketDebuggerUrl)||list.find(x=>x.webSocketDebuggerUrl);
       if(!page)throw new Error('no debuggable WebView page');
       const result=await evaluateOnce(page);
@@ -83,11 +84,7 @@ async function main(){
       return;
     }catch(e){
       lastError=e;
-      if(attempt<MAX_ATTEMPTS){
-        try{repairForward();}
-        catch(repairError){lastError=new Error(`${e&&e.message?e.message:e}; forward repair: ${repairError&&repairError.message?repairError.message:repairError}`);}
-        await sleep(180*attempt);
-      }
+      if(attempt<MAX_ATTEMPTS)await sleep(220*attempt);
     }
   }
   throw lastError||new Error('CDP probe failed');
