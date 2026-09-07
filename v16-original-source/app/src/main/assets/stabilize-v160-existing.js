@@ -152,9 +152,19 @@
     try{if(typeof saveState==='function')saveState({eventType:`${kind}.revenue_recorded`,entityId:sourceEntityId,payload:e})}catch(_){try{saveState()}catch(__){}}
     return true;
   }
+  function recordRefund(kind,entity,amount,method,label){
+    const sh=compatibleCurrentShift();if(!entity||!sh)return false;
+    amount=Math.max(0,Number(amount)||0);if(amount<=0)return true;
+    try{if(!Array.isArray(state.cashEntries))state.cashEntries=[]}catch(_){return false}
+    const sourceEntityId=entity.id,sourceKind=kind;
+    const existing=state.cashEntries.find(e=>e?.sourceKind===sourceKind&&e?.sourceEntityId===sourceEntityId&&status(e?.type)==='refund');
+    if(existing)return true;
+    const e={id:ledgerId('refund'),type:'refund',amount,label:label||`Remboursement ${kind}`,note:entity.customerName||entity.name||'',at:nowMs(),shiftId:sh.id,method:canonicalMethod(method||entity.paymentMethod),sourceKind,sourceEntityId};
+    state.cashEntries.push(e);
+    try{if(typeof saveState==='function')saveState({eventType:`${kind}.refund_recorded`,entityId:sourceEntityId,payload:e})}catch(_){try{saveState()}catch(__){}}
+    return true;
+  }
 
-  // BOOKING_PREPAY_TRUTH: a new prepaid booking is impossible with a closed mandatory shift
-  // and always creates a real cash/card ledger row.
   const originalSaveBooking=window.saveBookingV15;
   if(typeof originalSaveBooking==='function'&&!originalSaveBooking.__lp160CashTruth){
     const wrappedSaveBooking=function(existing){
@@ -168,7 +178,6 @@
     window.saveBookingV15=wrappedSaveBooking;try{saveBookingV15=wrappedSaveBooking}catch(_){}
   }
 
-  // PASS_PREPAY_TRUTH: the historical purchase commits inside modalOk, so wrap the confirmation.
   const originalBuyPass=window.buyPassV15;
   if(typeof originalBuyPass==='function'&&!originalBuyPass.__lp160CashTruth){
     const wrappedBuyPass=function(){
@@ -193,7 +202,6 @@
     window.buyPassV15=wrappedBuyPass;try{buyPassV15=wrappedBuyPass}catch(_){}
   }
 
-  // CHALLENGE/KING already write revenue rows themselves; only the missing shift gate is added.
   function guardPaidModalAction(name,message){
     const original=window[name];if(typeof original!=='function'||original.__lp160ShiftGuarded)return;
     const wrapped=function(subject){
@@ -207,13 +215,43 @@
   guardPaidModalAction('joinChallengeV15','Ouvre la caisse avant d’encaisser le challenge');
   guardPaidModalAction('kingJoinV15','Ouvre la caisse avant d’encaisser le Roi PS5');
 
+  // BOOKING_REFUND_TRUTH: the historic dialog mutates refundedCents/status but had no cash ledger.
+  // Keep the dialog available for inspection, but block a positive confirmation when the mandatory shift is closed.
+  const originalCancelBooking=window.cancelBookingV15;
+  if(typeof originalCancelBooking==='function'&&!originalCancelBooking.__lp160RefundTruth){
+    const wrappedCancelBooking=function(id){
+      const booking=(state?.bookings||[]).find(x=>x.id===id);
+      const out=originalCancelBooking.apply(this,arguments);
+      let ok=null;try{ok=typeof $==='function'?$('modalOk'):document.getElementById('modalOk')}catch(_){}
+      if(ok&&typeof ok.onclick==='function'&&!ok.__lp160RefundWrapped){
+        const originalOk=ok.onclick;
+        ok.onclick=function(){
+          let requested=0;
+          try{const el=typeof $==='function'?$('bkRefundAmount'):document.getElementById('bkRefundAmount');requested=Math.max(0,Number(el?.value)||0)}catch(_){}
+          if(requested>0&&!requireMoneyShift('Ouvre la caisse avant de valider le remboursement'))return false;
+          const result=originalOk.apply(this,arguments);
+          if(booking&&requested>0)recordRefund('booking',booking,requested,booking.paymentMethod,`Remboursement réservation · ${booking.customerName||'Client'}`);
+          return result;
+        };
+        ok.__lp160RefundWrapped=true;
+      }
+      return out;
+    };
+    wrappedCancelBooking.__lp160RefundTruth=true;wrappedCancelBooking.__lp160Original=originalCancelBooking;
+    window.cancelBookingV15=wrappedCancelBooking;try{cancelBookingV15=wrappedCancelBooking}catch(_){}
+  }
+
   const originalShiftExpected=window.v14ShiftExpected;
   if(typeof originalShiftExpected==='function'&&!originalShiftExpected.__lp160RevenueStabilized){
     const wrappedExpected=function(sh){
       const base=Number(originalShiftExpected.apply(this,arguments))||0;
-      let communityCash=0;
-      try{communityCash=(state?.cashEntries||[]).filter(e=>e?.shiftId===sh?.id&&status(e?.type)==='revenue'&&status(e?.method||'cash')==='cash').reduce((a,e)=>a+(Number(e?.amount)||0),0)}catch(_){}
-      return base+communityCash;
+      let communityCash=0,cashRefunds=0;
+      try{
+        const entries=state?.cashEntries||[];
+        communityCash=entries.filter(e=>e?.shiftId===sh?.id&&status(e?.type)==='revenue'&&status(e?.method||'cash')==='cash').reduce((a,e)=>a+(Number(e?.amount)||0),0);
+        cashRefunds=entries.filter(e=>e?.shiftId===sh?.id&&status(e?.type)==='refund'&&status(e?.method||'cash')==='cash').reduce((a,e)=>a+(Number(e?.amount)||0),0);
+      }catch(_){}
+      return base+communityCash-cashRefunds;
     };
     wrappedExpected.__lp160RevenueStabilized=true;wrappedExpected.__lp160Original=originalShiftExpected;
     window.v14ShiftExpected=wrappedExpected;try{v14ShiftExpected=wrappedExpected}catch(_){}
@@ -298,13 +336,14 @@
   }
 
   window.LP160Stabilization=Object.freeze({
-    version:'1.6.0-stabilization-8',
+    version:'1.6.0-stabilization-9',
     currentShift:compatibleCurrentShift,
     openShiftCandidates,
     requireMoneyShift,
     draftStockOk,
     normalizeOrderStatuses,
     recordPrepaidRevenue,
+    recordRefund,
     safeDrawerKpis,
     getPendingSessionStart:getPending,
     clearPendingSessionStart:clearPending,
