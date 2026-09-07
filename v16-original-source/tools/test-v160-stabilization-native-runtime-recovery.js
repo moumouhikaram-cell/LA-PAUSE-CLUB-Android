@@ -77,6 +77,16 @@ requireMatch(probe,/jsonResponse\(res,502,\{ok:false,error:e&&e\.message\?e\.mes
 requireMatch(diagBlock,/persistentSocket[\s\S]{0,240}diagnostics\s*\(\)/,'NATIVE_CDP_TIMEOUT_RAW_TRANSPORT_SNAPSHOT_MISSING');
 requireMatch(diagBlock,/transport=/,'NATIVE_CDP_TIMEOUT_RAW_TRANSPORT_NOT_EMITTED');
 
+// Native #79 finally proved the first Runtime.evaluate can be sent successfully while the fresh
+// emulator/WebView returns zero bytes, zero frames and zero CDP events; ADB itself then stalls.
+// The historical probe already carries a 12 s INITIAL_READY_TIMEOUT_MS from the old readiness
+// path. Reuse that larger budget ONLY for request #1 on each fresh raw socket. Later requests
+// remain at EVALUATE_TIMEOUT_MS, and a timeout stays terminal (no retry storm).
+requireMatch(probe,/const\s+INITIAL_READY_TIMEOUT_MS\s*=\s*12000\s*;/,'NATIVE_CDP_INITIAL_RUNTIME_BUDGET_CONSTANT_MISSING');
+requireMatch(evaluateBlock,/diagnostics\s*\(\)[\s\S]{0,500}requestsSent[\s\S]{0,500}INITIAL_READY_TIMEOUT_MS[\s\S]{0,500}EVALUATE_TIMEOUT_MS/,'NATIVE_CDP_INITIAL_RUNTIME_BUDGET_SELECTION_MISSING');
+if(/const\s+requestTimeout\s*=\s*INITIAL_READY_TIMEOUT_MS\s*;/.test(evaluateBlock))failures.push('NATIVE_CDP_INITIAL_RUNTIME_BUDGET_MUST_NOT_APPLY_GLOBALLY');
+if(!/requestsSent[^\n]{0,160}===\s*0/.test(evaluateBlock))failures.push('NATIVE_CDP_INITIAL_RUNTIME_BUDGET_MUST_BE_FIRST_REQUEST_ONLY');
+
 // Native #55 proved uiautomator can omit android.webkit.WebView. The navigation matrix shares
 // the same Activity/WebView, so it must use WindowManager content geometry too.
 requireMatch(nav,/window_content_frame\(\)\{/,'NAV_WINDOW_CONTENT_FRAME_HELPER_MISSING');
@@ -111,5 +121,6 @@ console.log('V160_NATIVE_HISTORICAL_BOOT_READINESS_GATE_OK mode=state-same-socke
 console.log('V160_NATIVE_CDP_TIMEOUT_TERMINAL_GATE_OK diagnostics=adb-mem-logcat');
 console.log('V160_NATIVE_CDP_TIMEOUT_PROPAGATION_GATE_OK channel=daemon-error-response');
 console.log('V160_NATIVE_CDP_RAW_TRANSPORT_DIAGNOSTIC_GATE_OK');
+console.log('V160_NATIVE_CDP_INITIAL_RUNTIME_BUDGET_GATE_OK first-request=12000 later=4500');
 console.log('V160_NATIVE_RUNTIME_READINESS_RECOVERY_OK mode=daemon-health');
 console.log('V160_NATIVE_NAV_WINDOW_GEOMETRY_OK');
