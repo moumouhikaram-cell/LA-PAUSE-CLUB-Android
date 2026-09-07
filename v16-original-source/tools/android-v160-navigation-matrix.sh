@@ -66,9 +66,9 @@ locate(){
 tap(){ local x y; read x y < <(locate "$1" "$2") || fail "not reachable: $1 $2"; adb shell input tap "$x" "$y" >/dev/null 2>&1 || fail "tap $2"; sleep .35; wait_foreground || fail "app lost foreground after $2"; }
 state_assert(){
   local expected="$1" j; j="$(probe state)" || fail "state probe $expected"
-  printf '%s' "$j" | python3 - "$expected" <<'PY' || fail "wrong/empty screen expected=$expected state=$j"
-import json,sys
-expected=sys.argv[1]; p=json.load(sys.stdin)
+  LP160_NAV_STATE="$j" python3 - "$expected" <<'PY' || fail "wrong/empty screen expected=$expected state=$j"
+import json,os,sys
+expected=sys.argv[1]; p=json.loads(os.environ['LP160_NAV_STATE'])
 assert p.get('currentView')==expected,(p.get('currentView'),expected)
 assert len((p.get('viewText') or '').strip())>=3,'empty view'
 PY
