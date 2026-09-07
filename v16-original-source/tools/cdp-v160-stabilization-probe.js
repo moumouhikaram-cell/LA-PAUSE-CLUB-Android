@@ -70,8 +70,12 @@ async function ensureCdpSession(){
   try{
     list=pages();
   }catch(initialDiscoveryError){
-    repairForward();
-    list=pages();
+    try{
+      repairForward();
+      list=pages();
+    }catch(repairError){
+      throw new Error(`initial discovery: ${initialDiscoveryError&&initialDiscoveryError.message?initialDiscoveryError.message:String(initialDiscoveryError)}; repair: ${repairError&&repairError.message?repairError.message:String(repairError)}`);
+    }
   }
   const page=list.find(x=>x.type==='page'&&x.webSocketDebuggerUrl)||list.find(x=>x.webSocketDebuggerUrl);
   if(!page)throw new Error('no debuggable WebView page');
@@ -96,6 +100,7 @@ async function ensureCdpSession(){
 }
 async function evaluateReadOnly(requestMode,requestArg){
   let lastError=null;
+  const attemptErrors=[];
   for(let attempt=1;attempt<=MAX_ATTEMPTS;attempt++){
     try{
       const ws=await ensureCdpSession();
@@ -107,10 +112,14 @@ async function evaluateReadOnly(requestMode,requestArg){
       });
       return value;
     }catch(e){
-      lastError=e;dropCdpSession(e&&e.message?e.message:'CDP evaluate failure');
+      const message=e&&e.message?e.message:String(e);
+      attemptErrors.push(`attempt ${attempt}:${message}`);
+      lastError=e;
+      dropCdpSession(message||'CDP evaluate failure');
       if(attempt<MAX_ATTEMPTS)await sleep(220*attempt);
     }
   }
+  if(attemptErrors.length)throw new Error(`CDP attempts failed: ${attemptErrors.join(' | ')}`);
   throw lastError||new Error('CDP probe failed');
 }
 async function queuedEvaluate(requestMode,requestArg){
