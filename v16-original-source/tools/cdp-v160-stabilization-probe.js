@@ -26,6 +26,27 @@ function adb(args,timeout=3500){
   if(r.status!==0)throw new Error(`adb ${args.join(' ')} failed: ${(r.stderr||'').trim()||r.status}`);
   return r.stdout||'';
 }
+function diagnosticAdb(args,timeout=1200,maxBuffer=128*1024){
+  try{
+    const r=spawnSync('adb',args,{encoding:'utf8',timeout,maxBuffer});
+    const output=((r.stdout||'')+(r.stderr||'')).trim();
+    if(r.error)return `error=${r.error.message}${output?` output=${output}`:''}`;
+    return `status=${r.status==null?'null':r.status}${output?` output=${output}`:''}`;
+  }catch(e){return `error=${e&&e.message?e.message:String(e)}`;}
+}
+function compactDiagnostic(value,limit=700){return String(value||'').replace(/\s+/g,' ').trim().slice(0,limit);}
+function captureRuntimeTimeoutDiagnostics(requestMode,attempt){
+  try{
+    const state=diagnosticAdb(['get-state'],800,16*1024);
+    const pid=diagnosticAdb(['shell','pidof','com.lapauseclub.manager'],900,16*1024);
+    const activity=diagnosticAdb(['shell','dumpsys','activity','top'],1200,64*1024);
+    const meminfo=diagnosticAdb(['shell','dumpsys','meminfo','com.lapauseclub.manager'],1500,96*1024);
+    const logcat=diagnosticAdb(['logcat','-d','-t','80'],1500,128*1024);
+    console.error(`V160_CDP_TIMEOUT_DIAGNOSTIC mode=${requestMode} attempt=${attempt} adb=${compactDiagnostic(state,180)} pid=${compactDiagnostic(pid,180)} activity=${compactDiagnostic(activity)} meminfo=${compactDiagnostic(meminfo)} logcat=${compactDiagnostic(logcat,1200)}`);
+  }catch(e){
+    console.error(`V160_CDP_TIMEOUT_DIAGNOSTIC mode=${requestMode} attempt=${attempt} capture_error=${compactDiagnostic(e&&e.message?e.message:String(e),400)}`);
+  }
+}
 function repairForward(){
   const unix=adb(['shell','cat','/proc/net/unix']);
   const sockets=unix.split(/\r?\n/).filter(line=>line.includes('webview_devtools_remote'));
@@ -130,8 +151,12 @@ async function evaluateReadOnly(requestMode,requestArg){
       const message=e&&e.message?e.message:String(e);
       attemptErrors.push(`attempt ${attempt}:${message}`);
       lastError=e;
-      const keepOpen=message==='Runtime.evaluate timeout'&&persistentSocket&&persistentSocket.isOpen();
-      if(!keepOpen)dropCdpSession(message||'CDP evaluate failure',false);
+      if(message==='Runtime.evaluate timeout'){
+        captureRuntimeTimeoutDiagnostics(requestMode,attempt);
+        dropCdpSession(message,false);
+        break;
+      }
+      dropCdpSession(message||'CDP evaluate failure',false);
       if(attempt<maxAttempts)await sleep(220*attempt);
     }
   }
