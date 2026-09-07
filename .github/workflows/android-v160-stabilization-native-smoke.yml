@@ -59,6 +59,7 @@ jobs:
           node v16-original-source/tools/test-v160-stabilization-interactions.js
           node v16-original-source/tools/test-v160-stabilization-shift-session.js
           node v16-original-source/tools/test-v160-stabilization-cash-dom.js
+          node v16-original-source/tools/test-v160-stabilization-accounting.js
 
       - name: Park unrelated modern modules and build exact v1.6
         shell: bash
@@ -106,7 +107,7 @@ jobs:
           ram-size: 2048M
           heap-size: 384M
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -feature -Vulkan -no-snapshot -noaudio -no-boot-anim -no-metrics
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
           script: bash v16-original-source/tools/android-v160-stabilization-journey.sh
 
       - name: Upload stabilization diagnostics
