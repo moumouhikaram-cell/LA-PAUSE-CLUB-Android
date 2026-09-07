@@ -1,9 +1,9 @@
 'use strict';
-/* Regression from native #49/#50.
+/* Regression from native #49/#50 and timeout diagnosis from #70/#72/#74.
  * #49 proved a second Runtime.evaluate through Node's global WebSocket stalled.
  * #50 proved closing that socket then opening another one stalled too.
- * The replacement transport must therefore prove two sequential CDP requests over ONE raw RFC6455
- * connection before it is trusted by the Android journey.
+ * The replacement transport must therefore prove sequential CDP requests over ONE raw RFC6455
+ * connection, and must expose enough transport evidence to diagnose an unanswered request.
  */
 const net=require('net');
 const crypto=require('crypto');
@@ -61,6 +61,12 @@ function consumeClientFrames(state,chunk,onJson){
     });
     function onJson(msg){
       requests++;
+      if(msg.id===3){
+        // Prove the transport can distinguish "bytes/messages are still arriving" from
+        // "the requested response id never arrived".
+        socket.write(frame({method:'Runtime.consoleAPICalled',params:{type:'log'}}));
+        return;
+      }
       socket.write(frame({id:msg.id,result:{result:{value:'reply-'+msg.id}}}));
     }
   });
@@ -74,8 +80,27 @@ function consumeClientFrames(state,chunk,onJson){
     if(one?.result?.result?.value!=='reply-1')throw new Error('first response mismatch');
     if(two?.result?.result?.value!=='reply-2')throw new Error('second response mismatch');
     if(connections!==1)throw new Error(`expected one connection, got ${connections}`);
-    if(requests!==2)throw new Error(`expected two requests, got ${requests}`);
+    if(requests!==2)throw new Error(`expected two requests before timeout probe, got ${requests}`);
+
+    const healthy=ws.diagnostics();
+    if(healthy.requestsSent!==2||healthy.responsesReceived!==2||healthy.lastRequestId!==2||healthy.lastResponseId!==2)throw new Error('healthy transport diagnostics mismatch '+JSON.stringify(healthy));
+    if(healthy.pendingIds.length!==0)throw new Error('healthy diagnostics should have no pending ids');
+    if(!(healthy.bytesReceived>0&&healthy.bytesSent>0&&healthy.framesReceived>=2))throw new Error('healthy transport byte/frame counters missing');
+
+    let timedOut=false;
+    try{await ws.request({id:3,method:'Runtime.evaluate',params:{expression:'3',returnByValue:true}},250);}
+    catch(e){timedOut=e&&e.message==='Runtime.evaluate timeout';if(!timedOut)throw e;}
+    if(!timedOut)throw new Error('third request should time out');
+    const stalled=ws.diagnostics();
+    if(requests!==3)throw new Error(`expected three server requests, got ${requests}`);
+    if(stalled.requestsSent!==3||stalled.responsesReceived!==2)throw new Error('timeout request/response counters mismatch '+JSON.stringify(stalled));
+    if(stalled.eventsReceived<1)throw new Error('expected unrelated CDP event to be counted');
+    if(stalled.lastRequestId!==3||stalled.lastResponseId!==2)throw new Error('timeout correlation diagnostics mismatch '+JSON.stringify(stalled));
+    if(stalled.pendingIds.length!==0)throw new Error('timed-out request must be removed from pending ids');
+    if(!stalled.lastReceiveAt)throw new Error('last receive timestamp missing');
+
     console.log('V160_RAW_CDP_SEQUENTIAL_REQUESTS_OK connections=1 requests=2');
+    console.log(`V160_RAW_CDP_TIMEOUT_DIAGNOSTICS_OK requests=${stalled.requestsSent} responses=${stalled.responsesReceived} events=${stalled.eventsReceived} lastRequestId=${stalled.lastRequestId} lastResponseId=${stalled.lastResponseId}`);
   }catch(e){
     fail(e&&e.stack?e.stack:String(e));
   }finally{
