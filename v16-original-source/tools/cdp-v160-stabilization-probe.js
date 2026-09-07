@@ -13,8 +13,10 @@ const port=Number(process.env.LP160_CDP_PORT||9229);
 const DAEMON_PORT=Number(process.env.LP160_CDP_DAEMON_PORT||9230);
 const MAX_ATTEMPTS=4;
 const EVALUATE_TIMEOUT_MS=4500;
+const INITIAL_READY_TIMEOUT_MS=12000;
 const DAEMON_REQUEST_TIMEOUT_MS=40000;
 const IS_DAEMON=mode==='--daemon';
+const RESET_MODE=mode==='--reset';
 function fail(msg){console.error('V160_STABILIZATION_CDP_FAIL '+msg);process.exit(2);}
 function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
 function adb(args,timeout=3500){
@@ -46,6 +48,7 @@ function pages(){
 }
 function rectBody(find){return `(()=>{const e=${find};if(!e)return null;const r=e.getBoundingClientRect(),s=getComputedStyle(e),a=document.activeElement;return {tag:e.tagName,id:e.id||'',text:(e.textContent||'').trim().slice(0,160),value:'value'in e?e.value:null,checked:'checked'in e?!!e.checked:null,disabled:!!e.disabled,readOnly:!!e.readOnly,pointerEvents:s.pointerEvents,display:s.display,visibility:s.visibility,active:a===e,activeId:a?(a.id||a.name||a.tagName):'',left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:r.width,height:r.height,innerWidth,innerHeight,scrollY,scrollHeight:document.documentElement.scrollHeight};})()`;}
 function expressionFor(requestMode,requestArg){
+  if(requestMode==='ready')return `(()=>document.readyState==='complete'&&typeof state!=='undefined'&&!!state&&Array.isArray(state.stations)&&state.stations.length>=7&&!!document.getElementById('view'))()`;
   if(requestMode==='rect-id')return rectBody(`document.getElementById(${JSON.stringify(requestArg)})`);
   if(requestMode==='rect-css')return rectBody(`document.querySelector(${JSON.stringify(requestArg)})`);
   if(requestMode==='rect-text')return rectBody(`[...document.querySelectorAll('button,a,[role="button"]')].find(x=>((x.textContent||'').trim().toLowerCase()).includes(${JSON.stringify(String(requestArg||'').toLowerCase())}))`);
@@ -105,11 +108,13 @@ async function ensureCdpSession(){
 async function evaluateReadOnly(requestMode,requestArg){
   let lastError=null;
   const attemptErrors=[];
-  for(let attempt=1;attempt<=MAX_ATTEMPTS;attempt++){
+  const maxAttempts=requestMode==='ready'?2:MAX_ATTEMPTS;
+  const requestTimeout=requestMode==='ready'?INITIAL_READY_TIMEOUT_MS:EVALUATE_TIMEOUT_MS;
+  for(let attempt=1;attempt<=maxAttempts;attempt++){
     try{
       await ensureCdpSession();
       const id=nextMessageId++;
-      const response=await persistentSocket.request({id,method:'Runtime.evaluate',params:{expression:expressionFor(requestMode,requestArg),returnByValue:true,awaitPromise:true}},EVALUATE_TIMEOUT_MS);
+      const response=await persistentSocket.request({id,method:'Runtime.evaluate',params:{expression:expressionFor(requestMode,requestArg),returnByValue:true,awaitPromise:true}},requestTimeout);
       if(response&&response.error)throw new Error(JSON.stringify(response.error));
       if(response?.result?.exceptionDetails)throw new Error('Runtime exception');
       const value=response?.result?.result?.value??null;
@@ -118,8 +123,9 @@ async function evaluateReadOnly(requestMode,requestArg){
       const message=e&&e.message?e.message:String(e);
       attemptErrors.push(`attempt ${attempt}:${message}`);
       lastError=e;
-      dropCdpSession(message||'CDP evaluate failure',false);
-      if(attempt<MAX_ATTEMPTS)await sleep(220*attempt);
+      const keepOpen=message==='Runtime.evaluate timeout'&&persistentSocket&&persistentSocket.isOpen();
+      if(!keepOpen)dropCdpSession(message||'CDP evaluate failure',false);
+      if(attempt<maxAttempts)await sleep(220*attempt);
     }
   }
   if(attemptErrors.length)throw new Error(`CDP attempts failed: ${attemptErrors.join(' | ')}`);
@@ -136,6 +142,11 @@ function jsonResponse(res,status,payload){
 function startDaemon(){
   const server=http.createServer((req,res)=>{
     if(req.method==='GET'&&req.url==='/health')return jsonResponse(res,200,{ok:true,session:!!(persistentSocket&&persistentSocket.isOpen()),page:cachedPageUrl||null});
+    if(req.method==='POST'&&req.url==='/reset'){
+      const work=requestQueue.then(()=>{dropCdpSession('client reset',true);return {reset:true};});
+      requestQueue=work.catch(()=>{});
+      return work.then(result=>jsonResponse(res,200,{ok:true,result})).catch(e=>jsonResponse(res,502,{ok:false,error:e&&e.message?e.message:String(e)}));
+    }
     if(req.method!=='POST'||req.url!=='/probe')return jsonResponse(res,404,{ok:false,error:'not found'});
     let raw='';req.setEncoding('utf8');req.on('data',chunk=>{raw+=chunk;if(raw.length>65536)req.destroy();});
     req.on('end',async()=>{
@@ -163,6 +174,18 @@ function daemonRequest(requestMode,requestArg,timeout=DAEMON_REQUEST_TIMEOUT_MS)
     req.setTimeout(timeout,()=>req.destroy(new Error('daemon request timeout')));req.on('error',reject);req.end(body);
   });
 }
+function daemonReset(timeout=3000){
+  return new Promise((resolve,reject)=>{
+    const req=http.request({host:'127.0.0.1',port:DAEMON_PORT,path:'/reset',method:'POST',headers:{'content-length':'0'}},res=>{
+      let raw='';res.setEncoding('utf8');res.on('data',c=>raw+=c);res.on('end',()=>{
+        let parsed;try{parsed=JSON.parse(raw||'{}');}catch(e){return reject(new Error('daemon reset invalid JSON: '+e.message));}
+        if(res.statusCode!==200||!parsed.ok)return reject(new Error(parsed.error||`daemon reset HTTP ${res.statusCode}`));
+        resolve(parsed.result);
+      });
+    });
+    req.setTimeout(timeout,()=>req.destroy(new Error('daemon reset timeout')));req.on('error',reject);req.end();
+  });
+}
 function daemonHealth(timeout=500){
   return new Promise(resolve=>{
     const req=http.get({host:'127.0.0.1',port:DAEMON_PORT,path:'/health'},res=>{res.resume();resolve(res.statusCode===200);});
@@ -178,6 +201,7 @@ async function ensureDaemon(){
 async function clientMain(){
   if(!mode)throw new Error('missing mode');
   await ensureDaemon();
+  if(RESET_MODE)return daemonReset();
   return daemonRequest(mode,arg);
 }
 if(IS_DAEMON)startDaemon();
