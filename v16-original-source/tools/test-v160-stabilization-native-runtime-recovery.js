@@ -56,5 +56,12 @@ const navReady=nav.indexOf('cdp_ready',navAttach);
 if(navAttach<0||navFirstTap<0||navReady<navAttach||navReady>navFirstTap)failures.push('NAV_READY_MUST_PRECEDE_PHYSICAL_TAPS');
 
 if(failures.length){console.error(failures.join('\n'));process.exit(1);}
+
+// Native #64 proved a fresh install can reach the v1.6 session UI with products=0 and
+// cocaStock=null. Execute the actual historical app/v13/v14/v15 scripts against a fresh
+// Android bridge before any product fix is allowed; this gate must reproduce and then guard
+// the exact catalog bootstrap contract (10 historical products, Coca stock 24).
+require('./test-v160-stabilization-fresh-catalog-bootstrap.js');
+
 console.log('V160_NATIVE_RUNTIME_READINESS_RECOVERY_OK mode=daemon-health');
 console.log('V160_NATIVE_NAV_WINDOW_GEOMETRY_OK');
