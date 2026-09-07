@@ -32,15 +32,15 @@ const mainReady=main.indexOf('cdp_ready',mainAttach);
 if(mainAttach<0||mainFresh<0||mainReady<mainAttach||mainReady>mainFresh)failures.push('MAIN_READY_MUST_PRECEDE_FIRST_STATE');
 
 // Native #64 proved that a visible app.js floor is not the same thing as a completed
-// historical boot. Keep one authoritative state channel: state evaluation itself must fail
-// closed until v14 + v15 migrations and the historical Coca seed are present. Existing CDP
-// retry logic then waits without adding a second readiness evaluation path.
+// historical boot. Keep one authoritative state channel: state evaluation returns bootReady,
+// and the existing evaluate retry loop must refuse an early snapshot while KEEPING the raw
+// socket open. No second Runtime.evaluate readiness path is allowed.
 requireMatch(probe,/bootReady/,'NATIVE_STATE_BOOT_READY_MISSING');
 requireMatch(probe,/v140BusinessMigratedAt/,'NATIVE_STATE_V14_MIGRATION_MARKER_MISSING');
 requireMatch(probe,/v15ParityMigratedAt/,'NATIVE_STATE_V15_MIGRATION_MARKER_MISSING');
 requireMatch(probe,/prod-cocacola/,'NATIVE_STATE_COCA_BOOT_SENTINEL_MISSING');
-requireMatch(probe,/HISTORICAL_BOOT_NOT_READY/,'NATIVE_STATE_FAIL_CLOSED_BOOT_ERROR_MISSING');
-requireMatch(probe,/if\s*\(\s*!bootReady\s*\)\s*throw/,'NATIVE_STATE_MUST_FAIL_CLOSED_BEFORE_BOOT');
+requireMatch(probe,/HISTORICAL_BOOT_NOT_READY/,'NATIVE_STATE_BOOT_WAIT_DIAGNOSTIC_MISSING');
+requireMatch(probe,/requestMode\s*===\s*['"]state['"][\s\S]{0,180}value\.bootReady\s*!==\s*true/,'NATIVE_STATE_MUST_RETRY_UNTIL_BOOT_READY');
 
 // Native #55 proved uiautomator can omit android.webkit.WebView. The navigation matrix shares
 // the same Activity/WebView, so it must use WindowManager content geometry too.
@@ -72,6 +72,6 @@ if(failures.length){console.error(failures.join('\n'));process.exit(1);}
 // exact historical ten-product catalog, including Coca-Cola stock 24.
 require('./test-v160-stabilization-fresh-catalog-bootstrap.js');
 
-console.log('V160_NATIVE_HISTORICAL_BOOT_READINESS_GATE_OK mode=state-fail-closed');
+console.log('V160_NATIVE_HISTORICAL_BOOT_READINESS_GATE_OK mode=state-same-socket');
 console.log('V160_NATIVE_RUNTIME_READINESS_RECOVERY_OK mode=daemon-health');
 console.log('V160_NATIVE_NAV_WINDOW_GEOMETRY_OK');
