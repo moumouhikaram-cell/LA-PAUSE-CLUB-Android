@@ -12,6 +12,7 @@ const arg=process.argv.slice(3).join(' ');
 const port=Number(process.env.LP160_CDP_PORT||9229);
 const DAEMON_PORT=Number(process.env.LP160_CDP_DAEMON_PORT||9230);
 const MAX_ATTEMPTS=4;
+const STATE_BOOT_ATTEMPTS=8;
 const EVALUATE_TIMEOUT_MS=4500;
 const INITIAL_READY_TIMEOUT_MS=12000;
 const DAEMON_REQUEST_TIMEOUT_MS=40000;
@@ -51,7 +52,7 @@ function expressionFor(requestMode,requestArg){
   if(requestMode==='rect-id')return rectBody(`document.getElementById(${JSON.stringify(requestArg)})`);
   if(requestMode==='rect-css')return rectBody(`document.querySelector(${JSON.stringify(requestArg)})`);
   if(requestMode==='rect-text')return rectBody(`[...document.querySelectorAll('button,a,[role="button"],[data-station]')].find(x=>((x.textContent||'').trim().toLowerCase()).includes(${JSON.stringify(String(requestArg||'').toLowerCase())}))`);
-  if(requestMode==='state')return `(()=>{let st=null,cv=null,shift=null,pending=null;try{st=(typeof state!=='undefined'&&state)||null}catch(_e){}try{cv=(typeof currentView!=='undefined')?String(currentView):null}catch(_e){}try{shift=(typeof currentShift==='function')?currentShift():null}catch(_e){}try{pending=window.LP160Stabilization&&LP160Stabilization.getPendingSessionStart?LP160Stabilization.getPendingSessionStart():null}catch(_e){}const active=(st?.sessions||[]).filter(s=>s.status==='active'||s.status==='paused');const paid=(st?.payments||[]);const orders=(st?.orders||[]);const coca=(st?.products||[]).find(p=>p.id==='prod-cocacola');return {currentView:cv,shift:shift?{id:shift.id,status:shift.status,openedAt:shift.openedAt,closedAt:shift.closedAt||null}:null,pending:pending?{stationId:pending.stationId,snackCart:pending.draft?.snackCart||{},customerId:pending.draft?.customerId||null}:null,sessions:(st?.sessions||[]).length,activeSessions:active.length,payments:paid.length,orders:orders.length,paidOrders:orders.filter(o=>String(o.status||'').toLowerCase()==='paid').length,clients:(st?.clients||[]).length,cocaStock:coca==null?null:Number(coca.stock),stations:(st?.stations||[]).length,products:(st?.products||[]).length,viewText:(document.getElementById('view')?.textContent||'').trim().slice(0,600),sheetOpen:document.getElementById('overlay')?.classList.contains('show')||document.getElementById('overlay')?.classList.contains('open')||false,modalOpen:document.getElementById('modalBackdrop')?.classList.contains('show')||document.getElementById('modalBackdrop')?.classList.contains('open')||false,drawerOpen:document.getElementById('drawer')?.classList.contains('show')||document.getElementById('drawer')?.classList.contains('open')||false};})()`;
+  if(requestMode==='state')return `(()=>{let st=null,cv=null,shift=null,pending=null;try{st=(typeof state!=='undefined'&&state)||null}catch(_e){}try{cv=(typeof currentView!=='undefined')?String(currentView):null}catch(_e){}try{shift=(typeof currentShift==='function')?currentShift():null}catch(_e){}try{pending=window.LP160Stabilization&&LP160Stabilization.getPendingSessionStart?LP160Stabilization.getPendingSessionStart():null}catch(_e){}const active=(st?.sessions||[]).filter(s=>s.status==='active'||s.status==='paused');const paid=(st?.payments||[]);const orders=(st?.orders||[]);const coca=(st?.products||[]).find(p=>p.id==='prod-cocacola');const bootReady=!!(st?.meta?.v140BusinessMigratedAt&&st?.meta?.v15ParityMigratedAt&&coca);return {bootReady,historicalBoot:{v13:!!st?.meta?.v13MigratedAt,v14:!!st?.meta?.v140BusinessMigratedAt,v15:!!st?.meta?.v15ParityMigratedAt},currentView:cv,shift:shift?{id:shift.id,status:shift.status,openedAt:shift.openedAt,closedAt:shift.closedAt||null}:null,pending:pending?{stationId:pending.stationId,snackCart:pending.draft?.snackCart||{},customerId:pending.draft?.customerId||null}:null,sessions:(st?.sessions||[]).length,activeSessions:active.length,payments:paid.length,orders:orders.length,paidOrders:orders.filter(o=>String(o.status||'').toLowerCase()==='paid').length,clients:(st?.clients||[]).length,cocaStock:coca==null?null:Number(coca.stock),stations:(st?.stations||[]).length,products:(st?.products||[]).length,viewText:(document.getElementById('view')?.textContent||'').trim().slice(0,600),sheetOpen:document.getElementById('overlay')?.classList.contains('show')||document.getElementById('overlay')?.classList.contains('open')||false,modalOpen:document.getElementById('modalBackdrop')?.classList.contains('show')||document.getElementById('modalBackdrop')?.classList.contains('open')||false,drawerOpen:document.getElementById('drawer')?.classList.contains('show')||document.getElementById('drawer')?.classList.contains('open')||false};})()`;
   throw new Error('unknown mode '+requestMode);
 }
 
@@ -107,7 +108,7 @@ async function ensureCdpSession(){
 async function evaluateReadOnly(requestMode,requestArg){
   let lastError=null;
   const attemptErrors=[];
-  const maxAttempts=MAX_ATTEMPTS;
+  const maxAttempts=requestMode==='state'?STATE_BOOT_ATTEMPTS:MAX_ATTEMPTS;
   const requestTimeout=EVALUATE_TIMEOUT_MS;
   for(let attempt=1;attempt<=maxAttempts;attempt++){
     try{
@@ -117,6 +118,13 @@ async function evaluateReadOnly(requestMode,requestArg){
       if(response&&response.error)throw new Error(JSON.stringify(response.error));
       if(response?.result?.exceptionDetails)throw new Error('Runtime exception');
       const value=response?.result?.result?.value??null;
+      if(requestMode==='state'&&(!value||value.bootReady!==true)){
+        const message='HISTORICAL_BOOT_NOT_READY';
+        attemptErrors.push(`attempt ${attempt}:${message}`);
+        lastError=new Error(message);
+        if(attempt<maxAttempts){await sleep(220*attempt);continue;}
+        break;
+      }
       return value;
     }catch(e){
       const message=e&&e.message?e.message:String(e);
