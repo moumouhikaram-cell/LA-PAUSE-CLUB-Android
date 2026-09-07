@@ -26,14 +26,16 @@ function repairForward(){
   adb(['forward',`tcp:${port}`,`localabstract:${sock}`],3500);
   return sock;
 }
-async function pages(){
-  const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),2500);
-  try{
-    const r=await fetch(`http://127.0.0.1:${port}/json`,{signal:controller.signal,cache:'no-store'});
-    if(!r.ok)throw new Error('HTTP '+r.status);
-    return r.json();
-  }finally{clearTimeout(timer);}
+function pages(){
+  const url=`http://127.0.0.1:${port}/json`;
+  const r=spawnSync('curl',['-fsS','--max-time','2',url],{encoding:'utf8',timeout:3500,maxBuffer:2*1024*1024});
+  if(r.error)throw r.error;
+  if(r.status!==0)throw new Error(`curl CDP discovery failed: ${(r.stderr||'').trim()||r.status}`);
+  let parsed;
+  try{parsed=JSON.parse(r.stdout||'[]');}
+  catch(e){throw new Error(`invalid CDP discovery JSON: ${e.message}`);}
+  if(!Array.isArray(parsed))throw new Error('CDP discovery response is not an array');
+  return parsed;
 }
 function rectBody(find){return `(()=>{const e=${find};if(!e)return null;const r=e.getBoundingClientRect(),s=getComputedStyle(e),a=document.activeElement;return {tag:e.tagName,id:e.id||'',text:(e.textContent||'').trim().slice(0,160),value:'value'in e?e.value:null,checked:'checked'in e?!!e.checked:null,disabled:!!e.disabled,readOnly:!!e.readOnly,pointerEvents:s.pointerEvents,display:s.display,visibility:s.visibility,active:a===e,activeId:a?(a.id||a.name||a.tagName):'',left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:r.width,height:r.height,innerWidth,innerHeight,scrollY,scrollHeight:document.documentElement.scrollHeight};})()`;}
 function expression(){
@@ -60,7 +62,7 @@ async function main(){
   let lastError=null;
   for(let attempt=1;attempt<=MAX_ATTEMPTS;attempt++){
     try{
-      const list=await pages(),page=list.find(x=>x.type==='page'&&x.webSocketDebuggerUrl)||list.find(x=>x.webSocketDebuggerUrl);
+      const list=pages(),page=list.find(x=>x.type==='page'&&x.webSocketDebuggerUrl)||list.find(x=>x.webSocketDebuggerUrl);
       if(!page)throw new Error('no debuggable WebView page');
       const result=await evaluateOnce(page);
       process.stdout.write(JSON.stringify(result));
