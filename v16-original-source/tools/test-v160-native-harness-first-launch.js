@@ -2,13 +2,13 @@
 const fs=require('fs');
 const path=require('path');
 const harness=fs.readFileSync(path.resolve(__dirname,'android-v160-stabilization-journey.sh'),'utf8');
+const nav=fs.readFileSync(path.resolve(__dirname,'android-v160-navigation-matrix.sh'),'utf8');
 const probe=fs.readFileSync(path.resolve(__dirname,'cdp-v160-stabilization-probe.js'),'utf8');
 const failures=[];
 
 const clearPos=harness.indexOf('adb shell pm clear "$PKG"');
 const grantPos=harness.indexOf('adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS');
 const launchPos=harness.indexOf('launch_main || fail "MainActivity not foreground after retries"');
-
 if(clearPos<0)failures.push('HARNESS_PM_CLEAR_MISSING');
 if(grantPos<0)failures.push('HARNESS_FIRST_LAUNCH_NOTIFICATION_GRANT_MISSING');
 if(launchPos<0)failures.push('HARNESS_MAIN_LAUNCH_GATE_MISSING');
@@ -21,80 +21,46 @@ if(!/FIRST_LAUNCH_NOTIFICATION_PERMISSION_(?:GRANTED|GRANT_SKIPPED)/.test(harnes
 
 // locate()/webview_frame()/rect() return machine-readable values over stdout. Any diagnostic
 // emitted by log() on stdout corrupts command substitutions such as `read x y < <(locate ...)`.
-// Keep operator diagnostics visible and persisted, but force them onto stderr.
 const logDef=(harness.match(/log\(\)\{[^\n]*\}/)||[])[0]||'';
 if(!logDef)failures.push('HARNESS_LOG_HELPER_MISSING');
-else if(!/(?:>&2|1>&2)/.test(logDef)){
-  failures.push('HARNESS_STDOUT_COORDINATE_CONTAMINATION: log() must write diagnostics to stderr');
-}
-if(!/read\s+x\s+y\s+<\s*<\(locate\s+"\$1"\s+"\$2"\)/.test(harness)){
-  failures.push('HARNESS_PHYSICAL_TAP_COORDINATE_CONTRACT_CHANGED');
-}
+else if(!/(?:>&2|1>&2)/.test(logDef))failures.push('HARNESS_STDOUT_COORDINATE_CONTAMINATION: log() must write diagnostics to stderr');
+if(!/read\s+x\s+y\s+<\s*<\(locate\s+"\$1"\s+"\$2"\)/.test(harness))failures.push('HARNESS_PHYSICAL_TAP_COORDINATE_CONTRACT_CHANGED');
 
-// Android WebView CDP can transiently drop a fresh websocket between rapid read-only probes.
-// The probe must rediscover the target and retry instead of failing the whole physical journey
-// on the first timeout. It must remain read-only: retry only Runtime.evaluate.
-if(!/(?:MAX_ATTEMPTS|CDP_ATTEMPTS|attempts)\s*=\s*[2-9]/.test(probe)){
-  failures.push('HARNESS_CDP_RETRY_BUDGET_MISSING');
-}
-if(!/for\s*\([^)]*(?:attempt|try)[^)]*\)/.test(probe)&&!/while\s*\([^)]*(?:attempt|try)[^)]*\)/.test(probe)){
-  failures.push('HARNESS_CDP_RECONNECT_LOOP_MISSING');
-}
-if(!/(?:await\s+)?pages\s*\(\s*\)/.test(probe)||!/new\s+WebSocket/.test(probe)){
-  failures.push('HARNESS_CDP_TARGET_REDISCOVERY_CONTRACT_MISSING');
-}
-if((probe.match(/method:\s*['"]Runtime\.evaluate['"]/g)||[]).length!==1){
-  failures.push('HARNESS_CDP_PROBE_MUST_REMAIN_READ_ONLY_RUNTIME_EVALUATE');
-}
+// Both physical journeys must continue to call the same probe entrypoint. The persistence is an
+// internal transport concern and must not replace physical adb taps with synthetic JS actions.
+if(!/probe\(\)\{\s*node\s+"\$PROBE"\s+"\$@";\s*\}/.test(harness))failures.push('HARNESS_MAIN_PROBE_ENTRYPOINT_CHANGED');
+if(!/probe\(\)\{\s*node\s+"\$PROBE"\s+"\$@";\s*\}/.test(nav))failures.push('HARNESS_NAV_PROBE_ENTRYPOINT_CHANGED');
+if(!/adb shell input tap/.test(harness)||!/adb shell input tap/.test(nav))failures.push('HARNESS_PHYSICAL_ADB_TAPS_MISSING');
 
-// A retry budget alone is not enough when the adb forward itself becomes stale. The read-only
-// probe must be able to rediscover the current WebView devtools socket and rebuild tcp:PORT.
-if(!probe.includes("require('child_process')")||!probe.includes('function repairForward()')){
-  failures.push('HARNESS_CDP_FORWARD_REPAIR_HELPER_MISSING');
-}
-if(!probe.includes("'forward','--remove'")||!probe.includes('localabstract:${sock}')){
-  failures.push('HARNESS_CDP_ADB_FORWARD_REPAIR_CONTRACT_MISSING');
-}
-if(!probe.includes('repairForward()')){
-  failures.push('HARNESS_CDP_REPAIR_NOT_IN_RETRY_PATH');
-}
+// The hosted Android WebView DevTools endpoint has proved unreliable when every read opens a new
+// /json request + websocket. The probe must therefore auto-start one localhost daemon and keep a
+// single WebSocket session alive across successive read-only Runtime.evaluate requests.
+if(!probe.includes("require('http')")||!probe.includes("createServer"))failures.push('HARNESS_CDP_PERSISTENT_DAEMON_SERVER_MISSING');
+if(!probe.includes("'--daemon'")||!probe.includes('process.execPath'))failures.push('HARNESS_CDP_DAEMON_AUTOSTART_MISSING');
+if(!/(?:DAEMON_PORT|LP160_CDP_DAEMON_PORT)/.test(probe))failures.push('HARNESS_CDP_DAEMON_PORT_MISSING');
+if(!/let\s+(?:sessionSocket|persistentSocket|ws)\s*=\s*null/.test(probe))failures.push('HARNESS_CDP_PERSISTENT_SOCKET_STATE_MISSING');
+if(!/function\s+ensure(?:Cdp)?Session\s*\(/i.test(probe))failures.push('HARNESS_CDP_PERSISTENT_SESSION_ENSURE_MISSING');
+if(!/readyState\s*===\s*WebSocket\.OPEN/.test(probe))failures.push('HARNESS_CDP_SOCKET_REUSE_CHECK_MISSING');
+if(!/new\s+WebSocket/.test(probe))failures.push('HARNESS_CDP_WEBSOCKET_MISSING');
+if((probe.match(/method:\s*['"]Runtime\.evaluate['"]/g)||[]).length!==1)failures.push('HARNESS_CDP_PROBE_MUST_REMAIN_READ_ONLY_RUNTIME_EVALUATE');
 
-// On the hosted Android runner Node's fetch() has proved non-deterministic against the adb
-// loopback forward even when curl succeeds against the same endpoint. Discovery therefore uses
-// a bounded local curl process; websocket evaluation remains native/read-only CDP.
-if(/\bfetch\s*\(/.test(probe)){
-  failures.push('HARNESS_CDP_NODE_FETCH_FORBIDDEN_FOR_ADB_LOOPBACK');
-}
-if(!probe.includes("spawnSync('curl'")||!probe.includes("'--max-time'")||!probe.includes('http://127.0.0.1:${port}/json')){
-  failures.push('HARNESS_CDP_BOUNDED_CURL_DISCOVERY_MISSING');
-}
-if(!probe.includes('JSON.parse')){
-  failures.push('HARNESS_CDP_DISCOVERY_JSON_PARSE_MISSING');
-}
+// Discovery is allowed only when establishing/recovering the persistent session. Keep the known
+// bounded curl + adb-forward recovery path for actual WebView process restarts.
+if(/\bfetch\s*\(/.test(probe))failures.push('HARNESS_CDP_NODE_FETCH_FORBIDDEN_FOR_ADB_LOOPBACK');
+if(!probe.includes("spawnSync('curl'")||!probe.includes("'--max-time'")||!probe.includes('http://127.0.0.1:${port}/json'))failures.push('HARNESS_CDP_BOUNDED_CURL_DISCOVERY_MISSING');
+if(!probe.includes('function repairForward()')||!probe.includes("'forward','--remove'")||!probe.includes('localabstract:${sock}'))failures.push('HARNESS_CDP_ADB_FORWARD_REPAIR_CONTRACT_MISSING');
+if(!/(?:MAX_ATTEMPTS|CDP_ATTEMPTS|attempts)\s*=\s*[2-9]/.test(probe))failures.push('HARNESS_CDP_RETRY_BUDGET_MISSING');
+if(!/for\s*\([^)]*(?:attempt|try)[^)]*\)/.test(probe)&&!/while\s*\([^)]*(?:attempt|try)[^)]*\)/.test(probe))failures.push('HARNESS_CDP_RECONNECT_LOOP_MISSING');
 
-// A one-shot Node process must not exit immediately after ws.close(): Android WebView's DevTools
-// endpoint can keep the previous websocket slot busy until the close handshake completes. Every
-// evaluation therefore awaits a bounded close event before the process returns to the shell.
-if(!/function\s+closeWebSocketGracefully\s*\(/.test(probe)){
-  failures.push('HARNESS_CDP_GRACEFUL_CLOSE_HELPER_MISSING');
-}
-if(!/addEventListener\(\s*['"]close['"]/.test(probe)&&!/\.onclose\s*=/.test(probe)){
-  failures.push('HARNESS_CDP_CLOSE_EVENT_WAIT_MISSING');
-}
-if(!/await\s+closeWebSocketGracefully\s*\(\s*ws\s*\)/.test(probe)){
-  failures.push('HARNESS_CDP_GRACEFUL_CLOSE_NOT_AWAITED');
-}
-if(!/setTimeout\([^\n]{0,160}(?:resolve|finish|done)/.test(probe)){
-  failures.push('HARNESS_CDP_GRACEFUL_CLOSE_TIMEOUT_MISSING');
-}
+// The daemon must serialize requests so two shell pipelines cannot interleave CDP message ids.
+if(!/(?:requestQueue|commandQueue|serialQueue)/.test(probe)||!/.then\s*\(/.test(probe))failures.push('HARNESS_CDP_REQUEST_SERIALIZATION_MISSING');
+// A WebView restart must invalidate the old session and trigger recovery, not return stale state.
+if(!/function\s+(?:drop|reset|invalidate)(?:Cdp)?Session\s*\(/i.test(probe))failures.push('HARNESS_CDP_SESSION_INVALIDATION_MISSING');
 
-if(failures.length){
-  console.error(failures.join('\n'));
-  process.exit(1);
-}
+if(failures.length){console.error(failures.join('\n'));process.exit(1)}
 console.log('V160_NATIVE_FIRST_LAUNCH_PERMISSION_GATE_OK');
 console.log('V160_NATIVE_COORDINATE_STREAM_GATE_OK');
+console.log('V160_NATIVE_CDP_PERSISTENT_SESSION_GATE_OK');
 console.log('V160_NATIVE_CDP_RECONNECT_GATE_OK');
 console.log('V160_NATIVE_CDP_FORWARD_REPAIR_GATE_OK');
 console.log('V160_NATIVE_CDP_CURL_DISCOVERY_GATE_OK');
-console.log('V160_NATIVE_CDP_GRACEFUL_CLOSE_GATE_OK');
