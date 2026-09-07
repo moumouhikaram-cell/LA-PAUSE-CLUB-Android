@@ -48,7 +48,19 @@ function hasDataConsumer(a){
     new RegExp(`getAttribute\\(\\s*['"]data-${q}['"]\\s*\\)`).test(all);
 }
 
-let idButtons=0,dataButtons=0,inlineButtons=0,disabledButtons=0;
+// Historical floor renders the visible start CTA without its own id/data attribute.
+// It is intentionally nested in the data-station card; click bubbles to that card's
+// exact handler, which calls openStation with the card's station id.
+function hasStationStartBubblingContract(b){
+  if(!/\bstation-start-btn\b/.test(b.markup))return false;
+  const s=src[b.file]||'';
+  return s.includes('foot=`<button class="station-start-btn">') &&
+    s.includes('data-station="${st.id}"') &&
+    s.includes("document.querySelectorAll('[data-station]').forEach(el=>el.onclick=e=>") &&
+    s.includes('openStation(el.dataset.station)');
+}
+
+let idButtons=0,dataButtons=0,inlineButtons=0,disabledButtons=0,bubbledButtons=0;
 const uniqueIds=new Set();
 for(const b of buttons){
   if(b.inline){inlineButtons++;continue;}
@@ -63,6 +75,7 @@ for(const b of buttons){
     dataButtons++;
     if(b.data.some(hasDataConsumer))proven=true;
   }
+  if(hasStationStartBubblingContract(b)){bubbledButtons++;proven=true;}
   // Pure submit/reset buttons are native form controls and do not need a JS listener.
   if(/\btype="(?:submit|reset)"/.test(b.markup))proven=true;
   if(!proven){
@@ -81,7 +94,7 @@ const critical=['menuBtn','drawerClose','quickStartBtn','openShiftBtn','closeShi
 for(const id of critical) if(!hasConcreteIdBinding(id)) failures.push(`CRITICAL_CONTROL_WITHOUT_BINDING:${id}`);
 
 if(failures.length){console.error(failures.join('\n'));process.exit(1)}
-console.log(`V160_STABILIZATION_INTERACTION_AUDIT_OK buttons=${buttons.length} uniqueIds=${uniqueIds.size} idButtons=${idButtons} dataButtons=${dataButtons} inlineButtons=${inlineButtons} disabledButtons=${disabledButtons} dataContracts=${attrs.size}`);
+console.log(`V160_STABILIZATION_INTERACTION_AUDIT_OK buttons=${buttons.length} uniqueIds=${uniqueIds.size} idButtons=${idButtons} dataButtons=${dataButtons} inlineButtons=${inlineButtons} disabledButtons=${disabledButtons} bubbledButtons=${bubbledButtons} dataContracts=${attrs.size}`);
 
 // Dynamic v1.5 tabs also need persistent route state, otherwise a re-render can jump to a wrong screen.
 require('./test-v160-stabilization-tabs.js');
