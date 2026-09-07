@@ -27,21 +27,20 @@ requireMatch(main,/cdp_ready\(\)\{/,'MAIN_CDP_READY_HELPER_MISSING');
 requireMatch(main,/probe\s+ready/,'MAIN_CDP_READY_PROBE_MISSING');
 requireMatch(main,/probe\s+--reset/,'MAIN_CDP_RESET_BEFORE_ATTACH_MISSING');
 const mainAttach=main.indexOf('\ncdp_attach\n');
+const mainFresh=main.indexOf('FRESH_STATE="$(state_json)"',mainAttach);
 const mainReady=main.indexOf('cdp_ready',mainAttach);
-if(mainAttach<0||mainReady<mainAttach)failures.push('MAIN_READY_MUST_FOLLOW_ATTACH');
+if(mainAttach<0||mainFresh<0||mainReady<mainAttach||mainReady>mainFresh)failures.push('MAIN_READY_MUST_PRECEDE_FIRST_STATE');
 
 // Native #64 proved that a visible app.js floor is not the same thing as a completed
-// historical boot. The state probe must expose the actual v14/v15 migration markers and the
-// journey must wait on that same first business-state channel before any physical tap.
+// historical boot. Keep one authoritative state channel: state evaluation itself must fail
+// closed until v14 + v15 migrations and the historical Coca seed are present. Existing CDP
+// retry logic then waits without adding a second readiness evaluation path.
 requireMatch(probe,/bootReady/,'NATIVE_STATE_BOOT_READY_MISSING');
 requireMatch(probe,/v140BusinessMigratedAt/,'NATIVE_STATE_V14_MIGRATION_MARKER_MISSING');
 requireMatch(probe,/v15ParityMigratedAt/,'NATIVE_STATE_V15_MIGRATION_MARKER_MISSING');
 requireMatch(probe,/prod-cocacola/,'NATIVE_STATE_COCA_BOOT_SENTINEL_MISSING');
-requireMatch(main,/fresh_state_json\(\)\{/,'MAIN_FRESH_STATE_BOOT_WAIT_HELPER_MISSING');
-requireMatch(main,/bootReady/,'MAIN_FRESH_STATE_BOOT_READY_ASSERTION_MISSING');
-requireMatch(main,/HISTORICAL_BOOT_READY/,'MAIN_HISTORICAL_BOOT_READY_DIAGNOSTIC_MISSING');
-const mainFresh=main.indexOf('FRESH_STATE="$(fresh_state_json)"',mainAttach);
-if(mainAttach<0||mainFresh<0||mainReady>mainFresh)failures.push('MAIN_FULL_BOOT_WAIT_MUST_PRECEDE_FIRST_STATE_CONSUMPTION');
+requireMatch(probe,/HISTORICAL_BOOT_NOT_READY/,'NATIVE_STATE_FAIL_CLOSED_BOOT_ERROR_MISSING');
+requireMatch(probe,/if\s*\(\s*!bootReady\s*\)\s*throw/,'NATIVE_STATE_MUST_FAIL_CLOSED_BEFORE_BOOT');
 
 // Native #55 proved uiautomator can omit android.webkit.WebView. The navigation matrix shares
 // the same Activity/WebView, so it must use WindowManager content geometry too.
@@ -73,6 +72,6 @@ if(failures.length){console.error(failures.join('\n'));process.exit(1);}
 // exact historical ten-product catalog, including Coca-Cola stock 24.
 require('./test-v160-stabilization-fresh-catalog-bootstrap.js');
 
-console.log('V160_NATIVE_HISTORICAL_BOOT_READINESS_GATE_OK');
+console.log('V160_NATIVE_HISTORICAL_BOOT_READINESS_GATE_OK mode=state-fail-closed');
 console.log('V160_NATIVE_RUNTIME_READINESS_RECOVERY_OK mode=daemon-health');
 console.log('V160_NATIVE_NAV_WINDOW_GEOMETRY_OK');
