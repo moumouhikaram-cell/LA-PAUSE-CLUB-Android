@@ -176,6 +176,16 @@
   }
 
   function tabButtons(){try{return [...document.querySelectorAll('[data-v15-tab]')]}catch(_){return []}}
+  function bindBookingRouteState(renderFn){
+    const buttons=tabButtons(),ids=new Set(buttons.map(b=>b?.dataset?.v15Tab));
+    if(!ids.has('bookings')||!ids.has('passes'))return;
+    buttons.forEach(b=>{const t=b?.dataset?.v15Tab;if(!['bookings','passes'].includes(t))return;b.onclick=()=>{try{V15_BOOKING_TAB=t}catch(_){};try{currentView=t==='passes'?'passes':'reservations'}catch(_){};return renderFn()}});
+  }
+  function bindClientRouteState(renderFn){
+    const buttons=tabButtons(),ids=new Set(buttons.map(b=>b?.dataset?.v15Tab));
+    if(!ids.has('crm')||!ids.has('cards')||!ids.has('consents'))return;
+    buttons.forEach(b=>{const t=b?.dataset?.v15Tab;if(!['crm','cards','consents'].includes(t))return;b.onclick=()=>{try{V15_CLIENT_TAB=t}catch(_){};try{currentView=t==='consents'?'mediaConsents':'clients'}catch(_){};return renderFn()}});
+  }
   function bindCompetitionRouteState(renderFn){
     const buttons=tabButtons(),ids=new Set(buttons.map(b=>b?.dataset?.v15Tab));
     if(!ids.has('tournaments')||!ids.has('challenges')||!ids.has('king'))return;
@@ -185,6 +195,20 @@
     const buttons=tabButtons(),ids=new Set(buttons.map(b=>b?.dataset?.v15Tab));
     if(!ids.has('overview')||!ids.has('customers'))return;
     buttons.forEach(b=>{const t=b?.dataset?.v15Tab;if(!['overview','revenue','occupancy','customers','closure'].includes(t))return;b.onclick=()=>{const route=t==='customers'?'customerReports':t==='overview'?'overview':t;try{currentView=route}catch(_){};return renderFn(t)}});
+  }
+
+  const originalReservations=window.renderReservationsV15;
+  if(typeof originalReservations==='function'&&!originalReservations.__lp160RouteStabilized){
+    const wrappedReservations=function(){const out=originalReservations.apply(this,arguments);bindBookingRouteState(wrappedReservations);return out;};
+    wrappedReservations.__lp160RouteStabilized=true;wrappedReservations.__lp160Original=originalReservations;
+    window.renderReservationsV15=wrappedReservations;try{renderReservationsV15=wrappedReservations}catch(_){}
+  }
+
+  const originalClients=window.renderClientsV15;
+  if(typeof originalClients==='function'&&!originalClients.__lp160RouteStabilized){
+    const wrappedClients=function(){const out=originalClients.apply(this,arguments);bindClientRouteState(wrappedClients);return out;};
+    wrappedClients.__lp160RouteStabilized=true;wrappedClients.__lp160Original=originalClients;
+    window.renderClientsV15=wrappedClients;try{renderClientsV15=wrappedClients}catch(_){}
   }
 
   const originalCompetitions=window.renderCompetitionsV15;
@@ -202,7 +226,7 @@
   }
 
   window.LP160Stabilization=Object.freeze({
-    version:'1.6.0-stabilization-5',
+    version:'1.6.0-stabilization-6',
     currentShift:compatibleCurrentShift,
     openShiftCandidates,
     draftStockOk,
@@ -211,6 +235,8 @@
     getPendingSessionStart:getPending,
     clearPendingSessionStart:clearPending,
     restorePendingSessionStart:restorePending,
+    bindBookingRouteState,
+    bindClientRouteState,
     bindCompetitionRouteState,
     bindReportRouteState
   });
