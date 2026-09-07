@@ -9,7 +9,7 @@ ACT="$PKG/.MainActivity"
 PORT=9229
 export LP160_CDP_PORT="$PORT"
 : > "$TRACE"
-log(){ printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" | tee -a "$TRACE"; }
+log(){ printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" | tee -a "$TRACE" >&2; }
 fail(){
   log "ANDROID_V160_STABILIZATION_JOURNEY_FAIL: $*"
   { adb devices -l; adb shell dumpsys activity activities 2>/dev/null | head -120; } >> "$TRACE" 2>&1 || true
