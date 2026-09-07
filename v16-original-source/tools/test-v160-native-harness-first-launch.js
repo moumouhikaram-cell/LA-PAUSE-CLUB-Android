@@ -26,6 +26,15 @@ if(!logDef)failures.push('HARNESS_LOG_HELPER_MISSING');
 else if(!/(?:>&2|1>&2)/.test(logDef))failures.push('HARNESS_STDOUT_COORDINATE_CONTAMINATION: log() must write diagnostics to stderr');
 if(!/read\s+x\s+y\s+<\s*<\(locate\s+"\$1"\s+"\$2"\)/.test(harness))failures.push('HARNESS_PHYSICAL_TAP_COORDINATE_CONTRACT_CHANGED');
 
+// Native #50 made three immediate state probes before the first physical tap. One fresh snapshot
+// already contains shift/stations/clients/Coca stock, so baseline values must be derived from it.
+const attachRun=harness.indexOf('\ncdp_attach\n',launchPos);
+const firstPhysicalTap=harness.indexOf('\ntap rect-text "PS5 1"',attachRun);
+const initialBlock=attachRun>=0&&firstPhysicalTap>attachRun?harness.slice(attachRun,firstPhysicalTap):'';
+if(!/FRESH_STATE="\$\(state_json\)"/.test(initialBlock))failures.push('HARNESS_SINGLE_FRESH_STATE_SNAPSHOT_MISSING');
+if((initialBlock.match(/state_json/g)||[]).length!==1)failures.push('HARNESS_REDUNDANT_INITIAL_STATE_PROBES');
+if(!/BASE_CLIENTS=.*FRESH_STATE/.test(initialBlock)||!/BASE_COCA=.*FRESH_STATE/.test(initialBlock))failures.push('HARNESS_BASELINE_NOT_DERIVED_FROM_FRESH_STATE');
+
 if(!/probe\(\)\{\s*node\s+"\$PROBE"\s+"\$@";\s*\}/.test(harness))failures.push('HARNESS_MAIN_PROBE_ENTRYPOINT_CHANGED');
 if(!/probe\(\)\{\s*node\s+"\$PROBE"\s+"\$@";\s*\}/.test(nav))failures.push('HARNESS_NAV_PROBE_ENTRYPOINT_CHANGED');
 if(!/adb shell input tap/.test(harness)||!/adb shell input tap/.test(nav))failures.push('HARNESS_PHYSICAL_ADB_TAPS_MISSING');
@@ -94,6 +103,7 @@ if(!/return\s+value/.test(evalBlock))failures.push('HARNESS_CDP_SUCCESS_VALUE_RE
 if(failures.length){console.error(failures.join('\n'));process.exit(1)}
 console.log('V160_NATIVE_FIRST_LAUNCH_PERMISSION_GATE_OK');
 console.log('V160_NATIVE_COORDINATE_STREAM_GATE_OK');
+console.log('V160_NATIVE_SINGLE_FRESH_STATE_GATE_OK');
 console.log('V160_NATIVE_CDP_PERSISTENT_SESSION_GATE_OK');
 console.log('V160_NATIVE_CDP_RECONNECT_GATE_OK');
 console.log('V160_NATIVE_CDP_FORWARD_REPAIR_GATE_OK');
