@@ -26,6 +26,24 @@ if(!logDef)failures.push('HARNESS_LOG_HELPER_MISSING');
 else if(!/(?:>&2|1>&2)/.test(logDef))failures.push('HARNESS_STDOUT_COORDINATE_CONTAMINATION: log() must write diagnostics to stderr');
 if(!/read\s+x\s+y\s+<\s*<\(locate\s+"\$1"\s+"\$2"\)/.test(harness))failures.push('HARNESS_PHYSICAL_TAP_COORDINATE_CONTRACT_CHANGED');
 
+// Native #55 proved that API 33 may not expose android.webkit.WebView through uiautomator.
+// MainActivity hosts the WebView as its content view, so physical coordinate mapping must use
+// the package-scoped WindowManager content frame first, with uiautomator only as a fallback.
+if(!/window_content_frame\(\)\{/.test(harness))failures.push('HARNESS_WINDOW_CONTENT_FRAME_HELPER_MISSING');
+if(!/adb shell dumpsys window windows/.test(harness))failures.push('HARNESS_WINDOW_MANAGER_GEOMETRY_MISSING');
+if(!/\$PKG.*MainActivity|MainActivity.*\$PKG/.test(harness))failures.push('HARNESS_WINDOW_GEOMETRY_NOT_ACTIVITY_SCOPED');
+const frameStart=harness.indexOf('webview_frame(){');
+const frameEnd=harness.indexOf('\nrect(){',frameStart);
+const frameBlock=frameStart>=0&&frameEnd>frameStart?harness.slice(frameStart,frameEnd):'';
+if(!frameBlock)failures.push('HARNESS_WEBVIEW_FRAME_HELPER_MISSING');
+else{
+  const wmPos=frameBlock.indexOf('window_content_frame');
+  const uiPos=frameBlock.indexOf('ui_dump');
+  if(wmPos<0)failures.push('HARNESS_WINDOW_CONTENT_FRAME_NOT_USED');
+  if(uiPos>=0&&uiPos<wmPos)failures.push('HARNESS_UIAUTOMATOR_MUST_NOT_PRECEDE_WINDOW_FRAME');
+}
+if(!/WINDOW_CONTENT_FRAME/.test(harness))failures.push('HARNESS_WINDOW_CONTENT_FRAME_DIAGNOSTIC_MISSING');
+
 // Native #50 made three immediate state probes before the first physical tap. One fresh snapshot
 // already contains shift/stations/clients/Coca stock, so baseline values must be derived from it.
 const attachRun=harness.indexOf('\ncdp_attach\n',launchPos);
@@ -103,6 +121,7 @@ if(!/return\s+value/.test(evalBlock))failures.push('HARNESS_CDP_SUCCESS_VALUE_RE
 if(failures.length){console.error(failures.join('\n'));process.exit(1)}
 console.log('V160_NATIVE_FIRST_LAUNCH_PERMISSION_GATE_OK');
 console.log('V160_NATIVE_COORDINATE_STREAM_GATE_OK');
+console.log('V160_NATIVE_WINDOW_CONTENT_FRAME_GATE_OK');
 console.log('V160_NATIVE_SINGLE_FRESH_STATE_GATE_OK');
 console.log('V160_NATIVE_CDP_PERSISTENT_SESSION_GATE_OK');
 console.log('V160_NATIVE_CDP_RECONNECT_GATE_OK');
