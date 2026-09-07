@@ -10,6 +10,8 @@ const arg=process.argv.slice(3).join(' ');
 const port=Number(process.env.LP160_CDP_PORT||9229);
 const DAEMON_PORT=Number(process.env.LP160_CDP_DAEMON_PORT||9230);
 const MAX_ATTEMPTS=4;
+const EVALUATE_TIMEOUT_MS=4500;
+const DAEMON_REQUEST_TIMEOUT_MS=40000;
 const IS_DAEMON=mode==='--daemon';
 function fail(msg){console.error('V160_STABILIZATION_CDP_FAIL '+msg);process.exit(2);}
 function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
@@ -94,7 +96,7 @@ async function evaluateReadOnly(requestMode,requestArg){
       const ws=await ensureCdpSession();
       const id=nextMessageId++;
       const value=await new Promise((resolve,reject)=>{
-        const timer=setTimeout(()=>{pendingMessages.delete(id);reject(new Error('Runtime.evaluate timeout'));},4500);
+        const timer=setTimeout(()=>{pendingMessages.delete(id);reject(new Error('Runtime.evaluate timeout'));},EVALUATE_TIMEOUT_MS);
         pendingMessages.set(id,{resolve,reject,timer});
         ws.send(JSON.stringify({id,method:'Runtime.evaluate',params:{expression:expressionFor(requestMode,requestArg),returnByValue:true,awaitPromise:true}}));
       });
@@ -131,7 +133,7 @@ function startDaemon(){
   const shutdown=()=>{dropCdpSession('daemon shutdown');server.close(()=>process.exit(0));setTimeout(()=>process.exit(0),500).unref();};
   process.on('SIGTERM',shutdown);process.on('SIGINT',shutdown);
 }
-function daemonRequest(requestMode,requestArg,timeout=9000){
+function daemonRequest(requestMode,requestArg,timeout=DAEMON_REQUEST_TIMEOUT_MS){
   return new Promise((resolve,reject)=>{
     const body=JSON.stringify({mode:requestMode,arg:requestArg});
     const req=http.request({host:'127.0.0.1',port:DAEMON_PORT,path:'/probe',method:'POST',headers:{'content-type':'application/json','content-length':Buffer.byteLength(body)}},res=>{
@@ -159,12 +161,7 @@ async function ensureDaemon(){
 async function clientMain(){
   if(!mode)throw new Error('missing mode');
   await ensureDaemon();
-  try{return await daemonRequest(mode,arg);}
-  catch(first){
-    // Daemon can outlive an emulator process inside one hosted step. Ask it once more after its
-    // own session invalidation/recovery path; the physical scripts remain the authority for taps.
-    await sleep(250);return daemonRequest(mode,arg);
-  }
+  return daemonRequest(mode,arg);
 }
 if(IS_DAEMON)startDaemon();
 else clientMain().then(result=>process.stdout.write(JSON.stringify(result))).catch(e=>fail(e&&e.message?e.message:String(e)));
