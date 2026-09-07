@@ -2,7 +2,8 @@
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const code=fs.readFileSync(path.resolve(__dirname,'../app/src/main/assets/stabilize-v160-existing.js'),'utf8');
 function makeInput(v=''){return {value:String(v),onclick:null}}
-const els={modalOk:{onclick:null},bkRefundAmount:makeInput('12'),bkRefundReason:makeInput('Annulation client')};
+const els={bkRefundReason:makeInput('Annulation client'),bkRefundAmount:makeInput('12')};
+function recreateRefundModal(){els.modalOk={onclick:null};els.bkRefundReason=makeInput('Annulation client');els.bkRefundAmount=makeInput('12');}
 let cancelCalls=0,saves=0,toasts=[];
 const cashBooking={id:'bk-cash',customerName:'Cash Client',paidCents:2000,refundedCents:0,paymentMethod:'CASH',status:'CONFIRMED'};
 const cardBooking={id:'bk-card',customerName:'Card Client',paidCents:3000,refundedCents:0,paymentMethod:'CARD',status:'CONFIRMED'};
@@ -12,7 +13,7 @@ const ctx={console,Date,JSON,Math,state,currentView:'reservations',selectedStati
   saveState:()=>{saves++},toast:m=>toasts.push(String(m)),uid:p=>`${p}-${Date.now()}-${Math.random()}`,
   v14OrderCash:()=>0,
   v14ShiftExpected:sh=>Number(sh.openingCash||0),
-  cancelBookingV15:id=>{cancelCalls++;const b=state.bookings.find(x=>x.id===id);els.modalOk.onclick=()=>{b.status='CANCELLED';b.refundedCents=Math.round(Number(els.bkRefundAmount.value||0)*100);return true};return true},
+  cancelBookingV15:id=>{cancelCalls++;recreateRefundModal();const b=state.bookings.find(x=>x.id===id);els.modalOk.onclick=()=>{b.status='CANCELLED';b.refundedCents=Math.round(Number(els.bkRefundAmount.value||0)*100);return true};return true},
   $:id=>els[id]||null,document:{getElementById:id=>els[id]||null,querySelectorAll:()=>[]}
 };ctx.window=ctx;vm.createContext(ctx);vm.runInContext(code,ctx,{filename:'stabilize-v160-existing.js'});
 
@@ -37,7 +38,7 @@ rows=state.cashEntries.filter(e=>e.type==='refund'&&e.sourceEntityId==='bk-cash'
 if(rows.length!==1)throw new Error('Cash refund duplicated');
 
 // Card refund is recorded for truth/audit but must not reduce physical expected cash.
-els.bkRefundAmount.value='15';ctx.cancelBookingV15('bk-card');els.modalOk.onclick();
+ctx.cancelBookingV15('bk-card');els.bkRefundAmount.value='15';els.modalOk.onclick();
 rows=state.cashEntries.filter(e=>e.type==='refund'&&e.sourceEntityId==='bk-card');
 if(rows.length!==1||rows[0].amount!==15||rows[0].method!=='card'||rows[0].shiftId!=='shift1')throw new Error(`Card refund ledger wrong ${JSON.stringify(rows)}`);
 if(ctx.v14ShiftExpected(state.shifts[0])!==88)throw new Error('Card refund incorrectly changed physical cash expected');
