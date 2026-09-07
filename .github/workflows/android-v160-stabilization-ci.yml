@@ -69,19 +69,21 @@ jobs:
           INDEX="$A/index.html"
           grep -q '<script src="v15.js"></script>' "$INDEX"
           grep -q '<script src="stabilize-v160-existing.js"></script>' "$INDEX"
+          grep -q '<script src="stabilize-v160-shift-recovery.js"></script>' "$INDEX"
           python3 - <<'PY'
           from pathlib import Path
           s=Path('v16-original-source/app/src/main/assets/index.html').read_text()
-          order=['app.js','v13.js','v14.js','v15.js','stabilize-v160-existing.js','enrich-v160-core.js']
+          order=['app.js','v13.js','v14.js','v15.js','stabilize-v160-existing.js','stabilize-v160-shift-recovery.js','enrich-v160-core.js']
           pos=[s.index(x) for x in order]
           assert pos==sorted(pos),(order,pos)
           print('V160_STABILIZATION_LOAD_ORDER_OK')
           PY
           node --check "$A/stabilize-v160-existing.js"
-          ! grep -q 'location.reload' "$A/stabilize-v160-existing.js"
-          ! grep -qi 'v250/' "$A/stabilize-v160-existing.js"
-          ! grep -qi 'saas' "$A/stabilize-v160-existing.js"
-          ! grep -qi 'onboarding' "$A/stabilize-v160-existing.js"
+          node --check "$A/stabilize-v160-shift-recovery.js"
+          ! grep -q 'location.reload' "$A"/stabilize-v160-*.js
+          ! grep -qi 'v250/' "$A"/stabilize-v160-*.js
+          ! grep -qi 'saas' "$A"/stabilize-v160-*.js
+          ! grep -qi 'onboarding' "$A"/stabilize-v160-*.js
           node v16-original-source/tools/test-v160-stabilization-routes.js
           node v16-original-source/tools/test-v160-stabilization-interactions.js
           node v16-original-source/tools/test-v160-stabilization-shift-session.js
@@ -118,7 +120,7 @@ jobs:
           while IFS= read -r -d '' src; do
             rel="${src#$ASSETS/}"
             case "$rel" in
-              app.css|app.js|index.html|logo.svg|v13.css|v13.js|v14.css|v14.js|v15.css|v15.js|stabilize-v160-existing.js|enrich-v160-*.js|\
+              app.css|app.js|index.html|logo.svg|v13.css|v13.js|v14.css|v14.js|v15.css|v15.js|stabilize-v160-*.js|enrich-v160-*.js|\
               media/combat-dynamic.png|media/combat.svg|media/esport-dynamic.png|media/esport-team.jpg|media/esport.svg|\
               media/football-dynamic.png|media/football.svg|media/idle.svg|\
               media/products/chips.svg|media/products/chocolate.svg|media/products/cocacola.jpg|media/products/coffee.svg|media/products/cola.svg|media/products/energy.svg|media/products/fanta.jpg|media/products/lays.jpg|media/products/oreo.jpg|media/products/redbull.jpg|media/products/snickers.jpg|media/products/sprite.jpg|media/products/twix.jpg|media/products/water.svg|\
@@ -147,6 +149,7 @@ jobs:
           grep -qx 'assets/app.js' v160-stabilization-assets.txt
           grep -qx 'assets/v15.js' v160-stabilization-assets.txt
           grep -qx 'assets/stabilize-v160-existing.js' v160-stabilization-assets.txt
+          grep -qx 'assets/stabilize-v160-shift-recovery.js' v160-stabilization-assets.txt
           ! grep -q '^assets/v250/' v160-stabilization-assets.txt
           ! grep -qi 'saas' v160-stabilization-assets.txt
           ! grep -qi 'onboarding' v160-stabilization-assets.txt
