@@ -70,20 +70,23 @@ jobs:
           grep -q '<script src="v15.js"></script>' "$INDEX"
           grep -q '<script src="stabilize-v160-existing.js"></script>' "$INDEX"
           grep -q '<script src="stabilize-v160-shift-recovery.js"></script>' "$INDEX"
+          grep -q '<script src="stabilize-v160-navigation.js"></script>' "$INDEX"
           python3 - <<'PY'
           from pathlib import Path
           s=Path('v16-original-source/app/src/main/assets/index.html').read_text()
-          order=['app.js','v13.js','v14.js','v15.js','stabilize-v160-existing.js','stabilize-v160-shift-recovery.js','enrich-v160-core.js']
+          order=['app.js','v13.js','v14.js','v15.js','stabilize-v160-existing.js','stabilize-v160-shift-recovery.js','stabilize-v160-navigation.js','enrich-v160-core.js']
           pos=[s.index(x) for x in order]
           assert pos==sorted(pos),(order,pos)
           print('V160_STABILIZATION_LOAD_ORDER_OK')
           PY
           node --check "$A/stabilize-v160-existing.js"
           node --check "$A/stabilize-v160-shift-recovery.js"
+          node --check "$A/stabilize-v160-navigation.js"
           ! grep -q 'location.reload' "$A"/stabilize-v160-*.js
           ! grep -qi 'v250/' "$A"/stabilize-v160-*.js
           ! grep -qi 'saas' "$A"/stabilize-v160-*.js
           ! grep -qi 'onboarding' "$A"/stabilize-v160-*.js
+          node v16-original-source/tools/test-v160-stabilization-navigation.js
           node v16-original-source/tools/test-v160-stabilization-routes.js
           node v16-original-source/tools/test-v160-stabilization-interactions.js
           node v16-original-source/tools/test-v160-stabilization-shift-session.js
@@ -152,6 +155,7 @@ jobs:
           grep -qx 'assets/v15.js' v160-stabilization-assets.txt
           grep -qx 'assets/stabilize-v160-existing.js' v160-stabilization-assets.txt
           grep -qx 'assets/stabilize-v160-shift-recovery.js' v160-stabilization-assets.txt
+          grep -qx 'assets/stabilize-v160-navigation.js' v160-stabilization-assets.txt
           ! grep -q '^assets/v250/' v160-stabilization-assets.txt
           ! grep -qi 'saas' v160-stabilization-assets.txt
           ! grep -qi 'onboarding' v160-stabilization-assets.txt
