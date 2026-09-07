@@ -57,6 +57,19 @@ const evaluateEnd=probe.indexOf('\nasync function queuedEvaluate',evaluateStart)
 const evaluateBlock=evaluateStart>=0&&evaluateEnd>evaluateStart?probe.slice(evaluateStart,evaluateEnd):'';
 if(/keepOpen\s*=\s*message\s*===\s*['"]Runtime\.evaluate timeout['"]/.test(evaluateBlock))failures.push('NATIVE_CDP_TIMEOUT_KEEP_OPEN_FORBIDDEN_AFTER_70');
 
+// Native #72 proved diagnostics written only to daemon stderr are invisible because the
+// persistent daemon is intentionally detached with stdio:'ignore'. The timeout evidence must
+// therefore be returned into the evaluate error, serialized by /probe, and printed by the CLI
+// client. This keeps the daemon detached while making the Android evidence observable in CI.
+const diagStart=probe.indexOf('function captureRuntimeTimeoutDiagnostics(');
+const diagEnd=probe.indexOf('\nfunction ',diagStart+10);
+const diagBlock=diagStart>=0&&diagEnd>diagStart?probe.slice(diagStart,diagEnd):'';
+if(!/return\s+[`'"].*V160_CDP_TIMEOUT_DIAGNOSTIC/s.test(diagBlock))failures.push('NATIVE_CDP_TIMEOUT_DIAGNOSTIC_MUST_RETURN');
+requireMatch(evaluateBlock,/const\s+diagnostic\s*=\s*captureRuntimeTimeoutDiagnostics\s*\(requestMode\s*,\s*attempt\s*\)/,'NATIVE_CDP_TIMEOUT_DIAGNOSTIC_RESULT_NOT_CAPTURED');
+requireMatch(evaluateBlock,/attemptErrors\.push\s*\(diagnostic\s*\)/,'NATIVE_CDP_TIMEOUT_DIAGNOSTIC_NOT_PROPAGATED');
+requireMatch(probe,/CDP attempts failed:[^\n]*attemptErrors\.join/,'NATIVE_CDP_TIMEOUT_DAEMON_ERROR_CHANNEL_MISSING');
+requireMatch(probe,/jsonResponse\(res,502,\{ok:false,error:e&&e\.message\?e\.message:String\(e\)\}\)/,'NATIVE_CDP_TIMEOUT_HTTP_ERROR_PROPAGATION_MISSING');
+
 // Native #55 proved uiautomator can omit android.webkit.WebView. The navigation matrix shares
 // the same Activity/WebView, so it must use WindowManager content geometry too.
 requireMatch(nav,/window_content_frame\(\)\{/,'NAV_WINDOW_CONTENT_FRAME_HELPER_MISSING');
@@ -89,5 +102,6 @@ require('./test-v160-stabilization-fresh-catalog-bootstrap.js');
 
 console.log('V160_NATIVE_HISTORICAL_BOOT_READINESS_GATE_OK mode=state-same-socket');
 console.log('V160_NATIVE_CDP_TIMEOUT_TERMINAL_GATE_OK diagnostics=adb-mem-logcat');
+console.log('V160_NATIVE_CDP_TIMEOUT_PROPAGATION_GATE_OK channel=daemon-error-response');
 console.log('V160_NATIVE_RUNTIME_READINESS_RECOVERY_OK mode=daemon-health');
 console.log('V160_NATIVE_NAV_WINDOW_GEOMETRY_OK');
