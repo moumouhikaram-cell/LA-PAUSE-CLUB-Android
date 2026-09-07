@@ -127,6 +127,14 @@
   <script src="app.js"></script>
   <script src="v13.js"></script>
   <script src="v14.js"></script>
+  <script>
+    try{
+      window.__LP160_PRE_V15_DEFAULT_PAYMENT_TIMING =
+        (typeof state !== 'undefined' && state && state.sessionRules)
+          ? state.sessionRules.defaultPaymentTiming
+          : null;
+    }catch(_){ window.__LP160_PRE_V15_DEFAULT_PAYMENT_TIMING = null; }
+  </script>
   <script src="v15.js"></script>
   <script src="stabilize-v160-existing.js"></script>
   <script src="stabilize-v160-shift-recovery.js"></script>
