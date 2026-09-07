@@ -36,15 +36,19 @@ function diagnosticAdb(args,timeout=1200,maxBuffer=128*1024){
 }
 function compactDiagnostic(value,limit=700){return String(value||'').replace(/\s+/g,' ').trim().slice(0,limit);}
 function captureRuntimeTimeoutDiagnostics(requestMode,attempt){
+  let transport='none';
+  try{
+    if(persistentSocket&&typeof persistentSocket.diagnostics==='function')transport=JSON.stringify(persistentSocket.diagnostics());
+  }catch(e){transport=`error=${e&&e.message?e.message:String(e)}`;}
   try{
     const state=diagnosticAdb(['get-state'],800,16*1024);
     const pid=diagnosticAdb(['shell','pidof','com.lapauseclub.manager'],900,16*1024);
     const activity=diagnosticAdb(['shell','dumpsys','activity','top'],1200,64*1024);
     const meminfo=diagnosticAdb(['shell','dumpsys','meminfo','com.lapauseclub.manager'],1500,96*1024);
     const logcat=diagnosticAdb(['logcat','-d','-t','80'],1500,128*1024);
-    return `V160_CDP_TIMEOUT_DIAGNOSTIC mode=${requestMode} attempt=${attempt} adb=${compactDiagnostic(state,180)} pid=${compactDiagnostic(pid,180)} activity=${compactDiagnostic(activity)} meminfo=${compactDiagnostic(meminfo)} logcat=${compactDiagnostic(logcat,1200)}`;
+    return `V160_CDP_TIMEOUT_DIAGNOSTIC mode=${requestMode} attempt=${attempt} transport=${compactDiagnostic(transport,900)} adb=${compactDiagnostic(state,180)} pid=${compactDiagnostic(pid,180)} activity=${compactDiagnostic(activity)} meminfo=${compactDiagnostic(meminfo)} logcat=${compactDiagnostic(logcat,1200)}`;
   }catch(e){
-    return `V160_CDP_TIMEOUT_DIAGNOSTIC mode=${requestMode} attempt=${attempt} capture_error=${compactDiagnostic(e&&e.message?e.message:String(e),400)}`;
+    return `V160_CDP_TIMEOUT_DIAGNOSTIC mode=${requestMode} attempt=${attempt} transport=${compactDiagnostic(transport,900)} capture_error=${compactDiagnostic(e&&e.message?e.message:String(e),400)}`;
   }
 }
 function repairForward(){
