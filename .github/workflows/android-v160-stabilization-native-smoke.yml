@@ -56,9 +56,11 @@ jobs:
           set -euxo pipefail
           node --check v16-original-source/app/src/main/assets/stabilize-v160-existing.js
           node --check v16-original-source/app/src/main/assets/stabilize-v160-shift-recovery.js
+          node --check v16-original-source/app/src/main/assets/stabilize-v160-navigation.js
           node --check v16-original-source/tools/cdp-v160-stabilization-probe.js
           bash -n v16-original-source/tools/android-v160-stabilization-journey.sh
           bash -n v16-original-source/tools/android-v160-navigation-matrix.sh
+          node v16-original-source/tools/test-v160-stabilization-navigation.js
           node v16-original-source/tools/test-v160-stabilization-routes.js
           node v16-original-source/tools/test-v160-stabilization-interactions.js
           node v16-original-source/tools/test-v160-stabilization-shift-session.js
@@ -89,7 +91,7 @@ jobs:
           while IFS= read -r -d '' src; do
             rel="${src#$ASSETS/}"
             case "$rel" in
-              app.css|app.js|index.html|logo.svg|v13.css|v13.js|v14.css|v14.js|v15.css|v15.js|stabilize-v160-existing.js|stabilize-v160-shift-recovery.js|enrich-v160-*.js|\
+              app.css|app.js|index.html|logo.svg|v13.css|v13.js|v14.css|v14.js|v15.css|v15.js|stabilize-v160-existing.js|stabilize-v160-shift-recovery.js|stabilize-v160-navigation.js|enrich-v160-*.js|\
               media/combat-dynamic.png|media/combat.svg|media/esport-dynamic.png|media/esport-team.jpg|media/esport.svg|\
               media/football-dynamic.png|media/football.svg|media/idle.svg|\
               media/products/chips.svg|media/products/chocolate.svg|media/products/cocacola.jpg|media/products/coffee.svg|media/products/cola.svg|media/products/energy.svg|media/products/fanta.jpg|media/products/lays.jpg|media/products/oreo.jpg|media/products/redbull.jpg|media/products/snickers.jpg|media/products/sprite.jpg|media/products/twix.jpg|media/products/water.svg|\
@@ -152,6 +154,7 @@ jobs:
               required = {
                   "assets/stabilize-v160-existing.js",
                   "assets/stabilize-v160-shift-recovery.js",
+                  "assets/stabilize-v160-navigation.js",
               }
               absent = sorted(required - names)
               if absent:
@@ -172,7 +175,19 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
           script: |
-            bash v16-original-source/tools/android-v160-stabilization-journey.sh
+            python3 - <<'PY'
+            from pathlib import Path
+            src=Path('v16-original-source/tools/android-v160-stabilization-journey.sh').read_text()
+            start=src.index('# Back from cash restores floor;')
+            end=src.index('# Relaunch after a true Activity exit:')
+            replacement='''# Back from cash restores floor; a second Back on Home must NEVER finish MainActivity.\nandroid_back "cash-to-floor-after-close"\nassert_state 'import json,sys;p=json.load(sys.stdin);assert p["currentView"]=="floor"' "ANDROID_BACK_AFTER_SHIFT_CLOSE"\nandroid_back "home-remains-open"\nassert_state 'import json,sys;p=json.load(sys.stdin);assert p["currentView"]=="floor"' "ANDROID_BACK_HOME_NO_EXIT"\nlog "ANDROID_BACK_HOME_NO_EXIT_OK"\n\n'''
+            src=src[:start]+replacement+src[end:]
+            src=src.replace('# Relaunch after a true Activity exit: closed-shift state and prior paid session data must still exist.','# Relaunch after a deliberate process restart: closed-shift state and prior paid session data must still exist.')
+            src=src.replace('launch_main || fail "final relaunch after Activity finish"','launch_main || fail "final relaunch after Back no-exit verification"')
+            out=Path('/tmp/android-v160-stabilization-journey-no-exit.sh')
+            out.write_text(src);out.chmod(0o755)
+            PY
+            bash /tmp/android-v160-stabilization-journey-no-exit.sh
             bash v16-original-source/tools/android-v160-navigation-matrix.sh
 
       - name: Upload stabilization diagnostics
