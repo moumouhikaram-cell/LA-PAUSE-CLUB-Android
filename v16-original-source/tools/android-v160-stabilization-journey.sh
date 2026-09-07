@@ -10,16 +10,53 @@ PORT=9229
 export LP160_CDP_PORT="$PORT"
 : > "$TRACE"
 log(){ printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" | tee -a "$TRACE"; }
-fail(){ log "ANDROID_V160_STABILIZATION_JOURNEY_FAIL: $*"; timeout --foreground 10s adb logcat -d > "$LOGCAT" 2>/dev/null || true; exit 1; }
+fail(){
+  log "ANDROID_V160_STABILIZATION_JOURNEY_FAIL: $*"
+  { adb devices -l; adb shell dumpsys activity activities 2>/dev/null | head -120; } >> "$TRACE" 2>&1 || true
+  timeout --foreground 6s adb logcat -d > "$LOGCAT" 2>/dev/null || true
+  exit 1
+}
 need(){ command -v "$1" >/dev/null || fail "missing command $1"; }
 need adb; need node; need curl; need python3
 probe(){ node "$PROBE" "$@"; }
-foreground(){ adb shell dumpsys activity activities 2>/dev/null | grep -m1 -E 'mResumedActivity|topResumedActivity' | grep -q "$PKG"; }
-wait_foreground(){ for _ in $(seq 1 25); do foreground && return 0; sleep .4; done; return 1; }
+device_ready(){ [[ "$(adb get-state 2>/dev/null || true)" = "device" ]] && [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]]; }
+wait_device_ready(){
+  local phase="${1:-runtime}"
+  for attempt in $(seq 1 60); do
+    if device_ready; then log "ANDROID_DEVICE_READY phase=$phase attempt=$attempt"; return 0; fi
+    sleep .5
+  done
+  log "ANDROID_DEVICE_LOST phase=$phase"
+  adb devices -l >> "$TRACE" 2>&1 || true
+  return 1
+}
+foreground(){ device_ready && adb shell dumpsys activity activities 2>/dev/null | grep -m1 -E 'mResumedActivity|topResumedActivity' | grep -q "$PKG"; }
+wait_foreground(){
+  for _ in $(seq 1 40); do
+    if foreground; then return 0; fi
+    device_ready || return 2
+    sleep .35
+  done
+  return 1
+}
+launch_main(){
+  for attempt in 1 2 3; do
+    wait_device_ready "pre-launch-$attempt" || continue
+    adb shell am force-stop "$PKG" >/dev/null 2>&1 || true
+    if timeout --foreground 20s adb shell am start -W -n "$ACT" >> "$TRACE" 2>&1; then
+      if wait_foreground; then log "MAIN_ACTIVITY_FOREGROUND attempt=$attempt"; return 0; fi
+    fi
+    log "MAIN_ACTIVITY_RETRY attempt=$attempt"
+    adb shell dumpsys activity activities 2>/dev/null | head -80 >> "$TRACE" || true
+    sleep 1
+  done
+  return 1
+}
 cdp_attach(){
   adb forward --remove tcp:$PORT >/dev/null 2>&1 || true
   local sock=""
   for _ in $(seq 1 30); do
+    device_ready || return 2
     sock="$(adb shell cat /proc/net/unix 2>/dev/null | awk '/webview_devtools_remote/{print $NF}' | tail -n1 | tr -d '\r@')"
     if [[ -n "$sock" ]]; then
       adb forward tcp:$PORT localabstract:$sock >/dev/null 2>&1 || true
@@ -29,7 +66,7 @@ cdp_attach(){
   done
   fail "CDP unavailable"
 }
-ui_dump(){ timeout --foreground 8s adb shell uiautomator dump /sdcard/v160-stab.xml >/dev/null 2>&1 || true; timeout --foreground 8s adb shell cat /sdcard/v160-stab.xml 2>/dev/null || true; }
+ui_dump(){ device_ready || return 2; timeout --foreground 8s adb shell uiautomator dump /sdcard/v160-stab.xml >/dev/null 2>&1 || true; timeout --foreground 8s adb shell cat /sdcard/v160-stab.xml 2>/dev/null || true; }
 webview_frame(){
   local xml=/tmp/v160-stab-frame.xml; ui_dump > "$xml"
   python3 - "$xml" <<'PY'
@@ -63,6 +100,7 @@ PY
 locate(){
   local mode="$1" arg="$2" x y vis dir
   for attempt in $(seq 1 14); do
+    wait_device_ready "locate-$arg-$attempt" || fail "device lost locating $arg"
     if read x y vis dir < <(rect "$mode" "$arg"); then
       if [[ "$vis" = 1 ]]; then echo "$x $y"; return 0; fi
       if [[ "$dir" = -1 ]]; then adb shell input swipe 540 700 540 1450 260 >/dev/null 2>&1 || true; else adb shell input swipe 540 1450 540 650 260 >/dev/null 2>&1 || true; fi
@@ -89,10 +127,14 @@ assert_state(){ local py="$1" msg="$2" j; j="$(state_json)"; printf '%s' "$j" | 
 
 [[ -f "$APK" ]] || fail "APK missing"
 node --check "$PROBE" || fail "probe syntax"
+wait_device_ready "initial" || fail "emulator unavailable before install"
+sleep 2
+log "INSTALL_BEGIN"
 timeout --foreground 60s adb install -r "$APK" >> "$TRACE" 2>&1 || fail "install"
-timeout --foreground 15s adb shell pm clear "$PKG" >/dev/null 2>&1 || true
-timeout --foreground 20s adb shell am start -W -n "$ACT" >> "$TRACE" 2>&1 || fail "launch"
-wait_foreground || fail "MainActivity not foreground"
+wait_device_ready "post-install" || fail "emulator lost after install"
+timeout --foreground 15s adb shell pm clear "$PKG" >> "$TRACE" 2>&1 || fail "pm clear"
+wait_device_ready "post-clear" || fail "emulator lost after pm clear"
+launch_main || fail "MainActivity not foreground after retries"
 cdp_attach
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["stations"]>=7 and p["activeSessions"]==0 and p["shift"] is None' "FRESH_V160_READY"
 
@@ -112,7 +154,6 @@ assert_state 'import json,sys;p=json.load(sys.stdin);assert p["currentView"]=="c
 tap rect-id openShiftBtn
 tap rect-id modalOk
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["shift"] is not None and str(p["shift"]["status"]).lower()=="open" and p["currentView"]=="floor" and p["pending"] is None and p["activeSessions"]==0' "SHIFT_OPEN_AND_SESSION_RESTORED"
-# Verify restored form still contains the drink quantity before final operator confirmation.
 qty="$(probe rect-css '[data-snack-plus="prod-cocacola"]' | python3 -c 'import json,sys;p=json.load(sys.stdin) or {};print(p.get("text", ""))')"
 log "RESTORED_DRINK_CONTROL $qty"
 
