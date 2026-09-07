@@ -15,6 +15,7 @@ ready(){ [[ "$(adb get-state 2>/dev/null || true)" = device ]] && [[ "$(adb shel
 foreground(){ ready && adb shell dumpsys activity activities 2>/dev/null | grep -m1 -E 'mResumedActivity|topResumedActivity' | grep -q "$PKG"; }
 wait_foreground(){ for _ in $(seq 1 30); do foreground && return 0; sleep .25; done; return 1; }
 attach(){
+  probe --reset >/dev/null 2>&1 || true
   adb forward --remove tcp:$PORT >/dev/null 2>&1 || true
   local sock=""
   for _ in $(seq 1 30); do
@@ -24,8 +25,63 @@ attach(){
   done
   return 1
 }
+cdp_ready(){
+  local value=""
+  for attempt in $(seq 1 12); do
+    if value="$(probe ready)"; then
+      if [[ "$value" = "true" ]]; then log "NAV_CDP_RUNTIME_READY attempt=$attempt"; return 0; fi
+      log "NAV_CDP_RUNTIME_NOT_READY attempt=$attempt value=$value"
+    else
+      log "NAV_CDP_RUNTIME_PROBE_RETRY attempt=$attempt"
+    fi
+    sleep .3
+  done
+  return 1
+}
 ui_dump(){ timeout --foreground 7s adb shell uiautomator dump /sdcard/v160-nav.xml >/dev/null 2>&1 || true; timeout --foreground 7s adb shell cat /sdcard/v160-nav.xml 2>/dev/null || true; }
+window_content_frame(){
+  local dump=/tmp/v160-nav-window.txt
+  timeout --foreground 8s adb shell dumpsys window windows > "$dump" 2>/dev/null || return 2
+  python3 - "$dump" "$PKG" "MainActivity" <<'PY'
+import re,sys
+path,pkg,activity=sys.argv[1:]
+s=open(path,encoding='utf-8',errors='ignore').read()
+blocks=re.split(r'(?=\n\s*Window(?:\s+#\d+)?\s+Window\{)',s)
+blocks=[b for b in blocks if pkg in b and activity in b]
+if not blocks:
+    blocks=[b for b in re.split(r'\n\s*Window',s) if pkg in b and activity in b]
+
+def valid(v):
+    x1,y1,x2,y2=v
+    return x2>x1 and y2>y1 and (x2-x1)>=200 and (y2-y1)>=300
+
+def emit(source,v):
+    if not valid(v): return False
+    print(*v)
+    print(f'NAV_WINDOW_CONTENT_FRAME source={source} frame={v[0]},{v[1]},{v[2]},{v[3]}',file=sys.stderr)
+    return True
+
+for b in blocks:
+    for source,pat in (
+        ('content',r'\bcontent=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]'),
+        ('mContentFrame',r'\bmContentFrame=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]'),
+        ('contentFrame',r'\bcontentFrame=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]'),
+    ):
+        m=re.search(pat,b)
+        if m and emit(source,tuple(map(int,m.groups()))): raise SystemExit(0)
+    mf=re.search(r'\bmFrame=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]',b)
+    if not mf:
+        mf=re.search(r'\bframe=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]',b)
+    ins=re.search(r'\bmContentInsets=Rect\((-?\d+),\s*(-?\d+)\s*-\s*(-?\d+),\s*(-?\d+)\)',b)
+    if mf and ins:
+        x1,y1,x2,y2=map(int,mf.groups()); l,t,r,bot=map(int,ins.groups())
+        if emit('frame+contentInsets',(x1+l,y1+t,x2-r,y2-bot)): raise SystemExit(0)
+    if mf and emit('windowFrame',tuple(map(int,mf.groups()))): raise SystemExit(0)
+raise SystemExit(2)
+PY
+}
 webview_frame(){
+  if window_content_frame; then return 0; fi
   local f=/tmp/v160-nav-frame.xml; ui_dump > "$f"
   python3 - "$f" <<'PY'
 import re,sys
@@ -63,7 +119,7 @@ locate(){
   done
   return 1
 }
-tap(){ local x y; read x y < <(locate "$1" "$2") || fail "not reachable: $1 $2"; adb shell input tap "$x" "$y" >/dev/null 2>&1 || fail "tap $2"; sleep .35; wait_foreground || fail "app lost foreground after $2"; }
+tap(){ local x y; read x y < <(locate "$1" "$2") || fail "not reachable: $1 $2"; log "NAV_PHYSICAL_TAP $1 $2 x=$x y=$y"; adb shell input tap "$x" "$y" >/dev/null 2>&1 || fail "tap $2"; sleep .35; wait_foreground || fail "app lost foreground after $2"; }
 state_assert(){
   local expected="$1" j; j="$(probe state)" || fail "state probe $expected"
   LP160_NAV_STATE="$j" python3 - "$expected" <<'PY' || fail "wrong/empty screen expected=$expected state=$j"
@@ -81,6 +137,7 @@ ready || fail "device unavailable"
 adb shell am start -W -n "$ACT" >> "$TRACE" 2>&1 || fail "launch"
 wait_foreground || fail "MainActivity not foreground"
 attach || fail "CDP attach"
+cdp_ready || fail "CDP runtime readiness"
 
 # Bottom navigation: direct physical taps.
 for r in floor sessions cash reservations more; do tap rect-css "[data-view=\"$r\"]"; state_assert "$r"; done
