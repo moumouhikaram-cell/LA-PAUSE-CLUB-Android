@@ -42,9 +42,9 @@ function captureRuntimeTimeoutDiagnostics(requestMode,attempt){
     const activity=diagnosticAdb(['shell','dumpsys','activity','top'],1200,64*1024);
     const meminfo=diagnosticAdb(['shell','dumpsys','meminfo','com.lapauseclub.manager'],1500,96*1024);
     const logcat=diagnosticAdb(['logcat','-d','-t','80'],1500,128*1024);
-    console.error(`V160_CDP_TIMEOUT_DIAGNOSTIC mode=${requestMode} attempt=${attempt} adb=${compactDiagnostic(state,180)} pid=${compactDiagnostic(pid,180)} activity=${compactDiagnostic(activity)} meminfo=${compactDiagnostic(meminfo)} logcat=${compactDiagnostic(logcat,1200)}`);
+    return `V160_CDP_TIMEOUT_DIAGNOSTIC mode=${requestMode} attempt=${attempt} adb=${compactDiagnostic(state,180)} pid=${compactDiagnostic(pid,180)} activity=${compactDiagnostic(activity)} meminfo=${compactDiagnostic(meminfo)} logcat=${compactDiagnostic(logcat,1200)}`;
   }catch(e){
-    console.error(`V160_CDP_TIMEOUT_DIAGNOSTIC mode=${requestMode} attempt=${attempt} capture_error=${compactDiagnostic(e&&e.message?e.message:String(e),400)}`);
+    return `V160_CDP_TIMEOUT_DIAGNOSTIC mode=${requestMode} attempt=${attempt} capture_error=${compactDiagnostic(e&&e.message?e.message:String(e),400)}`;
   }
 }
 function repairForward(){
@@ -152,7 +152,8 @@ async function evaluateReadOnly(requestMode,requestArg){
       attemptErrors.push(`attempt ${attempt}:${message}`);
       lastError=e;
       if(message==='Runtime.evaluate timeout'){
-        captureRuntimeTimeoutDiagnostics(requestMode,attempt);
+        const diagnostic=captureRuntimeTimeoutDiagnostics(requestMode,attempt);
+        attemptErrors.push(diagnostic);
         dropCdpSession(message,false);
         break;
       }
