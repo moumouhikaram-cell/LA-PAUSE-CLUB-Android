@@ -196,6 +196,10 @@ input_id(){
   got="$(probe rect-id "$id" | python3 -c 'import json,sys; print((json.load(sys.stdin) or {}).get("value", ""))')"
   [[ "$got" = "$val" ]] || fail "$id value=$got expected=$val"
   log "PHYSICAL_INPUT_OK $id=$got"
+  adb shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || fail "dismiss IME after $id"
+  sleep .35
+  wait_foreground || fail "app lost foreground dismissing IME after $id"
+  log "PHYSICAL_IME_DISMISSED $id"
 }
 state_json(){ probe state; }
 assert_state(){ local py="$1" msg="$2" j; j="$(state_json)"; printf '%s' "$j" | python3 -c "$py" || fail "$msg state=$j"; log "$msg OK $j"; }
