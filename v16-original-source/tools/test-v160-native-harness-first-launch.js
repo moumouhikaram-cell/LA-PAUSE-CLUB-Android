@@ -18,8 +18,21 @@ if(!/FIRST_LAUNCH_NOTIFICATION_PERMISSION_(?:GRANTED|GRANT_SKIPPED)/.test(harnes
   failures.push('HARNESS_PERMISSION_SETUP_NOT_DIAGNOSTIC');
 }
 
+// locate()/webview_frame()/rect() return machine-readable values over stdout. Any diagnostic
+// emitted by log() on stdout corrupts command substitutions such as `read x y < <(locate ...)`.
+// Keep operator diagnostics visible and persisted, but force them onto stderr.
+const logDef=(harness.match(/log\(\)\{[^\n]*\}/)||[])[0]||'';
+if(!logDef)failures.push('HARNESS_LOG_HELPER_MISSING');
+else if(!/(?:>&2|1>&2)/.test(logDef)){
+  failures.push('HARNESS_STDOUT_COORDINATE_CONTAMINATION: log() must write diagnostics to stderr');
+}
+if(!/read\s+x\s+y\s+<\s*<\(locate\s+"\$1"\s+"\$2"\)/.test(harness)){
+  failures.push('HARNESS_PHYSICAL_TAP_COORDINATE_CONTRACT_CHANGED');
+}
+
 if(failures.length){
   console.error(failures.join('\n'));
   process.exit(1);
 }
 console.log('V160_NATIVE_FIRST_LAUNCH_PERMISSION_GATE_OK');
+console.log('V160_NATIVE_COORDINATE_STREAM_GATE_OK');
