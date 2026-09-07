@@ -150,6 +150,13 @@ timeout --foreground 60s adb install -r "$APK" >> "$TRACE" 2>&1 || fail "install
 wait_device_ready "post-install" || fail "emulator lost after install"
 timeout --foreground 15s adb shell pm clear "$PKG" >> "$TRACE" 2>&1 || fail "pm clear"
 wait_device_ready "post-clear" || fail "emulator lost after pm clear"
+log "FIRST_LAUNCH_NOTIFICATION_PERMISSION_SETUP"
+if adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS >> "$TRACE" 2>&1; then
+  log "FIRST_LAUNCH_NOTIFICATION_PERMISSION_GRANTED"
+else
+  log "FIRST_LAUNCH_NOTIFICATION_PERMISSION_GRANT_SKIPPED"
+fi
+wait_device_ready "post-permission-grant" || fail "emulator lost after notification permission setup"
 launch_main || fail "MainActivity not foreground after retries"
 cdp_attach
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["stations"]>=7 and p["activeSessions"]==0 and p["shift"] is None' "FRESH_V160_READY"
