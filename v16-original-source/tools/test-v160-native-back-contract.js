@@ -3,6 +3,8 @@ const fs=require('fs');
 const path=require('path');
 const vm=require('vm');
 
+// Release checkpoint gate: same deterministic Back contract is required by CI,
+// native smoke and permanent signed-release workflow. Product/design stays frozen.
 const root=path.resolve(__dirname,'..');
 const main=fs.readFileSync(path.join(root,'app','src','main','java','com','lapauseclub','manager','MainActivity.java'),'utf8');
 const nav=fs.readFileSync(path.join(root,'app','src','main','assets','stabilize-v160-navigation.js'),'utf8');
