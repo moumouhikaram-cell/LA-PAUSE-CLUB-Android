@@ -144,6 +144,20 @@
     wrapped.__lp160StatusStabilized=true;wrapped.__lp160Original=originalCheckout;window.v14CheckoutPos=wrapped;try{v14CheckoutPos=wrapped}catch(_){}
   }
 
+  // COMMUNITY_CASH_CLOSURE: v15 competition/challenge fees are cashEntries type=revenue.
+  // Historical v14 closure ignored them, making expected cash too low. Card revenue stays excluded.
+  const originalShiftExpected=window.v14ShiftExpected;
+  if(typeof originalShiftExpected==='function'&&!originalShiftExpected.__lp160RevenueStabilized){
+    const wrappedExpected=function(sh){
+      const base=Number(originalShiftExpected.apply(this,arguments))||0;
+      let communityCash=0;
+      try{communityCash=(state?.cashEntries||[]).filter(e=>e?.shiftId===sh?.id&&status(e?.type)==='revenue'&&status(e?.method||'cash')==='cash').reduce((a,e)=>a+(Number(e?.amount)||0),0)}catch(_){}
+      return base+communityCash;
+    };
+    wrappedExpected.__lp160RevenueStabilized=true;wrappedExpected.__lp160Original=originalShiftExpected;
+    window.v14ShiftExpected=wrappedExpected;try{v14ShiftExpected=wrappedExpected}catch(_){}
+  }
+
   // DRAWER_DOM_GUARD: #drawerBusiness does not exist in current HTML; opening menu must never throw.
   function safeDrawerKpis(){
     const byId=id=>{try{return typeof $==='function'?$(id):document.getElementById(id)}catch(_){return null}};
@@ -164,7 +178,7 @@
       // When cash is closed, visual controls must match the transaction guard.
       try{
         if(String(typeof currentView==='string'?currentView:'')==='cash'&&!compatibleCurrentShift()){
-          for(const id of ['addRevenueBtn','addCashInBtn','addExpenseBtn']){
+          for(const id of ['addRevenueBtn','addCashInBtn','addIncomeBtn','addExpenseBtn']){
             const el=typeof $==='function'?$(id):document.getElementById(id);
             if(el){el.disabled=true;el.setAttribute?.('aria-disabled','true');}
           }
@@ -226,7 +240,7 @@
   }
 
   window.LP160Stabilization=Object.freeze({
-    version:'1.6.0-stabilization-6',
+    version:'1.6.0-stabilization-7',
     currentShift:compatibleCurrentShift,
     openShiftCandidates,
     draftStockOk,
