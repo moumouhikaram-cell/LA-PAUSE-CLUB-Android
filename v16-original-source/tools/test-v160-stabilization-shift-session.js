@@ -1,7 +1,7 @@
 'use strict';
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const code=fs.readFileSync(path.resolve(__dirname,'../app/src/main/assets/stabilize-v160-existing.js'),'utf8');
-const elems={modalOk:{onclick:null}};let legacyStarts=0,view='',draws=0,toasts=[],closed=0,drawThrows=false;
+const elems={modalOk:{onclick:null}};let legacyStarts=0,view='',draws=0,toasts=[],closed=0,drawThrows=false,saves=0;
 const ctx={console,Date,JSON,Math,
   state:{cashSettings:{shiftRequired:true},shifts:[],stations:[{id:'ps5-1',type:'PS5',enabled:true}],sessions:[],products:[{id:'prod-coca',name:'Coca',enabled:true,stock:4},{id:'prod-twix',name:'Twix',enabled:true,stock:3}]},
   selectedStationId:'ps5-1',
@@ -11,13 +11,23 @@ const ctx={console,Date,JSON,Math,
   currentShift:()=>ctx.state.shifts.find(s=>s.status==='open')||null,
   startDraftSession:()=>{legacyStarts++;return true},
   openShiftModal:()=>{elems.modalOk.onclick=()=>{ctx.state.shifts.push({id:'shift-1',status:'OPEN',openedAt:Date.now()});return true};return true},
-  setView:v=>{view=v},closeSheet:()=>{closed++},drawStartSheet:()=>{if(drawThrows)throw new Error('draw failed');draws++},toast:m=>toasts.push(m),
+  saveState:()=>{saves++},setView:v=>{view=v},closeSheet:()=>{closed++},drawStartSheet:()=>{if(drawThrows)throw new Error('draw failed');draws++},toast:m=>toasts.push(m),
   $:id=>elems[id]||null,document:{getElementById:id=>elems[id]||null,querySelectorAll:()=>[]}
 };ctx.window=ctx;vm.createContext(ctx);vm.runInContext(code,ctx,{filename:'stabilize-v160-existing.js'});
 
 // 1) Case compatibility + deterministic latest shift selection.
 ctx.state.shifts=[{id:'old',status:'OPEN',openedAt:10},{id:'new',status:'open',openedAt:20},{id:'closed-stale',status:'OPEN',openedAt:30,closedAt:31}];
 if(!ctx.currentShift()||ctx.currentShift().id!=='new')throw new Error(`Latest unclosed OPEN shift expected, got ${ctx.currentShift()?.id}`);
+
+// 1b) Existing installs affected by the historical case bug can contain multiple OPEN shifts.
+// The repair must keep only the newest one logically open; closing it must NOT resurrect an older stale shift.
+if(typeof ctx.LP160Stabilization.repairDuplicateOpenShifts!=='function')throw new Error('Duplicate OPEN shift repair missing');
+ctx.LP160Stabilization.repairDuplicateOpenShifts();
+const logicalOpen=ctx.state.shifts.filter(s=>String(s.status).toLowerCase()==='open'&&!s.closedAt);
+if(logicalOpen.length!==1||logicalOpen[0].id!=='new')throw new Error(`Duplicate shifts not repaired: ${JSON.stringify(ctx.state.shifts)}`);
+logicalOpen[0].status='closed';logicalOpen[0].closedAt=40;
+if(ctx.currentShift())throw new Error(`Closing newest shift resurrected stale shift ${ctx.currentShift()?.id}`);
+if(saves<1)throw new Error('Duplicate shift repair was not persisted');
 ctx.state.shifts=[];
 
 // 2) Starting with a closed shift must preserve the whole draft and route to cash without starting/charging.
@@ -55,4 +65,5 @@ if(ctx.LP160Stabilization.restorePendingSessionStart()!==false)throw new Error('
 if(!ctx.LP160Stabilization.getPendingSessionStart())throw new Error('Pending draft lost when UI reconstruction failed');
 
 console.log('V160_SHIFT_SESSION_RESUME_REGRESSION_OK');
+console.log('V160_DUPLICATE_OPEN_SHIFT_MIGRATION_OK');
 console.log('V160_USER_REPORTED_SHIFT_SESSION_BASELINE_RECHECK');
