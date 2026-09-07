@@ -71,6 +71,20 @@ if(!ensureBlock)failures.push('HARNESS_CDP_ENSURE_SESSION_BLOCK_MISSING');
 else if(firstDiscovery<0||firstRepair<0||firstRepair<firstDiscovery)failures.push('HARNESS_CDP_VALIDATED_FORWARD_NOT_REUSED_FIRST');
 if(!/try\s*\{[\s\S]{0,250}pages\(\)[\s\S]{0,500}catch[\s\S]{0,250}repairForward\(\)[\s\S]{0,250}pages\(\)/.test(ensureBlock))failures.push('HARNESS_CDP_REPAIR_NOT_FALLBACK_ONLY');
 
+// Regression from native run #48: only the final fallback adb timeout reached the CLI, masking the
+// earlier discovery/websocket/evaluate failure. Diagnostics must preserve the complete bounded
+// attempt chain so the next red native run identifies the first failing transport stage.
+const evalStart=probe.indexOf('async function evaluateReadOnly(');
+const evalEnd=probe.indexOf('async function queuedEvaluate(',evalStart);
+const evalBlock=evalStart>=0&&evalEnd>evalStart?probe.slice(evalStart,evalEnd):'';
+if(!/const\s+attemptErrors\s*=\s*\[\]/.test(evalBlock))failures.push('HARNESS_CDP_ATTEMPT_ERROR_CHAIN_MISSING');
+if(!/attemptErrors\.push\s*\(\s*`attempt \$\{attempt\}:[^`]*\$\{/.test(evalBlock))failures.push('HARNESS_CDP_ATTEMPT_ERROR_APPEND_MISSING');
+if(!/CDP attempts failed:\s*\$\{attemptErrors\.join\(/.test(evalBlock))failures.push('HARNESS_CDP_ATTEMPT_ERROR_FINAL_MESSAGE_MISSING');
+if(!/initial discovery:\s*\$\{[^}]*\.message[^}]*\}/.test(ensureBlock))failures.push('HARNESS_CDP_INITIAL_DISCOVERY_DIAGNOSTIC_MISSING');
+if(!/repair:\s*\$\{[^}]*\.message[^}]*\}/.test(ensureBlock))failures.push('HARNESS_CDP_REPAIR_DIAGNOSTIC_MISSING');
+if(!/CDP websocket open (?:timeout|error)/.test(ensureBlock))failures.push('HARNESS_CDP_WEBSOCKET_STAGE_DIAGNOSTIC_MISSING');
+if(!/Runtime\.evaluate timeout/.test(evalBlock))failures.push('HARNESS_CDP_EVALUATE_STAGE_DIAGNOSTIC_MISSING');
+
 if(failures.length){console.error(failures.join('\n'));process.exit(1)}
 console.log('V160_NATIVE_FIRST_LAUNCH_PERMISSION_GATE_OK');
 console.log('V160_NATIVE_COORDINATE_STREAM_GATE_OK');
@@ -80,3 +94,4 @@ console.log('V160_NATIVE_CDP_FORWARD_REPAIR_GATE_OK');
 console.log('V160_NATIVE_CDP_CURL_DISCOVERY_GATE_OK');
 console.log('V160_NATIVE_CDP_RECOVERY_BUDGET_GATE_OK');
 console.log('V160_NATIVE_CDP_VALIDATED_FORWARD_REUSE_GATE_OK');
+console.log('V160_NATIVE_CDP_ATTEMPT_DIAGNOSTICS_GATE_OK');
