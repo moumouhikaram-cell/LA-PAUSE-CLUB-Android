@@ -10,10 +10,14 @@
   const PENDING_TTL=15*60*1000;
 
   function shifts(){try{return Array.isArray(state?.shifts)?state.shifts:[]}catch(_){return []}}
-  // SHIFT_STATUS_CASE_INSENSITIVE: v15 writes OPEN/CLOSED while v14 historically reads open/closed.
-  // If stale data contains more than one open shift, use the most recently opened unclosed shift.
   function openShiftCandidates(){return shifts().filter(s=>status(s?.status)==='open'&&!s?.closedAt).sort((a,b)=>Number(b?.openedAt||0)-Number(a?.openedAt||0));}
   function compatibleCurrentShift(){return openShiftCandidates()[0]||null;}
+  function shiftIsRequired(){try{return state?.cashSettings?.shiftRequired===true}catch(_){return false}}
+  function requireMoneyShift(message='Ouvre la caisse avant cet encaissement'){
+    if(!shiftIsRequired()||compatibleCurrentShift())return true;
+    try{if(typeof toast==='function')toast(message)}catch(_){}
+    return false;
+  }
 
   window.currentShift=compatibleCurrentShift;
   try{currentShift=compatibleCurrentShift}catch(_){}
@@ -49,7 +53,6 @@
       return p;
     }catch(_){return null}
   }
-  // SHIFT_SESSION_DRAFT_RESUME: exact client/payment/snack draft survives the cash detour.
   function restorePending(){
     const p=getPending();
     if(!p||!compatibleCurrentShift()||!stationFree(p.stationId))return false;
@@ -57,7 +60,6 @@
     try{if(typeof setView==='function')setView(target)}catch(_){}
     try{selectedStationId=p.stationId;sheetDraft=clone(p.draft)}catch(_){return false}
     try{if(typeof drawStartSheet!=='function')return false;drawStartSheet()}catch(_){return false}
-    // Clear only after the historical sheet has actually been rebuilt.
     clearPending();
     try{if(typeof toast==='function')toast('Shift ouvert · session restaurée, prête à encaisser')}catch(_){}
     return true;
@@ -67,11 +69,8 @@
   if(typeof originalStart==='function'&&!originalStart.__lp160Stabilized){
     const wrappedStart=function(){
       try{if(typeof syncDraftInputsV14==='function')syncDraftInputsV14()}catch(_){}
-      // Prevalidate stock before resolveSessionClient/addPayment persist anything.
       if(!draftStockOk(typeof sheetDraft==='undefined'?null:sheetDraft,true))return false;
-      let needsShift=false;
-      try{needsShift=state?.cashSettings?.shiftRequired===true&&!compatibleCurrentShift()}catch(_){}
-      if(needsShift){
+      if(shiftIsRequired()&&!compatibleCurrentShift()){
         capturePending();
         try{if(typeof toast==='function')toast('Ouvre la caisse avant la première vente')}catch(_){}
         try{if(typeof closeSheet==='function')closeSheet()}catch(_){}
@@ -112,21 +111,16 @@
     window.openShiftModal=wrappedOpenShift;try{openShiftModal=wrappedOpenShift}catch(_){}
   }
 
-  // CASH_ENTRY_SHIFT_GUARD: no accounting movement may be created with shiftId=null.
   const originalCashEntry=window.openCashEntry;
   if(typeof originalCashEntry==='function'&&!originalCashEntry.__lp160ShiftGuarded){
     const wrappedCashEntry=function(){
-      if(!compatibleCurrentShift()){
-        try{if(typeof toast==='function')toast('Ouvre la caisse avant ce mouvement')}catch(_){}
-        return false;
-      }
+      if(!requireMoneyShift('Ouvre la caisse avant ce mouvement'))return false;
       return originalCashEntry.apply(this,arguments);
     };
     wrappedCashEntry.__lp160ShiftGuarded=true;wrappedCashEntry.__lp160Original=originalCashEntry;
     window.openCashEntry=wrappedCashEntry;try{openCashEntry=wrappedCashEntry}catch(_){}
   }
 
-  // ORDER_STATUS_CASE_INSENSITIVE: v15 POS may emit PAID while v14 cash/reporting reads paid.
   function normalizeOrderStatuses(){
     let changed=false;
     try{for(const o of state?.orders||[]){const s=status(o?.status);if(['open','paid','cancelled'].includes(s)&&o.status!==s){o.status=s;changed=true;}}}catch(_){}
@@ -144,8 +138,75 @@
     wrapped.__lp160StatusStabilized=true;wrapped.__lp160Original=originalCheckout;window.v14CheckoutPos=wrapped;try{v14CheckoutPos=wrapped}catch(_){}
   }
 
-  // COMMUNITY_CASH_CLOSURE: v15 competition/challenge fees are cashEntries type=revenue.
-  // Historical v14 closure ignored them, making expected cash too low. Card revenue stays excluded.
+  function ledgerId(prefix){try{return typeof uid==='function'?uid(prefix):`${prefix}_${nowMs()}_${Math.random().toString(36).slice(2,8)}`}catch(_){return `${prefix}_${nowMs()}`}}
+  function paidDh(entity){return Math.max(0,(Number(entity?.paidCents??entity?.priceCents)||0)/100)}
+  function canonicalMethod(v){return status(v)==='card'?'card':'cash'}
+  function recordPrepaidRevenue(kind,entity,label){
+    const sh=compatibleCurrentShift();if(!entity||!sh)return false;
+    try{if(!Array.isArray(state.cashEntries))state.cashEntries=[]}catch(_){return false}
+    const sourceEntityId=entity.id,sourceKind=kind;
+    if(state.cashEntries.some(e=>e?.sourceKind===sourceKind&&e?.sourceEntityId===sourceEntityId&&status(e?.type)==='revenue'))return true;
+    const amount=paidDh(entity);if(amount<=0)return true;
+    const e={id:ledgerId('cash'),type:'revenue',amount,label:label||kind,note:entity.customerName||entity.name||'',at:nowMs(),shiftId:sh.id,method:canonicalMethod(entity.paymentMethod),sourceKind,sourceEntityId};
+    state.cashEntries.push(e);
+    try{if(typeof saveState==='function')saveState({eventType:`${kind}.revenue_recorded`,entityId:sourceEntityId,payload:e})}catch(_){try{saveState()}catch(__){}}
+    return true;
+  }
+
+  // BOOKING_PREPAY_TRUTH: a new prepaid booking is impossible with a closed mandatory shift
+  // and always creates a real cash/card ledger row.
+  const originalSaveBooking=window.saveBookingV15;
+  if(typeof originalSaveBooking==='function'&&!originalSaveBooking.__lp160CashTruth){
+    const wrappedSaveBooking=function(existing){
+      if(!existing&&!requireMoneyShift('Ouvre la caisse avant d’encaisser la réservation'))return false;
+      const before=new Set((state?.bookings||[]).map(x=>x.id));
+      const out=originalSaveBooking.apply(this,arguments);
+      if(!existing){const created=(state?.bookings||[]).find(x=>!before.has(x.id));if(created)recordPrepaidRevenue('booking',created,`Réservation · ${created.customerName||'Client'}`)}
+      return out;
+    };
+    wrappedSaveBooking.__lp160CashTruth=true;wrappedSaveBooking.__lp160Original=originalSaveBooking;
+    window.saveBookingV15=wrappedSaveBooking;try{saveBookingV15=wrappedSaveBooking}catch(_){}
+  }
+
+  // PASS_PREPAY_TRUTH: the historical purchase commits inside modalOk, so wrap the confirmation.
+  const originalBuyPass=window.buyPassV15;
+  if(typeof originalBuyPass==='function'&&!originalBuyPass.__lp160CashTruth){
+    const wrappedBuyPass=function(){
+      if(!requireMoneyShift('Ouvre la caisse avant d’encaisser le pass'))return false;
+      const before=new Set((state?.prepaidPasses||[]).map(x=>x.id));
+      const out=originalBuyPass.apply(this,arguments);
+      let ok=null;try{ok=typeof $==='function'?$('modalOk'):document.getElementById('modalOk')}catch(_){}
+      if(ok&&typeof ok.onclick==='function'&&!ok.__lp160PassCashWrapped){
+        const originalOk=ok.onclick;
+        ok.onclick=function(){
+          if(!requireMoneyShift('Ouvre la caisse avant d’encaisser le pass'))return false;
+          const result=originalOk.apply(this,arguments);
+          const created=(state?.prepaidPasses||[]).find(x=>!before.has(x.id));
+          if(created)recordPrepaidRevenue('pass',created,`Pass · ${created.name||created.customerName||'Client'}`);
+          return result;
+        };
+        ok.__lp160PassCashWrapped=true;
+      }
+      return out;
+    };
+    wrappedBuyPass.__lp160CashTruth=true;wrappedBuyPass.__lp160Original=originalBuyPass;
+    window.buyPassV15=wrappedBuyPass;try{buyPassV15=wrappedBuyPass}catch(_){}
+  }
+
+  // CHALLENGE/KING already write revenue rows themselves; only the missing shift gate is added.
+  function guardPaidModalAction(name,message){
+    const original=window[name];if(typeof original!=='function'||original.__lp160ShiftGuarded)return;
+    const wrapped=function(subject){
+      const fee=Number(subject?.entryFeeCents||0);
+      if(fee>0&&!requireMoneyShift(message))return false;
+      return original.apply(this,arguments);
+    };
+    wrapped.__lp160ShiftGuarded=true;wrapped.__lp160Original=original;window[name]=wrapped;
+    try{if(name==='joinChallengeV15')joinChallengeV15=wrapped;else if(name==='kingJoinV15')kingJoinV15=wrapped}catch(_){}
+  }
+  guardPaidModalAction('joinChallengeV15','Ouvre la caisse avant d’encaisser le challenge');
+  guardPaidModalAction('kingJoinV15','Ouvre la caisse avant d’encaisser le Roi PS5');
+
   const originalShiftExpected=window.v14ShiftExpected;
   if(typeof originalShiftExpected==='function'&&!originalShiftExpected.__lp160RevenueStabilized){
     const wrappedExpected=function(sh){
@@ -158,7 +219,6 @@
     window.v14ShiftExpected=wrappedExpected;try{v14ShiftExpected=wrappedExpected}catch(_){}
   }
 
-  // DRAWER_DOM_GUARD: #drawerBusiness does not exist in current HTML; opening menu must never throw.
   function safeDrawerKpis(){
     const byId=id=>{try{return typeof $==='function'?$(id):document.getElementById(id)}catch(_){return null}};
     try{const k=byId('drawerKpis');if(k)k.innerHTML=`<div class="drawer-kpi"><span>ACTIVES</span><b class="green">${typeof activeCount==='function'?activeCount():0}</b></div><div class="drawer-kpi"><span>CA JOUR</span><b>${typeof fmtMoney==='function'&&typeof todayRevenue==='function'?fmtMoney(todayRevenue()):'0 DH'}</b></div>`;}catch(_){}
@@ -169,13 +229,11 @@
   safeDrawerKpis.__lp160Stabilized=true;
   window.renderDrawerKpis=safeDrawerKpis;try{renderDrawerKpis=safeDrawerKpis}catch(_){}
 
-  // Ensure old v14 cash/order/report renderers always see canonical lowercase order state.
   const originalRenderView=window.renderView;
   if(typeof originalRenderView==='function'&&!originalRenderView.__lp160StatusStabilized){
     const wrapped=function(){
       normalizeOrderStatuses();
       const out=originalRenderView.apply(this,arguments);
-      // When cash is closed, visual controls must match the transaction guard.
       try{
         if(String(typeof currentView==='string'?currentView:'')==='cash'&&!compatibleCurrentShift()){
           for(const id of ['addRevenueBtn','addCashInBtn','addIncomeBtn','addExpenseBtn']){
@@ -240,11 +298,13 @@
   }
 
   window.LP160Stabilization=Object.freeze({
-    version:'1.6.0-stabilization-7',
+    version:'1.6.0-stabilization-8',
     currentShift:compatibleCurrentShift,
     openShiftCandidates,
+    requireMoneyShift,
     draftStockOk,
     normalizeOrderStatuses,
+    recordPrepaidRevenue,
     safeDrawerKpis,
     getPendingSessionStart:getPending,
     clearPendingSessionStart:clearPending,
