@@ -40,7 +40,7 @@ if(!/(?:MAX_ATTEMPTS|CDP_ATTEMPTS|attempts)\s*=\s*[2-9]/.test(probe)){
 if(!/for\s*\([^)]*(?:attempt|try)[^)]*\)/.test(probe)&&!/while\s*\([^)]*(?:attempt|try)[^)]*\)/.test(probe)){
   failures.push('HARNESS_CDP_RECONNECT_LOOP_MISSING');
 }
-if(!/await\s+pages\s*\(\s*\)/.test(probe)||!/new\s+WebSocket/.test(probe)){
+if(!/(?:await\s+)?pages\s*\(\s*\)/.test(probe)||!/new\s+WebSocket/.test(probe)){
   failures.push('HARNESS_CDP_TARGET_REDISCOVERY_CONTRACT_MISSING');
 }
 if((probe.match(/method:\s*['"]Runtime\.evaluate['"]/g)||[]).length!==1){
@@ -58,8 +58,18 @@ if(!probe.includes("'forward','--remove'")||!probe.includes('localabstract:${soc
 if(!probe.includes('repairForward()')){
   failures.push('HARNESS_CDP_REPAIR_NOT_IN_RETRY_PATH');
 }
-if(!probe.includes('AbortController')){
-  failures.push('HARNESS_CDP_HTTP_TIMEOUT_GUARD_MISSING');
+
+// On the hosted Android runner Node's fetch() has proved non-deterministic against the adb
+// loopback forward even when curl succeeds against the same endpoint. Discovery therefore uses
+// a bounded local curl process; websocket evaluation remains native/read-only CDP.
+if(/\bfetch\s*\(/.test(probe)){
+  failures.push('HARNESS_CDP_NODE_FETCH_FORBIDDEN_FOR_ADB_LOOPBACK');
+}
+if(!probe.includes("spawnSync('curl'")||!probe.includes("'--max-time'")||!probe.includes('http://127.0.0.1:${port}/json')){
+  failures.push('HARNESS_CDP_BOUNDED_CURL_DISCOVERY_MISSING');
+}
+if(!probe.includes('JSON.parse')){
+  failures.push('HARNESS_CDP_DISCOVERY_JSON_PARSE_MISSING');
 }
 
 if(failures.length){
@@ -70,3 +80,4 @@ console.log('V160_NATIVE_FIRST_LAUNCH_PERMISSION_GATE_OK');
 console.log('V160_NATIVE_COORDINATE_STREAM_GATE_OK');
 console.log('V160_NATIVE_CDP_RECONNECT_GATE_OK');
 console.log('V160_NATIVE_CDP_FORWARD_REPAIR_GATE_OK');
+console.log('V160_NATIVE_CDP_CURL_DISCOVERY_GATE_OK');
