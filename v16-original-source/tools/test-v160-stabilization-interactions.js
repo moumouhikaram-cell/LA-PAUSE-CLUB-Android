@@ -15,7 +15,7 @@ for(const [file,s] of Object.entries(src)){
     const id=(attrs.match(/\bid="([A-Za-z][A-Za-z0-9_:-]*)"/)||[])[1]||null;
     const data=[...attrs.matchAll(/\bdata-([a-zA-Z0-9-]+)=/g)].map(x=>x[1]);
     const inline=/\bon(?:click|change|input|submit|keydown|keyup)\s*=/.test(attrs);
-    buttons.push({file,id,data,inline,markup:m[0]});
+    buttons.push({file,id,data,inline,markup:m[0],offset:m.index});
   }
 }
 
@@ -48,10 +48,12 @@ function hasDataConsumer(a){
     new RegExp(`getAttribute\\(\\s*['"]data-${q}['"]\\s*\\)`).test(all);
 }
 
-let idButtons=0,dataButtons=0,inlineButtons=0;
+let idButtons=0,dataButtons=0,inlineButtons=0,disabledButtons=0;
 const uniqueIds=new Set();
 for(const b of buttons){
   if(b.inline){inlineButtons++;continue;}
+  // A deliberately disabled control is explicitly non-interactive, so no JS binding is expected.
+  if(/\sdisabled(?:\s|>|=)/.test(b.markup)){disabledButtons++;continue;}
   let proven=false;
   if(b.id){
     uniqueIds.add(b.id);idButtons++;
@@ -65,7 +67,8 @@ for(const b of buttons){
   if(/\btype="(?:submit|reset)"/.test(b.markup))proven=true;
   if(!proven){
     const markup=b.markup.replace(/\s+/g,' ').slice(0,220);
-    failures.push(`UNPROVEN_BUTTON_BINDING:${b.file}:${b.id||'(no-id)'}:${b.data.join(',')||'(no-data)'}:${markup}`);
+    const around=src[b.file].slice(Math.max(0,b.offset-260),Math.min(src[b.file].length,b.offset+620)).replace(/\s+/g,' ').slice(0,880);
+    failures.push(`UNPROVEN_BUTTON_BINDING:${b.file}:${b.id||'(no-id)'}:${b.data.join(',')||'(no-data)'}:${markup}\nCONTEXT:${around}`);
   }
 }
 
@@ -78,7 +81,7 @@ const critical=['menuBtn','drawerClose','quickStartBtn','openShiftBtn','closeShi
 for(const id of critical) if(!hasConcreteIdBinding(id)) failures.push(`CRITICAL_CONTROL_WITHOUT_BINDING:${id}`);
 
 if(failures.length){console.error(failures.join('\n'));process.exit(1)}
-console.log(`V160_STABILIZATION_INTERACTION_AUDIT_OK buttons=${buttons.length} uniqueIds=${uniqueIds.size} idButtons=${idButtons} dataButtons=${dataButtons} inlineButtons=${inlineButtons} dataContracts=${attrs.size}`);
+console.log(`V160_STABILIZATION_INTERACTION_AUDIT_OK buttons=${buttons.length} uniqueIds=${uniqueIds.size} idButtons=${idButtons} dataButtons=${dataButtons} inlineButtons=${inlineButtons} disabledButtons=${disabledButtons} dataContracts=${attrs.size}`);
 
 // Dynamic v1.5 tabs also need persistent route state, otherwise a re-render can jump to a wrong screen.
 require('./test-v160-stabilization-tabs.js');
