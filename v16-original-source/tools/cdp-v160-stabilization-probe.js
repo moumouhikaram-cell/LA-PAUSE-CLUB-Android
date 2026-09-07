@@ -1,7 +1,8 @@
 'use strict';
 /* Read-only CDP locator/state probe for the historical v1.6 stabilization journey.
  * CLI calls are forwarded to one localhost daemon so successive physical Android reads reuse
- * a single WebSocket. The daemon never clicks, types, mutates storage or calls render functions.
+ * the discovered WebView target while each read gets a fresh WebSocket. The daemon never clicks,
+ * types, mutates storage or calls render functions.
  */
 const http=require('http');
 const {spawn,spawnSync}=require('child_process');
@@ -52,40 +53,58 @@ function expressionFor(requestMode,requestArg){
 }
 
 let persistentSocket=null;
-let socketPageUrl='';
+let cachedPageUrl='';
 let nextMessageId=1;
 let pendingMessages=new Map();
 let requestQueue=Promise.resolve();
-function dropCdpSession(reason){
+function recycleCdpSocket(reason){
   const ws=persistentSocket;
-  persistentSocket=null;socketPageUrl='';
-  for(const [,pending] of pendingMessages){clearTimeout(pending.timer);pending.reject(new Error(reason||'CDP session invalidated'));}
+  persistentSocket=null;
+  for(const [,pending] of pendingMessages){clearTimeout(pending.timer);pending.reject(new Error(reason||'CDP socket recycled'));}
   pendingMessages.clear();
-  if(ws){try{ws.close();}catch(_){}}
+  if(ws){
+    try{ws.onclose=null;ws.onerror=null;ws.onmessage=null;}catch(_){}
+    try{ws.close();}catch(_){}
+  }
+}
+function dropCdpSession(reason){
+  recycleCdpSocket(reason||'CDP session invalidated');
+  cachedPageUrl='';
 }
 async function ensureCdpSession(){
   if(persistentSocket&&persistentSocket.readyState===WebSocket.OPEN)return persistentSocket;
-  dropCdpSession('reconnecting CDP session');
-  let list;
-  try{
-    list=pages();
-  }catch(initialDiscoveryError){
+  recycleCdpSocket('reconnecting CDP session');
+  let pageUrl=cachedPageUrl;
+  if(!pageUrl){
+    let list;
     try{
-      repairForward();
       list=pages();
-    }catch(repairError){
-      throw new Error(`initial discovery: ${initialDiscoveryError&&initialDiscoveryError.message?initialDiscoveryError.message:String(initialDiscoveryError)}; repair: ${repairError&&repairError.message?repairError.message:String(repairError)}`);
+    }catch(initialDiscoveryError){
+      try{
+        repairForward();
+        list=pages();
+      }catch(repairError){
+        throw new Error(`initial discovery: ${initialDiscoveryError&&initialDiscoveryError.message?initialDiscoveryError.message:String(initialDiscoveryError)}; repair: ${repairError&&repairError.message?repairError.message:String(repairError)}`);
+      }
     }
+    const page=list.find(x=>x.type==='page'&&x.webSocketDebuggerUrl)||list.find(x=>x.webSocketDebuggerUrl);
+    if(!page)throw new Error('no debuggable WebView page');
+    cachedPageUrl=page.webSocketDebuggerUrl;
+    pageUrl=cachedPageUrl;
   }
-  const page=list.find(x=>x.type==='page'&&x.webSocketDebuggerUrl)||list.find(x=>x.webSocketDebuggerUrl);
-  if(!page)throw new Error('no debuggable WebView page');
-  const ws=new WebSocket(page.webSocketDebuggerUrl);
-  await new Promise((resolve,reject)=>{
-    const timer=setTimeout(()=>reject(new Error('CDP websocket open timeout')),4500);
-    ws.onopen=()=>{clearTimeout(timer);resolve();};
-    ws.onerror=()=>{clearTimeout(timer);reject(new Error('CDP websocket open error'));};
-  });
-  persistentSocket=ws;socketPageUrl=page.webSocketDebuggerUrl;
+  const ws=new WebSocket(pageUrl);
+  try{
+    await new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>reject(new Error('CDP websocket open timeout')),4500);
+      ws.onopen=()=>{clearTimeout(timer);resolve();};
+      ws.onerror=()=>{clearTimeout(timer);reject(new Error('CDP websocket open error'));};
+    });
+  }catch(e){
+    cachedPageUrl='';
+    try{ws.close();}catch(_){}
+    throw e;
+  }
+  persistentSocket=ws;
   ws.onmessage=ev=>{
     let msg;try{msg=JSON.parse(String(ev.data));}catch(_){return;}
     const pending=pendingMessages.get(msg.id);if(!pending)return;
@@ -94,8 +113,8 @@ async function ensureCdpSession(){
     if(msg.result&&msg.result.exceptionDetails)return pending.reject(new Error('Runtime exception'));
     pending.resolve(msg.result?.result?.value??null);
   };
-  ws.onerror=()=>{if(persistentSocket===ws)dropCdpSession('persistent websocket error');};
-  ws.onclose=()=>{if(persistentSocket===ws)dropCdpSession('persistent websocket closed');};
+  ws.onerror=()=>{if(persistentSocket===ws)recycleCdpSocket('persistent websocket error');};
+  ws.onclose=()=>{if(persistentSocket===ws)recycleCdpSocket('persistent websocket closed');};
   return ws;
 }
 async function evaluateReadOnly(requestMode,requestArg){
@@ -110,12 +129,13 @@ async function evaluateReadOnly(requestMode,requestArg){
         pendingMessages.set(id,{resolve,reject,timer});
         ws.send(JSON.stringify({id,method:'Runtime.evaluate',params:{expression:expressionFor(requestMode,requestArg),returnByValue:true,awaitPromise:true}}));
       });
+      recycleCdpSocket('successful read');
       return value;
     }catch(e){
       const message=e&&e.message?e.message:String(e);
       attemptErrors.push(`attempt ${attempt}:${message}`);
       lastError=e;
-      dropCdpSession(message||'CDP evaluate failure');
+      recycleCdpSocket(message||'CDP evaluate failure');
       if(attempt<MAX_ATTEMPTS)await sleep(220*attempt);
     }
   }
@@ -132,7 +152,7 @@ function jsonResponse(res,status,payload){
 }
 function startDaemon(){
   const server=http.createServer((req,res)=>{
-    if(req.method==='GET'&&req.url==='/health')return jsonResponse(res,200,{ok:true,session:!!(persistentSocket&&persistentSocket.readyState===WebSocket.OPEN),page:socketPageUrl||null});
+    if(req.method==='GET'&&req.url==='/health')return jsonResponse(res,200,{ok:true,session:!!(persistentSocket&&persistentSocket.readyState===WebSocket.OPEN),page:cachedPageUrl||null});
     if(req.method!=='POST'||req.url!=='/probe')return jsonResponse(res,404,{ok:false,error:'not found'});
     let raw='';req.setEncoding('utf8');req.on('data',chunk=>{raw+=chunk;if(raw.length>65536)req.destroy();});
     req.on('end',async()=>{
