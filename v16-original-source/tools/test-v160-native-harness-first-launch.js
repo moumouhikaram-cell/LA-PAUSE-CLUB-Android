@@ -4,6 +4,8 @@ const path=require('path');
 const harness=fs.readFileSync(path.resolve(__dirname,'android-v160-stabilization-journey.sh'),'utf8');
 const nav=fs.readFileSync(path.resolve(__dirname,'android-v160-navigation-matrix.sh'),'utf8');
 const probe=fs.readFileSync(path.resolve(__dirname,'cdp-v160-stabilization-probe.js'),'utf8');
+const rawPath=path.resolve(__dirname,'cdp-v160-raw-websocket.js');
+const raw=fs.existsSync(rawPath)?fs.readFileSync(rawPath,'utf8'):'';
 const failures=[];
 
 const clearPos=harness.indexOf('adb shell pm clear "$PKG"');
@@ -33,9 +35,20 @@ if(!probe.includes("'--daemon'")||!probe.includes('process.execPath'))failures.p
 if(!/(?:DAEMON_PORT|LP160_CDP_DAEMON_PORT)/.test(probe))failures.push('HARNESS_CDP_DAEMON_PORT_MISSING');
 if(!/let\s+(?:sessionSocket|persistentSocket|ws)\s*=\s*null/.test(probe))failures.push('HARNESS_CDP_PERSISTENT_SOCKET_STATE_MISSING');
 if(!/function\s+ensure(?:Cdp)?Session\s*\(/i.test(probe))failures.push('HARNESS_CDP_PERSISTENT_SESSION_ENSURE_MISSING');
-if(!/readyState\s*===\s*WebSocket\.OPEN/.test(probe))failures.push('HARNESS_CDP_SOCKET_REUSE_CHECK_MISSING');
-if(!/new\s+WebSocket/.test(probe))failures.push('HARNESS_CDP_WEBSOCKET_MISSING');
+if(!probe.includes("require('./cdp-v160-raw-websocket')")&&!probe.includes("require('./cdp-v160-raw-websocket.js')"))failures.push('HARNESS_CDP_RAW_SOCKET_IMPORT_MISSING');
+if(!/RawCdpWebSocket\.connect/.test(probe))failures.push('HARNESS_CDP_RAW_SOCKET_CONNECT_MISSING');
+if(!/persistentSocket\.isOpen\s*\(\s*\)/.test(probe))failures.push('HARNESS_CDP_RAW_SOCKET_REUSE_CHECK_MISSING');
+if(/new\s+WebSocket/.test(probe))failures.push('HARNESS_CDP_GLOBAL_WEBSOCKET_FORBIDDEN_AFTER_NATIVE_49_50');
 if((probe.match(/method:\s*['"]Runtime\.evaluate['"]/g)||[]).length!==1)failures.push('HARNESS_CDP_PROBE_MUST_REMAIN_READ_ONLY_RUNTIME_EVALUATE');
+
+if(!raw)failures.push('HARNESS_CDP_RAW_SOCKET_MODULE_MISSING');
+else{
+  if(!/class\s+RawCdpWebSocket/.test(raw))failures.push('HARNESS_CDP_RAW_SOCKET_CLASS_MISSING');
+  if(!/createConnection/.test(raw))failures.push('HARNESS_CDP_RAW_SOCKET_NET_CONNECT_MISSING');
+  if(!/Sec-WebSocket-Key/i.test(raw)||!/Sec-WebSocket-Accept/i.test(raw))failures.push('HARNESS_CDP_RAW_SOCKET_HANDSHAKE_MISSING');
+  if(!/0x80/.test(raw)||!/mask/i.test(raw))failures.push('HARNESS_CDP_RAW_SOCKET_CLIENT_MASKING_MISSING');
+  if(!/request\s*\(/.test(raw))failures.push('HARNESS_CDP_RAW_SOCKET_REQUEST_API_MISSING');
+}
 
 if(/\bfetch\s*\(/.test(probe))failures.push('HARNESS_CDP_NODE_FETCH_FORBIDDEN_FOR_ADB_LOOPBACK');
 if(!probe.includes("spawnSync('curl'")||!probe.includes("'--max-time'")||!probe.includes('http://127.0.0.1:${port}/json'))failures.push('HARNESS_CDP_BOUNDED_CURL_DISCOVERY_MISSING');
@@ -46,10 +59,7 @@ if(!/for\s*\([^)]*(?:attempt|try)[^)]*\)/.test(probe)&&!/while\s*\([^)]*(?:attem
 if(!/(?:requestQueue|commandQueue|serialQueue)/.test(probe)||!/.then\s*\(/.test(probe))failures.push('HARNESS_CDP_REQUEST_SERIALIZATION_MISSING');
 if(!/function\s+(?:drop|reset|invalidate)(?:Cdp)?Session\s*\(/i.test(probe))failures.push('HARNESS_CDP_SESSION_INVALIDATION_MISSING');
 
-// Regression from native run #46: the client timed out after 9s while the daemon was still
-// inside its bounded Runtime.evaluate -> invalidate -> reconnect retry loop. The second client
-// retry then queued behind the first unfinished request and timed out too. The HTTP caller must
-// therefore wait longer than the daemon's full evaluate retry budget and issue exactly one probe.
+// Regression from native run #46: the client timed out before the daemon's bounded recovery loop.
 const attempts=Number((probe.match(/const\s+MAX_ATTEMPTS\s*=\s*(\d+)/)||[])[1]||0);
 const evalTimeout=Number((probe.match(/const\s+EVALUATE_TIMEOUT_MS\s*=\s*(\d+)/)||[])[1]||0);
 const daemonTimeout=Number((probe.match(/const\s+DAEMON_REQUEST_TIMEOUT_MS\s*=\s*(\d+)/)||[])[1]||0);
@@ -59,9 +69,8 @@ if(attempts&&evalTimeout&&daemonTimeout<=attempts*evalTimeout+5000)failures.push
 if(/catch\s*\(first\)[\s\S]{0,400}daemonRequest\(mode,arg\)[\s\S]{0,400}daemonRequest\(mode,arg\)/.test(probe))failures.push('HARNESS_CDP_CLIENT_DOUBLE_RETRY_FORBIDDEN');
 if(!/async function clientMain\(\)[\s\S]{0,300}return\s+daemonRequest\(mode,arg\)/.test(probe))failures.push('HARNESS_CDP_SINGLE_CLIENT_REQUEST_MISSING');
 
-// Regression from native run #47: cdp_attach() had already created and verified the adb forward,
-// but the daemon immediately destroyed/rebuilt it and its redundant adb shell call timed out.
-// First session establishment must consume the validated forward first; adb repair is fallback only.
+// Regression from native run #47: cdp_attach() already validated the adb forward. Discovery must
+// consume it before any adb repair; repair remains fallback only.
 const ensureStart=probe.indexOf('async function ensureCdpSession(){');
 const ensureEnd=probe.indexOf('async function evaluateReadOnly(',ensureStart);
 const ensureBlock=ensureStart>=0&&ensureEnd>ensureStart?probe.slice(ensureStart,ensureEnd):'';
@@ -69,11 +78,9 @@ const firstDiscovery=ensureBlock.indexOf('pages()');
 const firstRepair=ensureBlock.indexOf('repairForward()');
 if(!ensureBlock)failures.push('HARNESS_CDP_ENSURE_SESSION_BLOCK_MISSING');
 else if(firstDiscovery<0||firstRepair<0||firstRepair<firstDiscovery)failures.push('HARNESS_CDP_VALIDATED_FORWARD_NOT_REUSED_FIRST');
-if(!/try\s*\{[\s\S]{0,250}pages\(\)[\s\S]{0,500}catch[\s\S]{0,250}repairForward\(\)[\s\S]{0,250}pages\(\)/.test(ensureBlock))failures.push('HARNESS_CDP_REPAIR_NOT_FALLBACK_ONLY');
+if(!/try\s*\{[\s\S]{0,250}pages\(\)[\s\S]{0,600}catch[\s\S]{0,300}repairForward\(\)[\s\S]{0,300}pages\(\)/.test(ensureBlock))failures.push('HARNESS_CDP_REPAIR_NOT_FALLBACK_ONLY');
 
-// Regression from native run #48: only the final fallback adb timeout reached the CLI, masking the
-// earlier discovery/websocket/evaluate failure. Diagnostics must preserve the complete bounded
-// attempt chain so the next red native run identifies the first failing transport stage.
+// Regression from native run #48: preserve all retry causes rather than reporting only the final adb timeout.
 const evalStart=probe.indexOf('async function evaluateReadOnly(');
 const evalEnd=probe.indexOf('async function queuedEvaluate(',evalStart);
 const evalBlock=evalStart>=0&&evalEnd>evalStart?probe.slice(evalStart,evalEnd):'';
@@ -82,21 +89,15 @@ if(!/attemptErrors\.push\s*\(\s*`attempt \$\{attempt\}:[^`]*\$\{/.test(evalBlock
 if(!/CDP attempts failed:\s*\$\{attemptErrors\.join\(/.test(evalBlock))failures.push('HARNESS_CDP_ATTEMPT_ERROR_FINAL_MESSAGE_MISSING');
 if(!/initial discovery:\s*\$\{[^}]*\.message[^}]*\}/.test(ensureBlock))failures.push('HARNESS_CDP_INITIAL_DISCOVERY_DIAGNOSTIC_MISSING');
 if(!/repair:\s*\$\{[^}]*\.message[^}]*\}/.test(ensureBlock))failures.push('HARNESS_CDP_REPAIR_DIAGNOSTIC_MISSING');
-if(!/CDP websocket open (?:timeout|error)/.test(ensureBlock))failures.push('HARNESS_CDP_WEBSOCKET_STAGE_DIAGNOSTIC_MISSING');
 if(!/Runtime\.evaluate timeout/.test(evalBlock))failures.push('HARNESS_CDP_EVALUATE_STAGE_DIAGNOSTIC_MISSING');
 
-// Regression from native run #49: the first Runtime.evaluate succeeded, but the second command on
-// that same WebSocket timed out. Keep the daemon and serialized request queue, cache the discovered
-// WebView target URL, but recycle the WebSocket after every successful read. The next read must open
-// a fresh socket against the cached target without forcing /json discovery or adb repair again.
-if(!/let\s+cachedPageUrl\s*=\s*['"]['"]/.test(probe))failures.push('HARNESS_CDP_CACHED_PAGE_URL_MISSING');
-if(!/cachedPageUrl/.test(ensureBlock))failures.push('HARNESS_CDP_CACHED_TARGET_NOT_USED_BY_ENSURE');
-const cachedUse=ensureBlock.indexOf('cachedPageUrl');
-if(cachedUse<0||firstDiscovery<0||cachedUse>firstDiscovery)failures.push('HARNESS_CDP_CACHE_NOT_CHECKED_BEFORE_DISCOVERY');
-if(!/cachedPageUrl\s*=\s*page\.webSocketDebuggerUrl/.test(ensureBlock))failures.push('HARNESS_CDP_DISCOVERED_TARGET_NOT_CACHED');
-if(!/function\s+recycleCdpSocket\s*\(/.test(probe))failures.push('HARNESS_CDP_SOCKET_RECYCLE_HELPER_MISSING');
-if(!/recycleCdpSocket\s*\(\s*['"]successful read['"]\s*\)/.test(evalBlock))failures.push('HARNESS_CDP_SOCKET_NOT_RECYCLED_AFTER_SUCCESS');
-if(/function\s+recycleCdpSocket\s*\([^)]*\)\s*\{[^}]*cachedPageUrl\s*=\s*['"]['"]/.test(probe))failures.push('HARNESS_CDP_NORMAL_RECYCLE_MUST_KEEP_TARGET_CACHE');
+// Native #49: a second command through Node 24's global WebSocket timed out.
+// Native #50: closing it then opening a second global WebSocket timed out at handshake.
+// CDP itself supports repeated commands on one connection, so use our raw RFC6455 transport and
+// KEEP that raw connection alive after a successful read. Only failures invalidate/reconnect it.
+if(/recycleCdpSocket\s*\(\s*['"]successful read['"]/.test(evalBlock))failures.push('HARNESS_CDP_SUCCESSFUL_READ_MUST_KEEP_RAW_SOCKET');
+if(!/persistentSocket\.request\s*\(/.test(evalBlock))failures.push('HARNESS_CDP_RAW_SOCKET_REQUEST_NOT_USED');
+if(!/return\s+value/.test(evalBlock))failures.push('HARNESS_CDP_SUCCESS_VALUE_RETURN_MISSING');
 
 if(failures.length){console.error(failures.join('\n'));process.exit(1)}
 console.log('V160_NATIVE_FIRST_LAUNCH_PERMISSION_GATE_OK');
@@ -108,4 +109,4 @@ console.log('V160_NATIVE_CDP_CURL_DISCOVERY_GATE_OK');
 console.log('V160_NATIVE_CDP_RECOVERY_BUDGET_GATE_OK');
 console.log('V160_NATIVE_CDP_VALIDATED_FORWARD_REUSE_GATE_OK');
 console.log('V160_NATIVE_CDP_ATTEMPT_DIAGNOSTICS_GATE_OK');
-console.log('V160_NATIVE_CDP_SOCKET_RECYCLE_GATE_OK');
+console.log('V160_NATIVE_CDP_RAW_SOCKET_GATE_OK');
