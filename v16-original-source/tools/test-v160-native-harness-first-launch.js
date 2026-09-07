@@ -47,6 +47,21 @@ if((probe.match(/method:\s*['"]Runtime\.evaluate['"]/g)||[]).length!==1){
   failures.push('HARNESS_CDP_PROBE_MUST_REMAIN_READ_ONLY_RUNTIME_EVALUATE');
 }
 
+// A retry budget alone is not enough when the adb forward itself becomes stale. The read-only
+// probe must be able to rediscover the current WebView devtools socket and rebuild tcp:PORT.
+if(!probe.includes("require('child_process')")||!probe.includes('function repairForward()')){
+  failures.push('HARNESS_CDP_FORWARD_REPAIR_HELPER_MISSING');
+}
+if(!probe.includes("'forward','--remove'")||!probe.includes('localabstract:${sock}')){
+  failures.push('HARNESS_CDP_ADB_FORWARD_REPAIR_CONTRACT_MISSING');
+}
+if(!probe.includes('repairForward()')){
+  failures.push('HARNESS_CDP_REPAIR_NOT_IN_RETRY_PATH');
+}
+if(!probe.includes('AbortController')){
+  failures.push('HARNESS_CDP_HTTP_TIMEOUT_GUARD_MISSING');
+}
+
 if(failures.length){
   console.error(failures.join('\n'));
   process.exit(1);
@@ -54,3 +69,4 @@ if(failures.length){
 console.log('V160_NATIVE_FIRST_LAUNCH_PERMISSION_GATE_OK');
 console.log('V160_NATIVE_COORDINATE_STREAM_GATE_OK');
 console.log('V160_NATIVE_CDP_RECONNECT_GATE_OK');
+console.log('V160_NATIVE_CDP_FORWARD_REPAIR_GATE_OK');
