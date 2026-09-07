@@ -42,6 +42,21 @@ requireMatch(probe,/prod-cocacola/,'NATIVE_STATE_COCA_BOOT_SENTINEL_MISSING');
 requireMatch(probe,/HISTORICAL_BOOT_NOT_READY/,'NATIVE_STATE_BOOT_WAIT_DIAGNOSTIC_MISSING');
 requireMatch(probe,/requestMode\s*===\s*['"]state['"][\s\S]{0,180}value\.bootReady\s*!==\s*true/,'NATIVE_STATE_MUST_RETRY_UNTIL_BOOT_READY');
 
+// Native #70 attempts 1 and 2 proved a transport timeout is qualitatively different from
+// HISTORICAL_BOOT_NOT_READY: once Runtime.evaluate stops answering, repeated evaluate attempts
+// can outlive the emulator and erase the useful Android evidence. A timeout must therefore be
+// terminal for that probe request, drop the suspect socket and capture bounded native evidence
+// immediately. Only a successful Runtime.evaluate returning bootReady=false may retry in-place.
+requireMatch(probe,/function\s+captureRuntimeTimeoutDiagnostics\s*\(/,'NATIVE_CDP_TIMEOUT_DIAGNOSTICS_HELPER_MISSING');
+requireMatch(probe,/V160_CDP_TIMEOUT_DIAGNOSTIC/,'NATIVE_CDP_TIMEOUT_DIAGNOSTIC_MARKER_MISSING');
+requireMatch(probe,/dumpsys\s+meminfo|['"]dumpsys['"]\s*,\s*['"]meminfo['"]/,'NATIVE_CDP_TIMEOUT_MEMORY_CAPTURE_MISSING');
+requireMatch(probe,/logcat/,'NATIVE_CDP_TIMEOUT_LOGCAT_CAPTURE_MISSING');
+requireMatch(probe,/Runtime\.evaluate timeout[\s\S]{0,900}captureRuntimeTimeoutDiagnostics\s*\([\s\S]{0,500}dropCdpSession\s*\([\s\S]{0,500}break\s*;/,'NATIVE_CDP_TIMEOUT_MUST_BE_TERMINAL');
+const evaluateStart=probe.indexOf('async function evaluateReadOnly(');
+const evaluateEnd=probe.indexOf('\nasync function queuedEvaluate',evaluateStart);
+const evaluateBlock=evaluateStart>=0&&evaluateEnd>evaluateStart?probe.slice(evaluateStart,evaluateEnd):'';
+if(/keepOpen\s*=\s*message\s*===\s*['"]Runtime\.evaluate timeout['"]/.test(evaluateBlock))failures.push('NATIVE_CDP_TIMEOUT_KEEP_OPEN_FORBIDDEN_AFTER_70');
+
 // Native #55 proved uiautomator can omit android.webkit.WebView. The navigation matrix shares
 // the same Activity/WebView, so it must use WindowManager content geometry too.
 requireMatch(nav,/window_content_frame\(\)\{/,'NAV_WINDOW_CONTENT_FRAME_HELPER_MISSING');
@@ -73,5 +88,6 @@ if(failures.length){console.error(failures.join('\n'));process.exit(1);}
 require('./test-v160-stabilization-fresh-catalog-bootstrap.js');
 
 console.log('V160_NATIVE_HISTORICAL_BOOT_READINESS_GATE_OK mode=state-same-socket');
+console.log('V160_NATIVE_CDP_TIMEOUT_TERMINAL_GATE_OK diagnostics=adb-mem-logcat');
 console.log('V160_NATIVE_RUNTIME_READINESS_RECOVERY_OK mode=daemon-health');
 console.log('V160_NATIVE_NAV_WINDOW_GEOMETRY_OK');
