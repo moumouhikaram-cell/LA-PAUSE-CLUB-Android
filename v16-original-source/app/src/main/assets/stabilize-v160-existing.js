@@ -9,6 +9,20 @@
   const nowMs=()=>Date.now();
   const PENDING_TTL=15*60*1000;
 
+  function restorePaymentTimingPreference(){
+    let preferred=null;
+    try{preferred=window.__LP160_PRE_V15_DEFAULT_PAYMENT_TIMING}catch(_){}
+    try{delete window.__LP160_PRE_V15_DEFAULT_PAYMENT_TIMING}catch(_){}
+    if(!['start','end','deposit'].includes(preferred))return false;
+    try{
+      if(!state?.sessionRules||state.sessionRules.defaultPaymentTiming===preferred)return true;
+      state.sessionRules.defaultPaymentTiming=preferred;
+      if(typeof saveState==='function')saveState();
+      return true;
+    }catch(_){return false}
+  }
+  restorePaymentTimingPreference();
+
   function shifts(){try{return Array.isArray(state?.shifts)?state.shifts:[]}catch(_){return []}}
   function openShiftCandidates(){return shifts().filter(s=>status(s?.status)==='open'&&!s?.closedAt).sort((a,b)=>Number(b?.openedAt||0)-Number(a?.openedAt||0));}
   function compatibleCurrentShift(){return openShiftCandidates()[0]||null;}
