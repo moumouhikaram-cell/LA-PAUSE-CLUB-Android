@@ -63,7 +63,10 @@ for(const b of buttons){
   }
   // Pure submit/reset buttons are native form controls and do not need a JS listener.
   if(/\btype="(?:submit|reset)"/.test(b.markup))proven=true;
-  if(!proven) failures.push(`UNPROVEN_BUTTON_BINDING:${b.file}:${b.id||'(no-id)'}:${b.data.join(',')||'(no-data)'}`);
+  if(!proven){
+    const markup=b.markup.replace(/\s+/g,' ').slice(0,220);
+    failures.push(`UNPROVEN_BUTTON_BINDING:${b.file}:${b.id||'(no-id)'}:${b.data.join(',')||'(no-data)'}:${markup}`);
+  }
 }
 
 // Every data-* interaction contract rendered on a button must have a selector/dataset consumer.
