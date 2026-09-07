@@ -32,6 +32,20 @@ class RawCdpWebSocket{
     this.closed=false;
     this.fragmentOpcode=0;
     this.fragments=[];
+    this.transportStats={
+      createdAt:Date.now(),
+      requestsSent:0,
+      responsesReceived:0,
+      eventsReceived:0,
+      framesReceived:0,
+      bytesReceived:0,
+      bytesSent:0,
+      lastRequestId:null,
+      lastResponseId:null,
+      lastRequestAt:null,
+      lastResponseAt:null,
+      lastReceiveAt:null
+    };
     socket.on('data',chunk=>this._onData(chunk));
     socket.on('error',err=>this._failAll(err));
     socket.on('close',()=>this._failAll(new Error('raw websocket closed')));
@@ -94,6 +108,18 @@ class RawCdpWebSocket{
 
   isOpen(){return !this.closed&&!!this.socket&&!this.socket.destroyed&&this.socket.writable;}
 
+  diagnostics(){
+    return {
+      ...this.transportStats,
+      open:this.isOpen(),
+      closed:this.closed,
+      pendingIds:[...this.pending.keys()],
+      bufferedBytes:this.buffer.length,
+      fragmentOpcode:this.fragmentOpcode,
+      fragmentCount:this.fragments.length
+    };
+  }
+
   request(message,timeout=4500){
     return new Promise((resolve,reject)=>{
       if(!this.isOpen())return reject(new Error('raw websocket not open'));
@@ -105,8 +131,14 @@ class RawCdpWebSocket{
         reject(new Error('Runtime.evaluate timeout'));
       },timeout);
       this.pending.set(id,{resolve,reject,timer});
-      try{this.socket.write(makeClientFrame(1,Buffer.from(JSON.stringify(message))));}
-      catch(e){clearTimeout(timer);this.pending.delete(id);reject(e);}
+      try{
+        const frame=makeClientFrame(1,Buffer.from(JSON.stringify(message)));
+        this.socket.write(frame);
+        this.transportStats.requestsSent++;
+        this.transportStats.bytesSent+=frame.length;
+        this.transportStats.lastRequestId=id;
+        this.transportStats.lastRequestAt=Date.now();
+      }catch(e){clearTimeout(timer);this.pending.delete(id);reject(e);}
     });
   }
 
@@ -131,6 +163,8 @@ class RawCdpWebSocket{
 
   _onData(chunk){
     if(this.closed)return;
+    this.transportStats.bytesReceived+=chunk.length;
+    this.transportStats.lastReceiveAt=Date.now();
     this.buffer=Buffer.concat([this.buffer,chunk]);
     try{
       while(this.buffer.length>=2){
@@ -149,6 +183,7 @@ class RawCdpWebSocket{
         const payload=Buffer.from(this.buffer.subarray(off,off+len));
         this.buffer=this.buffer.subarray(off+len);
         if(mask)for(let i=0;i<payload.length;i++)payload[i]^=mask[i&3];
+        this.transportStats.framesReceived++;
         this._handleFrame(opcode,fin,payload);
         if(this.closed)return;
       }
@@ -157,7 +192,14 @@ class RawCdpWebSocket{
 
   _handleFrame(opcode,fin,payload){
     if(opcode===8){this._failAll(new Error('raw websocket peer closed'));return;}
-    if(opcode===9){if(this.isOpen())this.socket.write(makeClientFrame(10,payload));return;}
+    if(opcode===9){
+      if(this.isOpen()){
+        const frame=makeClientFrame(10,payload);
+        this.socket.write(frame);
+        this.transportStats.bytesSent+=frame.length;
+      }
+      return;
+    }
     if(opcode===10)return;
     if(opcode===0){
       if(!this.fragmentOpcode)throw new Error('unexpected continuation frame');
@@ -174,7 +216,11 @@ class RawCdpWebSocket{
     if(opcode!==1)return;
     let msg;
     try{msg=JSON.parse(payload.toString('utf8'));}catch(_){return;}
-    if(msg==null||msg.id==null)return;
+    if(msg==null)return;
+    if(msg.id==null){this.transportStats.eventsReceived++;return;}
+    this.transportStats.responsesReceived++;
+    this.transportStats.lastResponseId=msg.id;
+    this.transportStats.lastResponseAt=Date.now();
     const p=this.pending.get(msg.id);if(!p)return;
     this.pending.delete(msg.id);clearTimeout(p.timer);p.resolve(msg);
   }
