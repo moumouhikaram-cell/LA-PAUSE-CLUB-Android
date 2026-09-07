@@ -55,3 +55,4 @@ if(ctx.LP160Stabilization.restorePendingSessionStart()!==false)throw new Error('
 if(!ctx.LP160Stabilization.getPendingSessionStart())throw new Error('Pending draft lost when UI reconstruction failed');
 
 console.log('V160_SHIFT_SESSION_RESUME_REGRESSION_OK');
+console.log('V160_USER_REPORTED_SHIFT_SESSION_BASELINE_RECHECK');
