@@ -159,9 +159,11 @@ fi
 wait_device_ready "post-permission-grant" || fail "emulator lost after notification permission setup"
 launch_main || fail "MainActivity not foreground after retries"
 cdp_attach
-assert_state 'import json,sys;p=json.load(sys.stdin);assert p["stations"]>=7 and p["activeSessions"]==0 and p["shift"] is None' "FRESH_V160_READY"
-BASE_CLIENTS="$(state_json | python3 -c 'import json,sys;print(json.load(sys.stdin)["clients"])')"
-BASE_COCA="$(state_json | python3 -c 'import json,sys;print(json.load(sys.stdin)["cocaStock"])')"
+FRESH_STATE="$(state_json)"
+printf '%s' "$FRESH_STATE" | python3 -c 'import json,sys;p=json.load(sys.stdin);assert p["stations"]>=7 and p["activeSessions"]==0 and p["shift"] is None' || fail "FRESH_V160_READY state=$FRESH_STATE"
+log "FRESH_V160_READY OK $FRESH_STATE"
+BASE_CLIENTS="$(printf '%s' "$FRESH_STATE" | python3 -c 'import json,sys;print(json.load(sys.stdin)["clients"])')"
+BASE_COCA="$(printf '%s' "$FRESH_STATE" | python3 -c 'import json,sys;print(json.load(sys.stdin)["cocaStock"])')"
 log "PERSISTENCE_BASELINE clients=$BASE_CLIENTS cocaStock=$BASE_COCA"
 
 # User-reported regression: prepare session + drink before any shift exists.
