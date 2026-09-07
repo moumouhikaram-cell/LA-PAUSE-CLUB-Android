@@ -60,6 +60,7 @@ launch_main(){
   return 1
 }
 cdp_attach(){
+  probe --reset >/dev/null 2>&1 || true
   adb forward --remove tcp:$PORT >/dev/null 2>&1 || true
   local sock=""
   for _ in $(seq 1 30); do
@@ -72,6 +73,23 @@ cdp_attach(){
     sleep .4
   done
   fail "CDP unavailable"
+}
+cdp_ready(){
+  local value=""
+  for attempt in $(seq 1 12); do
+    wait_device_ready "cdp-ready-$attempt" || return 2
+    if value="$(probe ready)"; then
+      if [[ "$value" = "true" ]]; then
+        log "CDP_RUNTIME_READY attempt=$attempt"
+        return 0
+      fi
+      log "CDP_RUNTIME_NOT_READY attempt=$attempt value=$value"
+    else
+      log "CDP_RUNTIME_PROBE_RETRY attempt=$attempt"
+    fi
+    sleep .3
+  done
+  return 1
 }
 ui_dump(){ device_ready || return 2; timeout --foreground 8s adb shell uiautomator dump /sdcard/v160-stab.xml >/dev/null 2>&1 || true; timeout --foreground 8s adb shell cat /sdcard/v160-stab.xml 2>/dev/null || true; }
 window_content_frame(){
@@ -97,7 +115,6 @@ def emit(source,v):
     return True
 
 for b in blocks:
-    # Prefer the actual content frame when WindowManager exposes it.
     for source,pat in (
         ('content',r'\bcontent=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]'),
         ('mContentFrame',r'\bmContentFrame=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]'),
@@ -105,8 +122,6 @@ for b in blocks:
     ):
         m=re.search(pat,b)
         if m and emit(source,tuple(map(int,m.groups()))): raise SystemExit(0)
-
-    # Older Android builds expose a full frame plus content insets.
     mf=re.search(r'\bmFrame=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]',b)
     if not mf:
         mf=re.search(r'\bframe=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]',b)
@@ -114,11 +129,7 @@ for b in blocks:
     if mf and ins:
         x1,y1,x2,y2=map(int,mf.groups()); l,t,r,bot=map(int,ins.groups())
         if emit('frame+contentInsets',(x1+l,y1+t,x2-r,y2-bot)): raise SystemExit(0)
-
-    # Final WindowManager fallback. This is still package/activity scoped and preferable
-    # to uiautomator, which API 33 proved can omit the WebView node entirely.
     if mf and emit('windowFrame',tuple(map(int,mf.groups()))): raise SystemExit(0)
-
 raise SystemExit(2)
 PY
 }
@@ -208,6 +219,7 @@ fi
 wait_device_ready "post-permission-grant" || fail "emulator lost after notification permission setup"
 launch_main || fail "MainActivity not foreground after retries"
 cdp_attach
+cdp_ready || fail "CDP runtime not ready before fresh state"
 FRESH_STATE="$(state_json)"
 printf '%s' "$FRESH_STATE" | python3 -c 'import json,sys;p=json.load(sys.stdin);assert p["stations"]>=7 and p["activeSessions"]==0 and p["shift"] is None' || fail "FRESH_V160_READY state=$FRESH_STATE"
 log "FRESH_V160_READY OK $FRESH_STATE"
@@ -248,6 +260,7 @@ adb shell am force-stop "$PKG" >/dev/null 2>&1 || fail "force-stop persistence"
 sleep .7
 launch_main || fail "relaunch after persistence force-stop"
 cdp_attach
+cdp_ready || fail "CDP runtime not ready after process restart"
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["activeSessions"]==1 and p["payments"]==1 and p["orders"]==1 and p["paidOrders"]==1 and p["shift"] is not None and str(p["shift"]["status"]).lower()=="open"' "PROCESS_RESTART_BUSINESS_STATE_PRESERVED"
 REOPEN_CLIENTS="$(state_json | python3 -c 'import json,sys;print(json.load(sys.stdin)["clients"])')"
 REOPEN_COCA="$(state_json | python3 -c 'import json,sys;print(json.load(sys.stdin)["cocaStock"])')"
@@ -296,6 +309,7 @@ log "ANDROID_BACK_ACTIVITY_FINISH_OK"
 # Relaunch after a true Activity exit: closed-shift state and prior paid session data must still exist.
 launch_main || fail "final relaunch after Activity finish"
 cdp_attach
+cdp_ready || fail "CDP runtime not ready after final relaunch"
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["shift"] is None and p["activeSessions"]==1 and p["payments"]==1 and p["orders"]==1 and p["paidOrders"]==1' "FINAL_REOPEN_PERSISTENCE_OK"
 
 PID="$(adb shell pidof "$PKG" 2>/dev/null | tr -d '\r')"
