@@ -85,6 +85,19 @@ if(!/repair:\s*\$\{[^}]*\.message[^}]*\}/.test(ensureBlock))failures.push('HARNE
 if(!/CDP websocket open (?:timeout|error)/.test(ensureBlock))failures.push('HARNESS_CDP_WEBSOCKET_STAGE_DIAGNOSTIC_MISSING');
 if(!/Runtime\.evaluate timeout/.test(evalBlock))failures.push('HARNESS_CDP_EVALUATE_STAGE_DIAGNOSTIC_MISSING');
 
+// Regression from native run #49: the first Runtime.evaluate succeeded, but the second command on
+// that same WebSocket timed out. Keep the daemon and serialized request queue, cache the discovered
+// WebView target URL, but recycle the WebSocket after every successful read. The next read must open
+// a fresh socket against the cached target without forcing /json discovery or adb repair again.
+if(!/let\s+cachedPageUrl\s*=\s*['"]['"]/.test(probe))failures.push('HARNESS_CDP_CACHED_PAGE_URL_MISSING');
+if(!/cachedPageUrl/.test(ensureBlock))failures.push('HARNESS_CDP_CACHED_TARGET_NOT_USED_BY_ENSURE');
+const cachedUse=ensureBlock.indexOf('cachedPageUrl');
+if(cachedUse<0||firstDiscovery<0||cachedUse>firstDiscovery)failures.push('HARNESS_CDP_CACHE_NOT_CHECKED_BEFORE_DISCOVERY');
+if(!/cachedPageUrl\s*=\s*page\.webSocketDebuggerUrl/.test(ensureBlock))failures.push('HARNESS_CDP_DISCOVERED_TARGET_NOT_CACHED');
+if(!/function\s+recycleCdpSocket\s*\(/.test(probe))failures.push('HARNESS_CDP_SOCKET_RECYCLE_HELPER_MISSING');
+if(!/recycleCdpSocket\s*\(\s*['"]successful read['"]\s*\)/.test(evalBlock))failures.push('HARNESS_CDP_SOCKET_NOT_RECYCLED_AFTER_SUCCESS');
+if(/function\s+recycleCdpSocket\s*\([^)]*\)\s*\{[^}]*cachedPageUrl\s*=\s*['"]['"]/.test(probe))failures.push('HARNESS_CDP_NORMAL_RECYCLE_MUST_KEEP_TARGET_CACHE');
+
 if(failures.length){console.error(failures.join('\n'));process.exit(1)}
 console.log('V160_NATIVE_FIRST_LAUNCH_PERMISSION_GATE_OK');
 console.log('V160_NATIVE_COORDINATE_STREAM_GATE_OK');
@@ -95,3 +108,4 @@ console.log('V160_NATIVE_CDP_CURL_DISCOVERY_GATE_OK');
 console.log('V160_NATIVE_CDP_RECOVERY_BUDGET_GATE_OK');
 console.log('V160_NATIVE_CDP_VALIDATED_FORWARD_REUSE_GATE_OK');
 console.log('V160_NATIVE_CDP_ATTEMPT_DIAGNOSTICS_GATE_OK');
+console.log('V160_NATIVE_CDP_SOCKET_RECYCLE_GATE_OK');
