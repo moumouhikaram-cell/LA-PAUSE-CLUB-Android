@@ -72,6 +72,22 @@ if(!probe.includes('JSON.parse')){
   failures.push('HARNESS_CDP_DISCOVERY_JSON_PARSE_MISSING');
 }
 
+// A one-shot Node process must not exit immediately after ws.close(): Android WebView's DevTools
+// endpoint can keep the previous websocket slot busy until the close handshake completes. Every
+// evaluation therefore awaits a bounded close event before the process returns to the shell.
+if(!/function\s+closeWebSocketGracefully\s*\(/.test(probe)){
+  failures.push('HARNESS_CDP_GRACEFUL_CLOSE_HELPER_MISSING');
+}
+if(!/addEventListener\(\s*['"]close['"]/.test(probe)&&!/\.onclose\s*=/.test(probe)){
+  failures.push('HARNESS_CDP_CLOSE_EVENT_WAIT_MISSING');
+}
+if(!/await\s+closeWebSocketGracefully\s*\(\s*ws\s*\)/.test(probe)){
+  failures.push('HARNESS_CDP_GRACEFUL_CLOSE_NOT_AWAITED');
+}
+if(!/setTimeout\([^\n]{0,160}(?:resolve|finish|done)/.test(probe)){
+  failures.push('HARNESS_CDP_GRACEFUL_CLOSE_TIMEOUT_MISSING');
+}
+
 if(failures.length){
   console.error(failures.join('\n'));
   process.exit(1);
@@ -81,3 +97,4 @@ console.log('V160_NATIVE_COORDINATE_STREAM_GATE_OK');
 console.log('V160_NATIVE_CDP_RECONNECT_GATE_OK');
 console.log('V160_NATIVE_CDP_FORWARD_REPAIR_GATE_OK');
 console.log('V160_NATIVE_CDP_CURL_DISCOVERY_GATE_OK');
+console.log('V160_NATIVE_CDP_GRACEFUL_CLOSE_GATE_OK');
