@@ -2,6 +2,7 @@
 const fs=require('fs');
 const path=require('path');
 const harness=fs.readFileSync(path.resolve(__dirname,'android-v160-stabilization-journey.sh'),'utf8');
+const probe=fs.readFileSync(path.resolve(__dirname,'cdp-v160-stabilization-probe.js'),'utf8');
 const failures=[];
 
 const clearPos=harness.indexOf('adb shell pm clear "$PKG"');
@@ -30,9 +31,26 @@ if(!/read\s+x\s+y\s+<\s*<\(locate\s+"\$1"\s+"\$2"\)/.test(harness)){
   failures.push('HARNESS_PHYSICAL_TAP_COORDINATE_CONTRACT_CHANGED');
 }
 
+// Android WebView CDP can transiently drop a fresh websocket between rapid read-only probes.
+// The probe must rediscover the target and retry instead of failing the whole physical journey
+// on the first timeout. It must remain read-only: retry only Runtime.evaluate.
+if(!/(?:MAX_ATTEMPTS|CDP_ATTEMPTS|attempts)\s*=\s*[2-9]/.test(probe)){
+  failures.push('HARNESS_CDP_RETRY_BUDGET_MISSING');
+}
+if(!/for\s*\([^)]*(?:attempt|try)[^)]*\)/.test(probe)&&!/while\s*\([^)]*(?:attempt|try)[^)]*\)/.test(probe)){
+  failures.push('HARNESS_CDP_RECONNECT_LOOP_MISSING');
+}
+if(!/await\s+pages\s*\(\s*\)/.test(probe)||!/new\s+WebSocket/.test(probe)){
+  failures.push('HARNESS_CDP_TARGET_REDISCOVERY_CONTRACT_MISSING');
+}
+if((probe.match(/method:\s*['"]Runtime\.evaluate['"]/g)||[]).length!==1){
+  failures.push('HARNESS_CDP_PROBE_MUST_REMAIN_READ_ONLY_RUNTIME_EVALUATE');
+}
+
 if(failures.length){
   console.error(failures.join('\n'));
   process.exit(1);
 }
 console.log('V160_NATIVE_FIRST_LAUNCH_PERMISSION_GATE_OK');
 console.log('V160_NATIVE_COORDINATE_STREAM_GATE_OK');
+console.log('V160_NATIVE_CDP_RECONNECT_GATE_OK');
