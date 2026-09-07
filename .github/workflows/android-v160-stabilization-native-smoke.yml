@@ -8,6 +8,7 @@ on:
     paths:
       - "v16-original-source/app/src/main/**"
       - "v16-original-source/tools/android-v160-stabilization-journey.sh"
+      - "v16-original-source/tools/android-v160-navigation-matrix.sh"
       - "v16-original-source/tools/cdp-v160-stabilization-probe.js"
       - "v16-original-source/tools/test-v160-stabilization-*.js"
       - ".github/workflows/android-v160-stabilization-native-smoke.yml"
@@ -55,6 +56,7 @@ jobs:
           node --check v16-original-source/app/src/main/assets/stabilize-v160-existing.js
           node --check v16-original-source/tools/cdp-v160-stabilization-probe.js
           bash -n v16-original-source/tools/android-v160-stabilization-journey.sh
+          bash -n v16-original-source/tools/android-v160-navigation-matrix.sh
           node v16-original-source/tools/test-v160-stabilization-routes.js
           node v16-original-source/tools/test-v160-stabilization-interactions.js
           node v16-original-source/tools/test-v160-stabilization-shift-session.js
@@ -98,7 +100,7 @@ jobs:
           gradle --no-daemon --stacktrace :app:assembleDebug
           test -f app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Physical shift-session-drinks journey
+      - name: Physical shift-session-drinks and navigation journeys
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 33
@@ -110,7 +112,9 @@ jobs:
           heap-size: 384M
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
-          script: bash v16-original-source/tools/android-v160-stabilization-journey.sh
+          script: |
+            bash v16-original-source/tools/android-v160-stabilization-journey.sh
+            bash v16-original-source/tools/android-v160-navigation-matrix.sh
 
       - name: Upload stabilization diagnostics
         if: always()
@@ -120,5 +124,7 @@ jobs:
           path: |
             android-v160-stabilization-journey-trace.txt
             android-v160-stabilization-journey-logcat.txt
+            android-v160-navigation-matrix-trace.txt
+            android-v160-navigation-matrix-logcat.txt
           if-no-files-found: warn
           retention-days: 14
