@@ -26,6 +26,11 @@ if(!logDef)failures.push('HARNESS_LOG_HELPER_MISSING');
 else if(!/(?:>&2|1>&2)/.test(logDef))failures.push('HARNESS_STDOUT_COORDINATE_CONTAMINATION: log() must write diagnostics to stderr');
 if(!/read\s+x\s+y\s+<\s*<\(locate\s+"\$1"\s+"\$2"\)/.test(harness))failures.push('HARNESS_PHYSICAL_TAP_COORDINATE_CONTRACT_CHANGED');
 
+// Native #63 proved the first floor station is a bubbled clickable DIV data-station, not a
+// button/a/role=button. rect-text must include station cards or PS5 1 can never be located.
+if(!probe.includes('[data-station]'))failures.push('HARNESS_RECT_TEXT_STATION_BUBBLE_TARGET_MISSING');
+if(!/tap\s+rect-text\s+"PS5 1"/.test(harness))failures.push('HARNESS_PS5_1_PHYSICAL_TAP_MISSING');
+
 // Native #55 proved that API 33 may not expose android.webkit.WebView through uiautomator.
 // MainActivity hosts the WebView as its content view, so physical coordinate mapping must use
 // the package-scoped WindowManager content frame first, with uiautomator only as a fallback.
@@ -121,6 +126,7 @@ if(!/return\s+value/.test(evalBlock))failures.push('HARNESS_CDP_SUCCESS_VALUE_RE
 if(failures.length){console.error(failures.join('\n'));process.exit(1)}
 console.log('V160_NATIVE_FIRST_LAUNCH_PERMISSION_GATE_OK');
 console.log('V160_NATIVE_COORDINATE_STREAM_GATE_OK');
+console.log('V160_NATIVE_STATION_BUBBLE_LOCATOR_GATE_OK');
 console.log('V160_NATIVE_WINDOW_CONTENT_FRAME_GATE_OK');
 console.log('V160_NATIVE_SINGLE_FRESH_STATE_GATE_OK');
 console.log('V160_NATIVE_CDP_PERSISTENT_SESSION_GATE_OK');
