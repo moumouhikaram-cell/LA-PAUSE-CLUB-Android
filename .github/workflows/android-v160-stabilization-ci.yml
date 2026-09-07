@@ -91,6 +91,7 @@ jobs:
           node v16-original-source/tools/test-v160-stabilization-accounting.js
           node v16-original-source/tools/test-v160-stabilization-prepaid-sales.js
           node v16-original-source/tools/test-v160-stabilization-booking-refund.js
+          node v16-original-source/tools/test-v160-stabilization-raw-cdp-socket.js
           node v16-original-source/tools/test-v160-enrichment.js
           node v16-original-source/tools/test-v160-core-recovery.js
           node v16-original-source/tools/test-v160-session-form.js
