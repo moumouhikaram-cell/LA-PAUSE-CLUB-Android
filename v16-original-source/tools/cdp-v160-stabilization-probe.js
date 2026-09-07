@@ -48,7 +48,6 @@ function pages(){
 }
 function rectBody(find){return `(()=>{const e=${find};if(!e)return null;const r=e.getBoundingClientRect(),s=getComputedStyle(e),a=document.activeElement;return {tag:e.tagName,id:e.id||'',text:(e.textContent||'').trim().slice(0,160),value:'value'in e?e.value:null,checked:'checked'in e?!!e.checked:null,disabled:!!e.disabled,readOnly:!!e.readOnly,pointerEvents:s.pointerEvents,display:s.display,visibility:s.visibility,active:a===e,activeId:a?(a.id||a.name||a.tagName):'',left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:r.width,height:r.height,innerWidth,innerHeight,scrollY,scrollHeight:document.documentElement.scrollHeight};})()`;}
 function expressionFor(requestMode,requestArg){
-  if(requestMode==='ready')return `(()=>document.readyState==='complete'&&typeof state!=='undefined'&&!!state&&Array.isArray(state.stations)&&state.stations.length>=7&&!!document.getElementById('view'))()`;
   if(requestMode==='rect-id')return rectBody(`document.getElementById(${JSON.stringify(requestArg)})`);
   if(requestMode==='rect-css')return rectBody(`document.querySelector(${JSON.stringify(requestArg)})`);
   if(requestMode==='rect-text')return rectBody(`[...document.querySelectorAll('button,a,[role="button"]')].find(x=>((x.textContent||'').trim().toLowerCase()).includes(${JSON.stringify(String(requestArg||'').toLowerCase())}))`);
@@ -108,8 +107,8 @@ async function ensureCdpSession(){
 async function evaluateReadOnly(requestMode,requestArg){
   let lastError=null;
   const attemptErrors=[];
-  const maxAttempts=requestMode==='ready'?2:MAX_ATTEMPTS;
-  const requestTimeout=requestMode==='ready'?INITIAL_READY_TIMEOUT_MS:EVALUATE_TIMEOUT_MS;
+  const maxAttempts=MAX_ATTEMPTS;
+  const requestTimeout=EVALUATE_TIMEOUT_MS;
   for(let attempt=1;attempt<=maxAttempts;attempt++){
     try{
       await ensureCdpSession();
@@ -202,6 +201,8 @@ async function clientMain(){
   if(!mode)throw new Error('missing mode');
   await ensureDaemon();
   if(RESET_MODE)return daemonReset();
+  const requestMode=mode;
+  if(requestMode==='ready')return daemonHealth();
   return daemonRequest(mode,arg);
 }
 if(IS_DAEMON)startDaemon();
