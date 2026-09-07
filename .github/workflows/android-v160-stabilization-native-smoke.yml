@@ -7,6 +7,7 @@ on:
       - android-v160-stabilization
     paths:
       - "v16-original-source/app/src/main/**"
+      - "v16-original-source/tools/android-v160-back-no-exit-smoke.sh"
       - "v16-original-source/tools/android-v160-stabilization-journey.sh"
       - "v16-original-source/tools/patch-v160-native-journey-no-exit.py"
       - "v16-original-source/tools/android-v160-navigation-matrix.sh"
@@ -60,6 +61,7 @@ jobs:
           node --check v16-original-source/app/src/main/assets/stabilize-v160-navigation.js
           node --check v16-original-source/tools/cdp-v160-stabilization-probe.js
           python3 -m py_compile v16-original-source/tools/patch-v160-native-journey-no-exit.py
+          bash -n v16-original-source/tools/android-v160-back-no-exit-smoke.sh
           bash -n v16-original-source/tools/android-v160-stabilization-journey.sh
           bash -n v16-original-source/tools/android-v160-navigation-matrix.sh
           node v16-original-source/tools/test-v160-stabilization-navigation.js
@@ -164,7 +166,7 @@ jobs:
               print("APK_INDEX_SCRIPT_INTEGRITY_OK", len(local))
           PY
 
-      - name: Physical shift-session-drinks and navigation journeys
+      - name: Physical Android Back no-exit smoke
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 33
@@ -176,10 +178,7 @@ jobs:
           heap-size: 384M
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
-          script: |
-            python3 v16-original-source/tools/patch-v160-native-journey-no-exit.py
-            bash /tmp/android-v160-stabilization-journey-no-exit.sh
-            bash v16-original-source/tools/android-v160-navigation-matrix.sh
+          script: bash v16-original-source/tools/android-v160-back-no-exit-smoke.sh
 
       - name: Upload stabilization diagnostics
         if: always()
@@ -187,6 +186,7 @@ jobs:
         with:
           name: v160-stabilization-native-${{ github.run_number }}
           path: |
+            android-v160-back-no-exit-trace.txt
             android-v160-stabilization-journey-trace.txt
             android-v160-stabilization-journey-logcat.txt
             android-v160-navigation-matrix-trace.txt
