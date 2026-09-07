@@ -134,10 +134,11 @@ async function evaluateReadOnly(requestMode,requestArg){
   let lastError=null;
   const attemptErrors=[];
   const maxAttempts=requestMode==='state'?STATE_BOOT_ATTEMPTS:MAX_ATTEMPTS;
-  const requestTimeout=EVALUATE_TIMEOUT_MS;
   for(let attempt=1;attempt<=maxAttempts;attempt++){
     try{
       await ensureCdpSession();
+      const transportBefore=(persistentSocket&&typeof persistentSocket.diagnostics==='function')?persistentSocket.diagnostics():null;
+      const requestTimeout=transportBefore&&Number(transportBefore.requestsSent||0)===0?INITIAL_READY_TIMEOUT_MS:EVALUATE_TIMEOUT_MS;
       const id=nextMessageId++;
       const response=await persistentSocket.request({id,method:'Runtime.evaluate',params:{expression:expressionFor(requestMode,requestArg),returnByValue:true,awaitPromise:true}},requestTimeout);
       if(response&&response.error)throw new Error(JSON.stringify(response.error));
