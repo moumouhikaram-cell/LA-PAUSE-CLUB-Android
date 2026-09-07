@@ -74,7 +74,56 @@ cdp_attach(){
   fail "CDP unavailable"
 }
 ui_dump(){ device_ready || return 2; timeout --foreground 8s adb shell uiautomator dump /sdcard/v160-stab.xml >/dev/null 2>&1 || true; timeout --foreground 8s adb shell cat /sdcard/v160-stab.xml 2>/dev/null || true; }
+window_content_frame(){
+  local dump=/tmp/v160-stab-window.txt
+  timeout --foreground 8s adb shell dumpsys window windows > "$dump" 2>/dev/null || return 2
+  python3 - "$dump" "$PKG" "MainActivity" <<'PY'
+import re,sys
+path,pkg,activity=sys.argv[1:]
+s=open(path,encoding='utf-8',errors='ignore').read()
+blocks=re.split(r'(?=\n\s*Window(?:\s+#\d+)?\s+Window\{)',s)
+blocks=[b for b in blocks if pkg in b and activity in b]
+if not blocks:
+    blocks=[b for b in re.split(r'\n\s*Window',s) if pkg in b and activity in b]
+
+def valid(v):
+    x1,y1,x2,y2=v
+    return x2>x1 and y2>y1 and (x2-x1)>=200 and (y2-y1)>=300
+
+def emit(source,v):
+    if not valid(v): return False
+    print(*v)
+    print(f'WINDOW_CONTENT_FRAME source={source} frame={v[0]},{v[1]},{v[2]},{v[3]}',file=sys.stderr)
+    return True
+
+for b in blocks:
+    # Prefer the actual content frame when WindowManager exposes it.
+    for source,pat in (
+        ('content',r'\bcontent=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]'),
+        ('mContentFrame',r'\bmContentFrame=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]'),
+        ('contentFrame',r'\bcontentFrame=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]'),
+    ):
+        m=re.search(pat,b)
+        if m and emit(source,tuple(map(int,m.groups()))): raise SystemExit(0)
+
+    # Older Android builds expose a full frame plus content insets.
+    mf=re.search(r'\bmFrame=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]',b)
+    if not mf:
+        mf=re.search(r'\bframe=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]',b)
+    ins=re.search(r'\bmContentInsets=Rect\((-?\d+),\s*(-?\d+)\s*-\s*(-?\d+),\s*(-?\d+)\)',b)
+    if mf and ins:
+        x1,y1,x2,y2=map(int,mf.groups()); l,t,r,bot=map(int,ins.groups())
+        if emit('frame+contentInsets',(x1+l,y1+t,x2-r,y2-bot)): raise SystemExit(0)
+
+    # Final WindowManager fallback. This is still package/activity scoped and preferable
+    # to uiautomator, which API 33 proved can omit the WebView node entirely.
+    if mf and emit('windowFrame',tuple(map(int,mf.groups()))): raise SystemExit(0)
+
+raise SystemExit(2)
+PY
+}
 webview_frame(){
+  if window_content_frame; then return 0; fi
   local xml=/tmp/v160-stab-frame.xml; ui_dump > "$xml"
   python3 - "$xml" <<'PY'
 import re,sys
