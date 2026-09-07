@@ -99,5 +99,7 @@ console.log(`V160_STABILIZATION_INTERACTION_AUDIT_OK buttons=${buttons.length} u
 
 // Dynamic v1.5 tabs also need persistent route state, otherwise a re-render can jump to a wrong screen.
 require('./test-v160-stabilization-tabs.js');
+// Settings written by v1.6 must survive the v1.5 parity initializer on process restart.
+require('./test-v160-stabilization-settings-persistence.js');
 // Keep the physical Android journey runnable after pm clear: runtime permissions must be resolved before MainActivity foreground assertions.
 require('./test-v160-native-harness-first-launch.js');
