@@ -61,6 +61,7 @@ jobs:
           node v16-original-source/tools/test-v160-stabilization-cash-dom.js
           node v16-original-source/tools/test-v160-stabilization-accounting.js
           node v16-original-source/tools/test-v160-stabilization-prepaid-sales.js
+          node v16-original-source/tools/test-v160-stabilization-booking-refund.js
 
       - name: Park unrelated modern modules and build exact v1.6
         shell: bash
