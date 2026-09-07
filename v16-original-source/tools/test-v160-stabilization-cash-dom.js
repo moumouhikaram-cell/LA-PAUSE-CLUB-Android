@@ -1,7 +1,8 @@
 'use strict';
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const code=fs.readFileSync(path.resolve(__dirname,'../app/src/main/assets/stabilize-v160-existing.js'),'utf8');
-const elems={drawerKpis:{innerHTML:''},drawerMode:{textContent:''}};
+function button(){return {disabled:false,attrs:{},setAttribute(k,v){this.attrs[k]=v}}}
+const elems={drawerKpis:{innerHTML:''},drawerMode:{textContent:''},addIncomeBtn:button(),addExpenseBtn:button()};
 let saved=0,renders=0;
 const ctx={console,Date,JSON,Math,
   state:{shifts:[],orders:[{id:'o1',status:'PAID',total:10}],sessions:[],products:[],business:{name:'LA PAUSE CLUB'},sync:{enabled:false}},
@@ -30,4 +31,9 @@ if(elems.drawerMode.textContent!=='Données locales protégées')throw new Error
 
 // Visible route render must normalize casing before delegating to historical renderer.
 ctx.state.orders[0].status='PAID';ctx.renderView();if(renders!==1||ctx.state.orders[0].status!=='paid')throw new Error('renderView normalization wrapper failed');
+
+// A closed cash drawer must not advertise transaction buttons as active.
+ctx.currentView='cash';elems.addIncomeBtn.disabled=false;elems.addExpenseBtn.disabled=false;ctx.renderView();
+if(!elems.addIncomeBtn.disabled||elems.addIncomeBtn.attrs['aria-disabled']!=='true')throw new Error('Closed cash income action still enabled');
+if(!elems.addExpenseBtn.disabled||elems.addExpenseBtn.attrs['aria-disabled']!=='true')throw new Error('Closed cash expense action still enabled');
 console.log('V160_STABILIZATION_CASH_DOM_OK');
