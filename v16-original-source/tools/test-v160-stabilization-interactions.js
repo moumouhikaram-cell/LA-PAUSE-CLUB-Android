@@ -54,10 +54,11 @@ function hasDataConsumer(a){
 function hasStationStartBubblingContract(b){
   if(!/\bstation-start-btn\b/.test(b.markup))return false;
   const s=src[b.file]||'';
-  return s.includes('foot=`<button class="station-start-btn">') &&
-    s.includes('data-station="${st.id}"') &&
-    s.includes("document.querySelectorAll('[data-station]').forEach(el=>el.onclick=e=>") &&
-    s.includes('openStation(el.dataset.station)');
+  const rendersButton=/foot\s*=\s*`<button\s+class=["']station-start-btn["']>/.test(s);
+  const rendersStation=/data-station=["']\$\{st\.id\}["']/.test(s);
+  const bindsStation=/document\.querySelectorAll\(\s*["']\[data-station\]["']\s*\)\s*\.forEach\(\s*el\s*=>\s*el\.onclick\s*=/.test(s);
+  const opensStation=/openStation\(\s*el\.dataset\.station\s*\)/.test(s);
+  return rendersButton&&rendersStation&&bindsStation&&opensStation;
 }
 
 let idButtons=0,dataButtons=0,inlineButtons=0,disabledButtons=0,bubbledButtons=0;
