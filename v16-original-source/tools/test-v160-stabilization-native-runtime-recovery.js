@@ -70,6 +70,13 @@ requireMatch(evaluateBlock,/attemptErrors\.push\s*\(diagnostic\s*\)/,'NATIVE_CDP
 requireMatch(probe,/CDP attempts failed:[^\n]*attemptErrors\.join/,'NATIVE_CDP_TIMEOUT_DAEMON_ERROR_CHANNEL_MISSING');
 requireMatch(probe,/jsonResponse\(res,502,\{ok:false,error:e&&e\.message\?e\.message:String\(e\)\}\)/,'NATIVE_CDP_TIMEOUT_HTTP_ERROR_PROPAGATION_MISSING');
 
+// Native #74 proved Android/process/memory can remain healthy while Runtime.evaluate times out.
+// The timeout diagnostic must therefore snapshot the raw RFC6455 transport before the socket is
+// destroyed so CI can distinguish "no response bytes" from "messages arrived but request id did
+// not correlate". Do not infer latency or raise timeouts without this evidence.
+requireMatch(diagBlock,/persistentSocket[\s\S]{0,240}diagnostics\s*\(\)/,'NATIVE_CDP_TIMEOUT_RAW_TRANSPORT_SNAPSHOT_MISSING');
+requireMatch(diagBlock,/transport=/,'NATIVE_CDP_TIMEOUT_RAW_TRANSPORT_NOT_EMITTED');
+
 // Native #55 proved uiautomator can omit android.webkit.WebView. The navigation matrix shares
 // the same Activity/WebView, so it must use WindowManager content geometry too.
 requireMatch(nav,/window_content_frame\(\)\{/,'NAV_WINDOW_CONTENT_FRAME_HELPER_MISSING');
@@ -103,5 +110,6 @@ require('./test-v160-stabilization-fresh-catalog-bootstrap.js');
 console.log('V160_NATIVE_HISTORICAL_BOOT_READINESS_GATE_OK mode=state-same-socket');
 console.log('V160_NATIVE_CDP_TIMEOUT_TERMINAL_GATE_OK diagnostics=adb-mem-logcat');
 console.log('V160_NATIVE_CDP_TIMEOUT_PROPAGATION_GATE_OK channel=daemon-error-response');
+console.log('V160_NATIVE_CDP_RAW_TRANSPORT_DIAGNOSTIC_GATE_OK');
 console.log('V160_NATIVE_RUNTIME_READINESS_RECOVERY_OK mode=daemon-health');
 console.log('V160_NATIVE_NAV_WINDOW_GEOMETRY_OK');
