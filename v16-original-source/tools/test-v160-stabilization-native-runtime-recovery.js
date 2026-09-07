@@ -9,15 +9,16 @@ const failures=[];
 
 function requireMatch(text,re,label){if(!re.test(text))failures.push(label);}
 
-// Native #56 reproduced twice: /json and the raw handshake were ready while the WebView JS
-// thread still did not answer Runtime.evaluate inside the ordinary 4.5s budget. Readiness must
-// therefore be a first-class pre-interaction gate, not an arbitrary sleep.
-const readyTimeout=Number((probe.match(/const\s+INITIAL_READY_TIMEOUT_MS\s*=\s*(\d+)/)||[])[1]||0);
-if(readyTimeout<10000)failures.push(`NATIVE_READY_TIMEOUT_TOO_SHORT:${readyTimeout}`);
-requireMatch(probe,/requestMode\s*===\s*['"]ready['"]/,'NATIVE_READY_EXPRESSION_MISSING');
-requireMatch(probe,/document\.readyState/,'NATIVE_READY_DOCUMENT_STATE_MISSING');
-requireMatch(probe,/INITIAL_READY_TIMEOUT_MS/,'NATIVE_READY_TIMEOUT_NOT_USED');
-requireMatch(probe,/message\s*===\s*['"]Runtime\.evaluate timeout['"][\s\S]{0,240}persistentSocket[\s\S]{0,120}isOpen\s*\(/,'NATIVE_TIMEOUT_OPEN_SOCKET_RECOVERY_MISSING');
+// Native #61 proved that a separate Runtime.evaluate readiness probe can kill the emulator
+// before the first real state read. Keep the readiness gate, but make it daemon/transport-only;
+// the first business state snapshot remains the authoritative WebView-JS readiness proof.
+requireMatch(probe,/requestMode\s*===\s*['"]ready['"]/,'NATIVE_READY_MODE_MISSING');
+requireMatch(probe,/function\s+daemonHealth\s*\(/,'NATIVE_DAEMON_HEALTH_HELPER_MISSING');
+requireMatch(probe,/requestMode\s*===\s*['"]ready['"][\s\S]{0,260}daemonHealth\s*\(/,'NATIVE_READY_MUST_USE_DAEMON_HEALTH');
+const exprStart=probe.indexOf('function expressionFor(');
+const exprEnd=probe.indexOf('\nasync function',exprStart);
+const exprBlock=exprStart>=0&&exprEnd>exprStart?probe.slice(exprStart,exprEnd):'';
+if(/requestMode\s*===\s*['"]ready['"]/.test(exprBlock))failures.push('NATIVE_READY_RUNTIME_EVALUATE_FORBIDDEN_AFTER_61');
 requireMatch(probe,/RESET_MODE|--reset/,'NATIVE_DAEMON_RESET_MODE_MISSING');
 requireMatch(probe,/\/reset/,'NATIVE_DAEMON_RESET_ENDPOINT_MISSING');
 requireMatch(probe,/dropCdpSession\([^\n]*true\)/,'NATIVE_DAEMON_RESET_MUST_CLEAR_TARGET');
@@ -55,5 +56,5 @@ const navReady=nav.indexOf('cdp_ready',navAttach);
 if(navAttach<0||navFirstTap<0||navReady<navAttach||navReady>navFirstTap)failures.push('NAV_READY_MUST_PRECEDE_PHYSICAL_TAPS');
 
 if(failures.length){console.error(failures.join('\n'));process.exit(1);}
-console.log(`V160_NATIVE_RUNTIME_READINESS_RECOVERY_OK readyTimeout=${readyTimeout}`);
+console.log('V160_NATIVE_RUNTIME_READINESS_RECOVERY_OK mode=daemon-health');
 console.log('V160_NATIVE_NAV_WINDOW_GEOMETRY_OK');
