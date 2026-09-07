@@ -1,11 +1,12 @@
 'use strict';
 /* Read-only CDP locator/state probe for the historical v1.6 stabilization journey.
- * CLI calls are forwarded to one localhost daemon so successive physical Android reads reuse
- * the discovered WebView target while each read gets a fresh WebSocket. The daemon never clicks,
- * types, mutates storage or calls render functions.
+ * CLI calls are forwarded to one localhost daemon. The daemon keeps one dependency-free raw
+ * RFC6455 socket to the Android WebView and serializes every read-only Runtime.evaluate command.
+ * It never clicks, types, mutates storage or calls render functions.
  */
 const http=require('http');
 const {spawn,spawnSync}=require('child_process');
+const {RawCdpWebSocket}=require('./cdp-v160-raw-websocket');
 const mode=process.argv[2]||'';
 const arg=process.argv.slice(3).join(' ');
 const port=Number(process.env.LP160_CDP_PORT||9229);
@@ -55,87 +56,69 @@ function expressionFor(requestMode,requestArg){
 let persistentSocket=null;
 let cachedPageUrl='';
 let nextMessageId=1;
-let pendingMessages=new Map();
 let requestQueue=Promise.resolve();
-function recycleCdpSocket(reason){
-  const ws=persistentSocket;
+function dropCdpSession(reason,clearTarget=true){
+  const socket=persistentSocket;
   persistentSocket=null;
-  for(const [,pending] of pendingMessages){clearTimeout(pending.timer);pending.reject(new Error(reason||'CDP socket recycled'));}
-  pendingMessages.clear();
-  if(ws){
-    try{ws.onclose=null;ws.onerror=null;ws.onmessage=null;}catch(_){}
-    try{ws.close();}catch(_){}
-  }
+  if(socket){try{socket.destroy();}catch(_){}}
+  if(clearTarget)cachedPageUrl='';
 }
-function dropCdpSession(reason){
-  recycleCdpSocket(reason||'CDP session invalidated');
-  cachedPageUrl='';
+async function connectRaw(pageUrl){
+  try{return await RawCdpWebSocket.connect(pageUrl,4500);}
+  catch(e){throw new Error(`CDP raw websocket open failed: ${e&&e.message?e.message:String(e)}`);}
 }
 async function ensureCdpSession(){
-  if(persistentSocket&&persistentSocket.readyState===WebSocket.OPEN)return persistentSocket;
-  recycleCdpSocket('reconnecting CDP session');
-  let pageUrl=cachedPageUrl;
-  if(!pageUrl){
-    let list;
+  if(persistentSocket&&persistentSocket.isOpen())return persistentSocket;
+  if(persistentSocket)dropCdpSession('stale raw socket',false);
+
+  if(cachedPageUrl){
     try{
-      list=pages();
-    }catch(initialDiscoveryError){
-      try{
-        repairForward();
-        list=pages();
-      }catch(repairError){
-        throw new Error(`initial discovery: ${initialDiscoveryError&&initialDiscoveryError.message?initialDiscoveryError.message:String(initialDiscoveryError)}; repair: ${repairError&&repairError.message?repairError.message:String(repairError)}`);
-      }
+      persistentSocket=await connectRaw(cachedPageUrl);
+      return persistentSocket;
+    }catch(cachedTargetError){
+      cachedPageUrl='';
     }
-    const page=list.find(x=>x.type==='page'&&x.webSocketDebuggerUrl)||list.find(x=>x.webSocketDebuggerUrl);
-    if(!page)throw new Error('no debuggable WebView page');
-    cachedPageUrl=page.webSocketDebuggerUrl;
-    pageUrl=cachedPageUrl;
   }
-  const ws=new WebSocket(pageUrl);
+
+  let list;
   try{
-    await new Promise((resolve,reject)=>{
-      const timer=setTimeout(()=>reject(new Error('CDP websocket open timeout')),4500);
-      ws.onopen=()=>{clearTimeout(timer);resolve();};
-      ws.onerror=()=>{clearTimeout(timer);reject(new Error('CDP websocket open error'));};
-    });
+    list=pages();
+  }catch(initialDiscoveryError){
+    try{
+      repairForward();
+      list=pages();
+    }catch(repairError){
+      throw new Error(`initial discovery: ${initialDiscoveryError&&initialDiscoveryError.message?initialDiscoveryError.message:String(initialDiscoveryError)}; repair: ${repairError&&repairError.message?repairError.message:String(repairError)}`);
+    }
+  }
+  const page=list.find(x=>x.type==='page'&&x.webSocketDebuggerUrl)||list.find(x=>x.webSocketDebuggerUrl);
+  if(!page)throw new Error('no debuggable WebView page');
+  cachedPageUrl=page.webSocketDebuggerUrl;
+  try{
+    persistentSocket=await connectRaw(cachedPageUrl);
   }catch(e){
     cachedPageUrl='';
-    try{ws.close();}catch(_){}
     throw e;
   }
-  persistentSocket=ws;
-  ws.onmessage=ev=>{
-    let msg;try{msg=JSON.parse(String(ev.data));}catch(_){return;}
-    const pending=pendingMessages.get(msg.id);if(!pending)return;
-    pendingMessages.delete(msg.id);clearTimeout(pending.timer);
-    if(msg.error)return pending.reject(new Error(JSON.stringify(msg.error)));
-    if(msg.result&&msg.result.exceptionDetails)return pending.reject(new Error('Runtime exception'));
-    pending.resolve(msg.result?.result?.value??null);
-  };
-  ws.onerror=()=>{if(persistentSocket===ws)recycleCdpSocket('persistent websocket error');};
-  ws.onclose=()=>{if(persistentSocket===ws)recycleCdpSocket('persistent websocket closed');};
-  return ws;
+  return persistentSocket;
 }
 async function evaluateReadOnly(requestMode,requestArg){
   let lastError=null;
   const attemptErrors=[];
   for(let attempt=1;attempt<=MAX_ATTEMPTS;attempt++){
     try{
-      const ws=await ensureCdpSession();
+      await ensureCdpSession();
       const id=nextMessageId++;
-      const value=await new Promise((resolve,reject)=>{
-        const timer=setTimeout(()=>{pendingMessages.delete(id);reject(new Error('Runtime.evaluate timeout'));},EVALUATE_TIMEOUT_MS);
-        pendingMessages.set(id,{resolve,reject,timer});
-        ws.send(JSON.stringify({id,method:'Runtime.evaluate',params:{expression:expressionFor(requestMode,requestArg),returnByValue:true,awaitPromise:true}}));
-      });
-      recycleCdpSocket('successful read');
+      const response=await persistentSocket.request({id,method:'Runtime.evaluate',params:{expression:expressionFor(requestMode,requestArg),returnByValue:true,awaitPromise:true}},EVALUATE_TIMEOUT_MS);
+      if(response&&response.error)throw new Error(JSON.stringify(response.error));
+      if(response?.result?.exceptionDetails)throw new Error('Runtime exception');
+      const value=response?.result?.result?.value??null;
       return value;
     }catch(e){
       const message=e&&e.message?e.message:String(e);
       attemptErrors.push(`attempt ${attempt}:${message}`);
       lastError=e;
-      recycleCdpSocket(message||'CDP evaluate failure');
+      dropCdpSession(message||'CDP evaluate failure',false);
       if(attempt<MAX_ATTEMPTS)await sleep(220*attempt);
     }
   }
@@ -152,7 +135,7 @@ function jsonResponse(res,status,payload){
 }
 function startDaemon(){
   const server=http.createServer((req,res)=>{
-    if(req.method==='GET'&&req.url==='/health')return jsonResponse(res,200,{ok:true,session:!!(persistentSocket&&persistentSocket.readyState===WebSocket.OPEN),page:cachedPageUrl||null});
+    if(req.method==='GET'&&req.url==='/health')return jsonResponse(res,200,{ok:true,session:!!(persistentSocket&&persistentSocket.isOpen()),page:cachedPageUrl||null});
     if(req.method!=='POST'||req.url!=='/probe')return jsonResponse(res,404,{ok:false,error:'not found'});
     let raw='';req.setEncoding('utf8');req.on('data',chunk=>{raw+=chunk;if(raw.length>65536)req.destroy();});
     req.on('end',async()=>{
@@ -164,7 +147,7 @@ function startDaemon(){
     });
   });
   server.listen(DAEMON_PORT,'127.0.0.1');
-  const shutdown=()=>{dropCdpSession('daemon shutdown');server.close(()=>process.exit(0));setTimeout(()=>process.exit(0),500).unref();};
+  const shutdown=()=>{dropCdpSession('daemon shutdown',true);server.close(()=>process.exit(0));setTimeout(()=>process.exit(0),500).unref();};
   process.on('SIGTERM',shutdown);process.on('SIGINT',shutdown);
 }
 function daemonRequest(requestMode,requestArg,timeout=DAEMON_REQUEST_TIMEOUT_MS){
