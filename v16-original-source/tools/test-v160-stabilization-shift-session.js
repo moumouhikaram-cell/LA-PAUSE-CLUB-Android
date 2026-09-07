@@ -1,6 +1,7 @@
 'use strict';
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const code=fs.readFileSync(path.resolve(__dirname,'../app/src/main/assets/stabilize-v160-existing.js'),'utf8');
+const recoveryCode=fs.readFileSync(path.resolve(__dirname,'../app/src/main/assets/stabilize-v160-shift-recovery.js'),'utf8');
 const elems={modalOk:{onclick:null}};let legacyStarts=0,view='',draws=0,toasts=[],closed=0,drawThrows=false,saves=0;
 const ctx={console,Date,JSON,Math,
   state:{cashSettings:{shiftRequired:true},shifts:[],stations:[{id:'ps5-1',type:'PS5',enabled:true}],sessions:[],products:[{id:'prod-coca',name:'Coca',enabled:true,stock:4},{id:'prod-twix',name:'Twix',enabled:true,stock:3}]},
@@ -20,11 +21,15 @@ ctx.state.shifts=[{id:'old',status:'OPEN',openedAt:10},{id:'new',status:'open',o
 if(!ctx.currentShift()||ctx.currentShift().id!=='new')throw new Error(`Latest unclosed OPEN shift expected, got ${ctx.currentShift()?.id}`);
 
 // 1b) Existing installs affected by the historical case bug can contain multiple OPEN shifts.
-// The repair must keep only the newest one logically open; closing it must NOT resurrect an older stale shift.
-if(typeof ctx.LP160Stabilization.repairDuplicateOpenShifts!=='function')throw new Error('Duplicate OPEN shift repair missing');
-ctx.LP160Stabilization.repairDuplicateOpenShifts();
+// Loading the repair must keep only the newest one logically open and preserve old rows as recovered history.
+vm.runInContext(recoveryCode,ctx,{filename:'stabilize-v160-shift-recovery.js'});
+if(!ctx.LP160ShiftRecovery||typeof ctx.LP160ShiftRecovery.repairDuplicateOpenShifts!=='function')throw new Error('Duplicate OPEN shift repair missing');
+if(ctx.LP160ShiftRecovery.repairedOnLoad!==1)throw new Error(`Expected one startup repair, got ${ctx.LP160ShiftRecovery.repairedOnLoad}`);
 const logicalOpen=ctx.state.shifts.filter(s=>String(s.status).toLowerCase()==='open'&&!s.closedAt);
 if(logicalOpen.length!==1||logicalOpen[0].id!=='new')throw new Error(`Duplicate shifts not repaired: ${JSON.stringify(ctx.state.shifts)}`);
+const repaired=ctx.state.shifts.find(s=>s.id==='old');
+if(!repaired||String(repaired.status).toLowerCase()!=='closed'||!repaired.closedAt||repaired.recoveryReason!=='SUPERSEDED_DUPLICATE_OPEN')throw new Error(`Old shift recovery trace missing: ${JSON.stringify(repaired)}`);
+if(ctx.LP160ShiftRecovery.repairDuplicateOpenShifts()!==0)throw new Error('Duplicate repair is not idempotent');
 logicalOpen[0].status='closed';logicalOpen[0].closedAt=40;
 if(ctx.currentShift())throw new Error(`Closing newest shift resurrected stale shift ${ctx.currentShift()?.id}`);
 if(saves<1)throw new Error('Duplicate shift repair was not persisted');
