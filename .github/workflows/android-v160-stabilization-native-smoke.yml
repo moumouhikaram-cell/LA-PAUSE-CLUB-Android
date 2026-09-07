@@ -8,6 +8,7 @@ on:
     paths:
       - "v16-original-source/app/src/main/**"
       - "v16-original-source/tools/android-v160-stabilization-journey.sh"
+      - "v16-original-source/tools/patch-v160-native-journey-no-exit.py"
       - "v16-original-source/tools/android-v160-navigation-matrix.sh"
       - "v16-original-source/tools/cdp-v160-stabilization-probe.js"
       - "v16-original-source/tools/cdp-v160-raw-websocket.js"
@@ -58,6 +59,7 @@ jobs:
           node --check v16-original-source/app/src/main/assets/stabilize-v160-shift-recovery.js
           node --check v16-original-source/app/src/main/assets/stabilize-v160-navigation.js
           node --check v16-original-source/tools/cdp-v160-stabilization-probe.js
+          python3 -m py_compile v16-original-source/tools/patch-v160-native-journey-no-exit.py
           bash -n v16-original-source/tools/android-v160-stabilization-journey.sh
           bash -n v16-original-source/tools/android-v160-navigation-matrix.sh
           node v16-original-source/tools/test-v160-stabilization-navigation.js
@@ -175,18 +177,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
           script: |
-            python3 - <<'PY'
-            from pathlib import Path
-            src=Path('v16-original-source/tools/android-v160-stabilization-journey.sh').read_text()
-            start=src.index('# Back from cash restores floor;')
-            end=src.index('# Relaunch after a true Activity exit:')
-            replacement='''# Back from cash restores floor; a second Back on Home must NEVER finish MainActivity.\nandroid_back "cash-to-floor-after-close"\nassert_state 'import json,sys;p=json.load(sys.stdin);assert p["currentView"]=="floor"' "ANDROID_BACK_AFTER_SHIFT_CLOSE"\nandroid_back "home-remains-open"\nassert_state 'import json,sys;p=json.load(sys.stdin);assert p["currentView"]=="floor"' "ANDROID_BACK_HOME_NO_EXIT"\nlog "ANDROID_BACK_HOME_NO_EXIT_OK"\n\n'''
-            src=src[:start]+replacement+src[end:]
-            src=src.replace('# Relaunch after a true Activity exit: closed-shift state and prior paid session data must still exist.','# Relaunch after a deliberate process restart: closed-shift state and prior paid session data must still exist.')
-            src=src.replace('launch_main || fail "final relaunch after Activity finish"','launch_main || fail "final relaunch after Back no-exit verification"')
-            out=Path('/tmp/android-v160-stabilization-journey-no-exit.sh')
-            out.write_text(src);out.chmod(0o755)
-            PY
+            python3 v16-original-source/tools/patch-v160-native-journey-no-exit.py
             bash /tmp/android-v160-stabilization-journey-no-exit.sh
             bash v16-original-source/tools/android-v160-navigation-matrix.sh
 
