@@ -26,6 +26,21 @@ if(!logDef)failures.push('HARNESS_LOG_HELPER_MISSING');
 else if(!/(?:>&2|1>&2)/.test(logDef))failures.push('HARNESS_STDOUT_COORDINATE_CONTAMINATION: log() must write diagnostics to stderr');
 if(!/read\s+x\s+y\s+<\s*<\(locate\s+"\$1"\s+"\$2"\)/.test(harness))failures.push('HARNESS_PHYSICAL_TAP_COORDINATE_CONTRACT_CHANGED');
 
+// Native #78 proved that an HTML input can remain focused with Android's IME covering the next
+// field. The locator's swipe then lands on the keyboard instead of the WebView. Every physical
+// input must dismiss the IME after value readback before the next locator is allowed to run.
+const inputStart=harness.indexOf('input_id(){');
+const inputEnd=harness.indexOf('\nstate_json(){',inputStart);
+const inputBlock=inputStart>=0&&inputEnd>inputStart?harness.slice(inputStart,inputEnd):'';
+if(!inputBlock)failures.push('HARNESS_PHYSICAL_INPUT_HELPER_MISSING');
+else{
+  if(!/KEYCODE_BACK/.test(inputBlock))failures.push('HARNESS_PHYSICAL_INPUT_IME_DISMISS_MISSING');
+  if(!/PHYSICAL_IME_DISMISSED/.test(inputBlock))failures.push('HARNESS_PHYSICAL_INPUT_IME_DISMISS_DIAGNOSTIC_MISSING');
+  const readbackPos=inputBlock.indexOf('[[ "$got" = "$val" ]]');
+  const dismissPos=inputBlock.indexOf('KEYCODE_BACK');
+  if(readbackPos<0||dismissPos<0||dismissPos<readbackPos)failures.push('HARNESS_PHYSICAL_INPUT_IME_DISMISS_ORDER_INVALID');
+}
+
 // Native #63 proved the first floor station is a bubbled clickable DIV data-station, not a
 // button/a/role=button. rect-text must include station cards or PS5 1 can never be located.
 if(!probe.includes('[data-station]'))failures.push('HARNESS_RECT_TEXT_STATION_BUBBLE_TARGET_MISSING');
@@ -126,6 +141,7 @@ if(!/return\s+value/.test(evalBlock))failures.push('HARNESS_CDP_SUCCESS_VALUE_RE
 if(failures.length){console.error(failures.join('\n'));process.exit(1)}
 console.log('V160_NATIVE_FIRST_LAUNCH_PERMISSION_GATE_OK');
 console.log('V160_NATIVE_COORDINATE_STREAM_GATE_OK');
+console.log('V160_NATIVE_PHYSICAL_INPUT_IME_DISMISS_GATE_OK');
 console.log('V160_NATIVE_STATION_BUBBLE_LOCATOR_GATE_OK');
 console.log('V160_NATIVE_WINDOW_CONTENT_FRAME_GATE_OK');
 console.log('V160_NATIVE_SINGLE_FRESH_STATE_GATE_OK');
