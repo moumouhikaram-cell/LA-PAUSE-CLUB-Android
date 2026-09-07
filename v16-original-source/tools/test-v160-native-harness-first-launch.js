@@ -59,6 +59,18 @@ if(attempts&&evalTimeout&&daemonTimeout<=attempts*evalTimeout+5000)failures.push
 if(/catch\s*\(first\)[\s\S]{0,400}daemonRequest\(mode,arg\)[\s\S]{0,400}daemonRequest\(mode,arg\)/.test(probe))failures.push('HARNESS_CDP_CLIENT_DOUBLE_RETRY_FORBIDDEN');
 if(!/async function clientMain\(\)[\s\S]{0,300}return\s+daemonRequest\(mode,arg\)/.test(probe))failures.push('HARNESS_CDP_SINGLE_CLIENT_REQUEST_MISSING');
 
+// Regression from native run #47: cdp_attach() had already created and verified the adb forward,
+// but the daemon immediately destroyed/rebuilt it and its redundant adb shell call timed out.
+// First session establishment must consume the validated forward first; adb repair is fallback only.
+const ensureStart=probe.indexOf('async function ensureCdpSession(){');
+const ensureEnd=probe.indexOf('async function evaluateReadOnly(',ensureStart);
+const ensureBlock=ensureStart>=0&&ensureEnd>ensureStart?probe.slice(ensureStart,ensureEnd):'';
+const firstDiscovery=ensureBlock.indexOf('pages()');
+const firstRepair=ensureBlock.indexOf('repairForward()');
+if(!ensureBlock)failures.push('HARNESS_CDP_ENSURE_SESSION_BLOCK_MISSING');
+else if(firstDiscovery<0||firstRepair<0||firstRepair<firstDiscovery)failures.push('HARNESS_CDP_VALIDATED_FORWARD_NOT_REUSED_FIRST');
+if(!/try\s*\{[\s\S]{0,250}pages\(\)[\s\S]{0,500}catch[\s\S]{0,250}repairForward\(\)[\s\S]{0,250}pages\(\)/.test(ensureBlock))failures.push('HARNESS_CDP_REPAIR_NOT_FALLBACK_ONLY');
+
 if(failures.length){console.error(failures.join('\n'));process.exit(1)}
 console.log('V160_NATIVE_FIRST_LAUNCH_PERMISSION_GATE_OK');
 console.log('V160_NATIVE_COORDINATE_STREAM_GATE_OK');
@@ -67,3 +79,4 @@ console.log('V160_NATIVE_CDP_RECONNECT_GATE_OK');
 console.log('V160_NATIVE_CDP_FORWARD_REPAIR_GATE_OK');
 console.log('V160_NATIVE_CDP_CURL_DISCOVERY_GATE_OK');
 console.log('V160_NATIVE_CDP_RECOVERY_BUDGET_GATE_OK');
+console.log('V160_NATIVE_CDP_VALIDATED_FORWARD_REUSE_GATE_OK');
