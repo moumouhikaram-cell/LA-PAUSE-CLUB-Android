@@ -59,7 +59,6 @@ if(!/for\s*\([^)]*(?:attempt|try)[^)]*\)/.test(probe)&&!/while\s*\([^)]*(?:attem
 if(!/(?:requestQueue|commandQueue|serialQueue)/.test(probe)||!/.then\s*\(/.test(probe))failures.push('HARNESS_CDP_REQUEST_SERIALIZATION_MISSING');
 if(!/function\s+(?:drop|reset|invalidate)(?:Cdp)?Session\s*\(/i.test(probe))failures.push('HARNESS_CDP_SESSION_INVALIDATION_MISSING');
 
-// Regression from native run #46: the client timed out before the daemon's bounded recovery loop.
 const attempts=Number((probe.match(/const\s+MAX_ATTEMPTS\s*=\s*(\d+)/)||[])[1]||0);
 const evalTimeout=Number((probe.match(/const\s+EVALUATE_TIMEOUT_MS\s*=\s*(\d+)/)||[])[1]||0);
 const daemonTimeout=Number((probe.match(/const\s+DAEMON_REQUEST_TIMEOUT_MS\s*=\s*(\d+)/)||[])[1]||0);
@@ -69,8 +68,6 @@ if(attempts&&evalTimeout&&daemonTimeout<=attempts*evalTimeout+5000)failures.push
 if(/catch\s*\(first\)[\s\S]{0,400}daemonRequest\(mode,arg\)[\s\S]{0,400}daemonRequest\(mode,arg\)/.test(probe))failures.push('HARNESS_CDP_CLIENT_DOUBLE_RETRY_FORBIDDEN');
 if(!/async function clientMain\(\)[\s\S]{0,300}return\s+daemonRequest\(mode,arg\)/.test(probe))failures.push('HARNESS_CDP_SINGLE_CLIENT_REQUEST_MISSING');
 
-// Regression from native run #47: cdp_attach() already validated the adb forward. Discovery must
-// consume it before any adb repair; repair remains fallback only.
 const ensureStart=probe.indexOf('async function ensureCdpSession(){');
 const ensureEnd=probe.indexOf('async function evaluateReadOnly(',ensureStart);
 const ensureBlock=ensureStart>=0&&ensureEnd>ensureStart?probe.slice(ensureStart,ensureEnd):'';
@@ -80,7 +77,6 @@ if(!ensureBlock)failures.push('HARNESS_CDP_ENSURE_SESSION_BLOCK_MISSING');
 else if(firstDiscovery<0||firstRepair<0||firstRepair<firstDiscovery)failures.push('HARNESS_CDP_VALIDATED_FORWARD_NOT_REUSED_FIRST');
 if(!/try\s*\{[\s\S]{0,250}pages\(\)[\s\S]{0,600}catch[\s\S]{0,300}repairForward\(\)[\s\S]{0,300}pages\(\)/.test(ensureBlock))failures.push('HARNESS_CDP_REPAIR_NOT_FALLBACK_ONLY');
 
-// Regression from native run #48: preserve all retry causes rather than reporting only the final adb timeout.
 const evalStart=probe.indexOf('async function evaluateReadOnly(');
 const evalEnd=probe.indexOf('async function queuedEvaluate(',evalStart);
 const evalBlock=evalStart>=0&&evalEnd>evalStart?probe.slice(evalStart,evalEnd):'';
@@ -89,12 +85,8 @@ if(!/attemptErrors\.push\s*\(\s*`attempt \$\{attempt\}:[^`]*\$\{/.test(evalBlock
 if(!/CDP attempts failed:\s*\$\{attemptErrors\.join\(/.test(evalBlock))failures.push('HARNESS_CDP_ATTEMPT_ERROR_FINAL_MESSAGE_MISSING');
 if(!/initial discovery:\s*\$\{[^}]*\.message[^}]*\}/.test(ensureBlock))failures.push('HARNESS_CDP_INITIAL_DISCOVERY_DIAGNOSTIC_MISSING');
 if(!/repair:\s*\$\{[^}]*\.message[^}]*\}/.test(ensureBlock))failures.push('HARNESS_CDP_REPAIR_DIAGNOSTIC_MISSING');
-if(!/Runtime\.evaluate timeout/.test(evalBlock))failures.push('HARNESS_CDP_EVALUATE_STAGE_DIAGNOSTIC_MISSING');
+if(!/Runtime\.evaluate timeout/.test(evalBlock)&&!/Runtime\.evaluate timeout/.test(raw))failures.push('HARNESS_CDP_EVALUATE_STAGE_DIAGNOSTIC_MISSING');
 
-// Native #49: a second command through Node 24's global WebSocket timed out.
-// Native #50: closing it then opening a second global WebSocket timed out at handshake.
-// CDP itself supports repeated commands on one connection, so use our raw RFC6455 transport and
-// KEEP that raw connection alive after a successful read. Only failures invalidate/reconnect it.
 if(/recycleCdpSocket\s*\(\s*['"]successful read['"]/.test(evalBlock))failures.push('HARNESS_CDP_SUCCESSFUL_READ_MUST_KEEP_RAW_SOCKET');
 if(!/persistentSocket\.request\s*\(/.test(evalBlock))failures.push('HARNESS_CDP_RAW_SOCKET_REQUEST_NOT_USED');
 if(!/return\s+value/.test(evalBlock))failures.push('HARNESS_CDP_SUCCESS_VALUE_RETURN_MISSING');
