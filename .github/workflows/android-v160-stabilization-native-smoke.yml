@@ -10,6 +10,7 @@ on:
       - "v16-original-source/tools/android-v160-stabilization-journey.sh"
       - "v16-original-source/tools/android-v160-navigation-matrix.sh"
       - "v16-original-source/tools/cdp-v160-stabilization-probe.js"
+      - "v16-original-source/tools/cdp-v160-raw-websocket.js"
       - "v16-original-source/tools/test-v160-stabilization-*.js"
       - ".github/workflows/android-v160-stabilization-native-smoke.yml"
 
@@ -65,6 +66,7 @@ jobs:
           node v16-original-source/tools/test-v160-stabilization-accounting.js
           node v16-original-source/tools/test-v160-stabilization-prepaid-sales.js
           node v16-original-source/tools/test-v160-stabilization-booking-refund.js
+          node v16-original-source/tools/test-v160-stabilization-raw-cdp-socket.js
 
       - name: Park unrelated modern modules and build exact v1.6
         shell: bash
