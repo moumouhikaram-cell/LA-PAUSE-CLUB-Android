@@ -14,7 +14,7 @@ permissions:
 jobs:
   build-approved-signed:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
     steps:
       - name: Checkout release trigger
         uses: actions/checkout@v4
@@ -45,15 +45,16 @@ jobs:
           required = {
               'Android v1.6 Stabilization CI': False,
               'Android v1.6 Stabilization Native Smoke': False,
+              'Android v1.6 API36 Native Regression': False,
           }
           for run in runs:
               name = run.get('name')
               if name in required and run.get('status') == 'completed' and run.get('conclusion') == 'success':
                   required[name] = True
-          missing = [name for name, ok in required.items() if not ok]
+          missing = [name for name, passed in required.items() if not passed]
           if missing:
               raise SystemExit('APPROVAL_GATE_FAIL missing successful same-SHA workflows: ' + ', '.join(missing))
-          print('V160_SAME_SHA_CI_NATIVE_APPROVED', sha)
+          print('V160_SAME_SHA_CI_API33_API36_APPROVED', sha)
           PY
 
       - name: Checkout exact approved source
@@ -92,12 +93,12 @@ jobs:
           test -x "$ANDROID_HOME/build-tools/36.0.0/zipalign"
           test -x "$ANDROID_HOME/build-tools/36.0.0/aapt"
 
-      - name: Prove frozen v1.6 product and Back contract
+      - name: Prove frozen v1.6 product, Back and Device Control contracts
         shell: bash
         run: |
           set -euxo pipefail
           test "$(git hash-object v16-original-source/app/build.gradle.kts)" = "e40c86ad23fbf3042fc25d5b9e1a58139f172414"
-          test "$(git hash-object v16-original-source/app/src/main/AndroidManifest.xml)" = "33636fd6f089837cb24c90083f687ff67ee8dc30"
+          test "$(git hash-object v16-original-source/app/src/main/AndroidManifest.xml)" = "d57e9a2be9a001476aaeba2786c1fbcf6c30e689"
           test "$(git hash-object v16-original-source/app/src/main/assets/app.css)" = "ee2d33799164b14d012abc0aecc3c94c5e214250"
           test "$(git hash-object v16-original-source/app/src/main/assets/app.js)" = "4cbafc7dfadcd086a0387e4b7bec3de4cc2074b1"
           test "$(git hash-object v16-original-source/app/src/main/assets/v13.css)" = "ee295d223f75d007b4db542b283bd194bba24fe1"
@@ -106,18 +107,26 @@ jobs:
           test "$(git hash-object v16-original-source/app/src/main/assets/v14.js)" = "42134cceabd9c15dc52cfde30b7d5ca3818b1502"
           test "$(git hash-object v16-original-source/app/src/main/assets/v15.css)" = "8b5d7ef51d3f5d49cf06ee27f32585dca9a0c34e"
           test "$(git hash-object v16-original-source/app/src/main/assets/v15.js)" = "ab2288f35b39620b7c6c0401d342ce9349f17959"
-          test "$(git hash-object v16-original-source/app/src/main/java/com/lapauseclub/manager/MainActivity.java)" = "bab0a577e167e42a4e35f430c7b6a6b85fabc305"
+          test "$(git hash-object v16-original-source/app/src/main/java/com/lapauseclub/manager/MainActivity.java)" = "16abc27f17644c25cc348891d62dc370608d72d3"
+          test "$(git hash-object v16-original-source/app/src/main/java/com/lapauseclub/manager/DeviceLanBridge.java)" = "56ee23237d343d7a0dc4b7034e485de1b5f876e5"
+          test "$(git hash-object v16-original-source/app/src/main/java/com/lapauseclub/manager/core/CoreStore.java)" = "e5af1005e089e88782ac154b5bf72e33a82ac2e8"
           grep -q 'applicationId = "com.lapauseclub.manager"' v16-original-source/app/build.gradle.kts
           grep -q 'versionCode = 19' v16-original-source/app/build.gradle.kts
           grep -q 'versionName = "1.6.0"' v16-original-source/app/build.gradle.kts
+          grep -q 'android:enableOnBackInvokedCallback="false"' v16-original-source/app/src/main/AndroidManifest.xml
           grep -q '<script src="stabilize-v160-navigation.js"></script>' v16-original-source/app/src/main/assets/index.html
+          grep -q '<script src="enrich-v160-device-control.js"></script>' v16-original-source/app/src/main/assets/index.html
+          grep -q '<script src="enrich-v160-floor-builder-ui.js"></script>' v16-original-source/app/src/main/assets/index.html
           node --check v16-original-source/app/src/main/assets/stabilize-v160-navigation.js
+          node --check v16-original-source/app/src/main/assets/enrich-v160-device-control.js
           node v16-original-source/tools/test-v160-design-frozen.js
           node v16-original-source/tools/test-v160-stabilization-navigation.js
           node v16-original-source/tools/test-v160-native-back-contract.js
           node v16-original-source/tools/test-v160-stabilization-routes.js
           node v16-original-source/tools/test-v160-stabilization-interactions.js
           node v16-original-source/tools/test-v160-stabilization-shift-session.js
+          node v16-original-source/tools/test-v160-auto-operational-shift.js
+          node v16-original-source/tools/test-v160-operator-shortcuts.js
           node v16-original-source/tools/test-v160-stabilization-cash-dom.js
           node v16-original-source/tools/test-v160-stabilization-accounting.js
           node v16-original-source/tools/test-v160-stabilization-prepaid-sales.js
@@ -127,7 +136,13 @@ jobs:
           node v16-original-source/tools/test-v160-session-form.js
           node v16-original-source/tools/test-v160-session-start.js
           node v16-original-source/tools/test-v160-session-form-ui.js
+          node v16-original-source/tools/test-v160-notification-lifecycle.js
+          node v16-original-source/tools/test-v160-device-control.js
+          node v16-original-source/tools/test-v160-device-lan-native.js
+          node v16-original-source/tools/test-v160-floor-builder.js
+          node v16-original-source/tools/test-v160-floor-builder-ui.js
           node v16-original-source/tools/test-v160-session-stack-health.js
+          echo V160_APPROVED_SOURCE_CONTRACTS_OK
 
       - name: Park unrelated modern modules
         shell: bash
@@ -138,11 +153,11 @@ jobs:
           while IFS= read -r -d '' src; do
             rel="${src#$ROOT/}"
             case "$rel" in
-              MainActivity.java|BootReceiver.java|SessionAlarmReceiver.java|core/CoreStore.java) ;;
+              MainActivity.java|DeviceLanBridge.java|BootReceiver.java|SessionAlarmReceiver.java|core/CoreStore.java) ;;
               *) mkdir -p "$PARK_JAVA/$(dirname "$rel")"; mv "$src" "$PARK_JAVA/$rel" ;;
             esac
           done < <(find "$ROOT" -type f -name '*.java' -print0)
-          test "$(find "$ROOT" -type f -name '*.java' | wc -l)" -eq 4
+          test "$(find "$ROOT" -type f -name '*.java' | wc -l)" -eq 5
 
           ASSETS="v16-original-source/app/src/main/assets"
           PARK_ASSETS="$RUNNER_TEMP/parked-modern-assets"; mkdir -p "$PARK_ASSETS"
@@ -160,6 +175,27 @@ jobs:
           ! find "$ASSETS" -type f | grep -q '/v250/'
           ! find "$ASSETS" -type f | grep -qi 'saas'
           ! find "$ASSETS" -type f | grep -qi 'onboarding'
+
+      - name: Verify packaged local-script closure before release build
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+          assets=Path('v16-original-source/app/src/main/assets')
+          class Scripts(HTMLParser):
+              def __init__(self): super().__init__(); self.srcs=[]
+              def handle_starttag(self,tag,attrs):
+                  if tag.lower()=='script':
+                      src=dict(attrs).get('src')
+                      if src:self.srcs.append(src)
+          p=Scripts();p.feed((assets/'index.html').read_text(encoding='utf-8'))
+          local=[s.split('?',1)[0].split('#',1)[0] for s in p.srcs if '://' not in s and not s.startswith('//')]
+          missing=[s for s in local if not (assets/s).is_file()]
+          assert not missing,missing
+          print('V160_APPROVED_LOCAL_SCRIPT_CLOSURE_OK',len(local))
+          PY
 
       - name: Restore permanent signing key
         shell: bash
@@ -210,9 +246,17 @@ jobs:
           grep -qx 'assets/stabilize-v160-existing.js' signed-assets.txt
           grep -qx 'assets/stabilize-v160-shift-recovery.js' signed-assets.txt
           grep -qx 'assets/stabilize-v160-navigation.js' signed-assets.txt
+          grep -qx 'assets/enrich-v160-operator-shortcuts.js' signed-assets.txt
+          grep -qx 'assets/enrich-v160-device-control.js' signed-assets.txt
+          grep -qx 'assets/enrich-v160-floor-builder.js' signed-assets.txt
+          grep -qx 'assets/enrich-v160-floor-builder-ui.js' signed-assets.txt
           ! grep -q '^assets/v250/' signed-assets.txt
           ! grep -qi 'saas' signed-assets.txt
           ! grep -qi 'onboarding' signed-assets.txt
+          TMP_DEX="$(mktemp -d)"
+          unzip -q "$S" 'classes*.dex' -d "$TMP_DEX"
+          strings "$TMP_DEX"/classes*.dex | grep -q 'DeviceLanBridge'
+          echo V160_SIGNED_DEVICE_LAN_BRIDGE_PACKAGED_OK
           sha256sum "$S" | tee signed-sha256.txt
           printf '%s\n' "$EXPECTED_SHA" > signed-release-source-sha.txt
 
