@@ -102,6 +102,7 @@ jobs:
             test-v160-stabilization-settings-persistence.js
             test-v160-stabilization-fresh-catalog-bootstrap.js
             test-v160-stabilization-shift-session.js
+            test-v160-auto-operational-shift.js
             test-v160-stabilization-cash-dom.js
             test-v160-stabilization-accounting.js
             test-v160-stabilization-prepaid-sales.js
