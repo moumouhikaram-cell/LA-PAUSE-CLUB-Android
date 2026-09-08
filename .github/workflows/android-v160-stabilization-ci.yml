@@ -15,7 +15,7 @@ permissions:
 jobs:
   stabilize-build:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
 
@@ -28,7 +28,7 @@ jobs:
         with:
           gradle-version: "9.4.1"
 
-      - name: Configure Android SDK
+      - name: Configure Android SDK 36
         shell: bash
         run: |
           set -euxo pipefail
@@ -43,12 +43,14 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
 
-      - name: Freeze historical v1.6 authority
+      - name: Freeze historical v1.6 visual authority
         shell: bash
         run: |
           set -euxo pipefail
+          # Native/functional files may evolve only through explicit regression fixes.
+          # The historical visual authority remains byte-for-byte frozen.
           test "$(git hash-object v16-original-source/app/build.gradle.kts)" = "e40c86ad23fbf3042fc25d5b9e1a58139f172414"
-          test "$(git hash-object v16-original-source/app/src/main/AndroidManifest.xml)" = "33636fd6f089837cb24c90083f687ff67ee8dc30"
+          test "$(git hash-object v16-original-source/app/src/main/AndroidManifest.xml)" = "d57e9a2be9a001476aaeba2786c1fbcf6c30e689"
           test "$(git hash-object v16-original-source/app/src/main/assets/app.css)" = "ee2d33799164b14d012abc0aecc3c94c5e214250"
           test "$(git hash-object v16-original-source/app/src/main/assets/app.js)" = "4cbafc7dfadcd086a0387e4b7bec3de4cc2074b1"
           test "$(git hash-object v16-original-source/app/src/main/assets/v13.css)" = "ee295d223f75d007b4db542b283bd194bba24fe1"
@@ -59,9 +61,11 @@ jobs:
           test "$(git hash-object v16-original-source/app/src/main/assets/v15.js)" = "ab2288f35b39620b7c6c0401d342ce9349f17959"
           test "$(git hash-object v16-original-source/app/src/main/java/com/lapauseclub/manager/MainActivity.java)" = "bab0a577e167e42a4e35f430c7b6a6b85fabc305"
           test "$(git hash-object v16-original-source/app/src/main/java/com/lapauseclub/manager/core/CoreStore.java)" = "e5af1005e089e88782ac154b5bf72e33a82ac2e8"
-          echo V160_HISTORICAL_AUTHORITY_FROZEN_OK
+          grep -q 'android:enableOnBackInvokedCallback="false"' v16-original-source/app/src/main/AndroidManifest.xml
+          echo V160_HISTORICAL_VISUAL_AUTHORITY_FROZEN_OK
+          echo V160_ANDROID16_BACK_COMPAT_DECLARED_OK
 
-      - name: Existing product stabilization gates
+      - name: Full historical regression gates
         shell: bash
         run: |
           set -euxo pipefail
@@ -73,7 +77,7 @@ jobs:
           grep -q '<script src="stabilize-v160-navigation.js"></script>' "$INDEX"
           python3 - <<'PY'
           from pathlib import Path
-          s=Path('v16-original-source/app/src/main/assets/index.html').read_text()
+          s=Path('v16-original-source/app/src/main/assets/index.html').read_text(encoding='utf-8')
           order=['app.js','v13.js','v14.js','v15.js','stabilize-v160-existing.js','stabilize-v160-shift-recovery.js','stabilize-v160-navigation.js','enrich-v160-core.js']
           pos=[s.index(x) for x in order]
           assert pos==sorted(pos),(order,pos)
@@ -86,32 +90,46 @@ jobs:
           ! grep -qi 'v250/' "$A"/stabilize-v160-*.js
           ! grep -qi 'saas' "$A"/stabilize-v160-*.js
           ! grep -qi 'onboarding' "$A"/stabilize-v160-*.js
-          node v16-original-source/tools/test-v160-design-frozen.js
-          node v16-original-source/tools/test-v160-stabilization-navigation.js
-          node v16-original-source/tools/test-v160-native-back-contract.js
-          node v16-original-source/tools/test-v160-stabilization-routes.js
-          node v16-original-source/tools/test-v160-stabilization-interactions.js
-          node v16-original-source/tools/test-v160-stabilization-shift-session.js
-          node v16-original-source/tools/test-v160-stabilization-cash-dom.js
-          node v16-original-source/tools/test-v160-stabilization-accounting.js
-          node v16-original-source/tools/test-v160-stabilization-prepaid-sales.js
-          node v16-original-source/tools/test-v160-stabilization-booking-refund.js
-          node v16-original-source/tools/test-v160-stabilization-raw-cdp-socket.js
-          node v16-original-source/tools/test-v160-stabilization-native-runtime-recovery.js
-          node v16-original-source/tools/test-v160-enrichment.js
-          node v16-original-source/tools/test-v160-core-recovery.js
-          node v16-original-source/tools/test-v160-session-form.js
-          node v16-original-source/tools/test-v160-session-start.js
-          node v16-original-source/tools/test-v160-session-form-ui.js
-          node v16-original-source/tools/test-v160-session-stack-health.js
 
-      - name: Park unrelated modern modules outside APK build
+          tests=(
+            test-v160-design-frozen.js
+            test-v160-known-bugs.js
+            test-v160-stabilization-navigation.js
+            test-v160-native-back-contract.js
+            test-v160-stabilization-routes.js
+            test-v160-stabilization-interactions.js
+            test-v160-stabilization-tabs.js
+            test-v160-stabilization-settings-persistence.js
+            test-v160-stabilization-fresh-catalog-bootstrap.js
+            test-v160-stabilization-shift-session.js
+            test-v160-stabilization-cash-dom.js
+            test-v160-stabilization-accounting.js
+            test-v160-stabilization-prepaid-sales.js
+            test-v160-stabilization-booking-refund.js
+            test-v160-stabilization-raw-cdp-socket.js
+            test-v160-stabilization-native-runtime-recovery.js
+            test-v160-enrichment.js
+            test-v160-core-recovery.js
+            test-v160-session-form.js
+            test-v160-session-start.js
+            test-v160-session-form-ui.js
+            test-v160-session-stack-health.js
+            test-v160-control-center.js
+            test-v160-device-control.js
+            test-v160-floor-builder.js
+          )
+          for t in "${tests[@]}"; do
+            test -f "v16-original-source/tools/$t"
+            node "v16-original-source/tools/$t"
+          done
+          echo V160_FULL_HISTORY_REGRESSION_GATES_OK
+
+      - name: Park rejected visual generations outside APK build
         shell: bash
         run: |
           set -euxo pipefail
           ROOT="v16-original-source/app/src/main/java/com/lapauseclub/manager"
-          PARK_JAVA="$RUNNER_TEMP/parked-modern-java"
-          mkdir -p "$PARK_JAVA"
+          PARK_JAVA="$RUNNER_TEMP/parked-modern-java"; mkdir -p "$PARK_JAVA"
           while IFS= read -r -d '' src; do
             rel="${src#$ROOT/}"
             case "$rel" in
@@ -122,8 +140,7 @@ jobs:
           test "$(find "$ROOT" -type f -name '*.java' | wc -l)" -eq 4
 
           ASSETS="v16-original-source/app/src/main/assets"
-          PARK_ASSETS="$RUNNER_TEMP/parked-modern-assets"
-          mkdir -p "$PARK_ASSETS"
+          PARK_ASSETS="$RUNNER_TEMP/parked-modern-assets"; mkdir -p "$PARK_ASSETS"
           while IFS= read -r -d '' src; do
             rel="${src#$ASSETS/}"
             case "$rel" in
@@ -158,6 +175,9 @@ jobs:
           grep -qx 'assets/stabilize-v160-existing.js' v160-stabilization-assets.txt
           grep -qx 'assets/stabilize-v160-shift-recovery.js' v160-stabilization-assets.txt
           grep -qx 'assets/stabilize-v160-navigation.js' v160-stabilization-assets.txt
+          grep -qx 'assets/enrich-v160-control-center.js' v160-stabilization-assets.txt
+          grep -qx 'assets/enrich-v160-device-control.js' v160-stabilization-assets.txt
+          grep -qx 'assets/enrich-v160-floor-builder.js' v160-stabilization-assets.txt
           ! grep -q '^assets/v250/' v160-stabilization-assets.txt
           ! grep -qi 'saas' v160-stabilization-assets.txt
           ! grep -qi 'onboarding' v160-stabilization-assets.txt
