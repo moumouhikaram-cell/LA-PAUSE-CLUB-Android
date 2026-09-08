@@ -55,7 +55,12 @@ launch(){
 }
 
 attach(){
-  probe --reset >/dev/null 2>&1 || true
+  # A stale probe daemon may still own a requestQueue blocked on a dead WebView socket.
+  # Kill only our localhost probe daemon before rebuilding the ADB forward. The next
+  # probe invocation autostarts a clean daemon; no product process or app data is touched.
+  pkill -f 'cdp-v160-stabilization-probe\.js --daemon' >/dev/null 2>&1 || true
+  sleep .15
+  log "CDP_DAEMON_PREEMPTIVE_RESET"
   adb forward --remove tcp:$PORT >/dev/null 2>&1 || true
   local sock=""
   for _ in $(seq 1 35); do
@@ -186,8 +191,16 @@ if iw<=0 or ih<=0: raise SystemExit(3)
 sx=(x2-x1)/iw; sy=(y2-y1)/ih
 mx=(float(p['left'])+float(p['right']))*.5; my=(float(p['top'])+float(p['bottom']))*.5
 cx=x1+mx*sx; cy=y1+my*sy
-vis=(0<=my<ih and float(p['right'])>0 and float(p['left'])<iw and float(p.get('width') or 0)>0 and float(p.get('height') or 0)>0 and not p.get('disabled') and p.get('pointerEvents')!='none' and p.get('display')!='none' and p.get('visibility')!='hidden')
-direction=-1 if my<0 else (1 if my>=ih else 0)
+frame_h=max(1.0,y2-y1)
+safe_top=y1+max(72.0,frame_h*0.04)
+safe_bottom=y2-max(160.0,frame_h*0.09)
+dom_visible=(0<=my<ih and float(p['right'])>0 and float(p['left'])<iw and float(p.get('width') or 0)>0 and float(p.get('height') or 0)>0 and not p.get('disabled') and p.get('pointerEvents')!='none' and p.get('display')!='none' and p.get('visibility')!='hidden')
+touch_safe=(safe_top<=cy<=safe_bottom)
+vis=dom_visible and touch_safe
+if not dom_visible:
+    direction=-1 if my<0 else (1 if my>=ih else 0)
+else:
+    direction=-1 if cy<safe_top else (1 if cy>safe_bottom else 0)
 print(round(cx),round(cy),1 if vis else 0,direction)
 PY
 }
@@ -198,8 +211,10 @@ swipe_scroll(){
   cx=$(( (x1+x2)/2 )); ylo=$(( y1 + (y2-y1)*35/100 )); yhi=$(( y1 + (y2-y1)*75/100 ))
   if [[ "$direction" = -1 ]]; then
     adb shell input swipe "$cx" "$ylo" "$cx" "$yhi" 220 >/dev/null 2>&1
-  else
+  elif [[ "$direction" = 1 ]]; then
     adb shell input swipe "$cx" "$yhi" "$cx" "$ylo" 220 >/dev/null 2>&1
+  else
+    return 0
   fi
 }
 
@@ -216,11 +231,14 @@ locator_diagnostics(){
 
 locate(){
   local mode="$1" arg="$2" x y vis direction
-  for _ in $(seq 1 16); do
+  for attempt in $(seq 1 16); do
     device_ready || { locator_diagnostics "$mode" "$arg"; return 9; }
     if read x y vis direction < <(rect "$mode" "$arg"); then
       if [[ "$vis" = 1 ]]; then echo "$x $y"; return 0; fi
-      swipe_scroll "$direction" || true
+      if [[ "$direction" != 0 ]]; then
+        log "TOUCH_SAFE_SCROLL mode=$mode arg=$arg attempt=$attempt direction=$direction x=$x y=$y"
+        swipe_scroll "$direction" || true
+      fi
     fi
     sleep .25
   done
@@ -390,4 +408,4 @@ PID="$(adb shell pidof "$PKG" 2>/dev/null | tr -d '\r')"; [[ -n "$PID" ]] || fai
 timeout --foreground 10s adb logcat -d --pid="$PID" > "$LOGCAT" 2>/dev/null || true
 if grep -Eqi 'FATAL EXCEPTION|AndroidRuntime:.*FATAL|Process com\.lapauseclub\.manager .* has died|chromium.*(crash|Aw, Snap)' "$LOGCAT"; then fail "fatal runtime signal"; fi
 rotate_lock 0
-log "ANDROID_V160_REAL_USER_JOURNEY_OK autoShift=1 update=preserved rotation=route+sheet back=root-safe persistence=kill-relaunch focus=physical"
+log "ANDROID_V160_REAL_USER_JOURNEY_OK autoShift=1 update=preserved rotation=route+sheet back=root-safe persistence=kill-relaunch focus=physical touch-safe=1 cdp-reset=preemptive"
