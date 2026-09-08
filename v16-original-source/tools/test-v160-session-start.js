@@ -8,7 +8,7 @@ const state={
     {id:'ps5-1',name:'PS5 1',type:'PS5',enabled:true},{id:'bill-1',name:'Billard 1',type:'BILLIARD',osResourceType:'BILLIARD_TABLE',enabled:true},
     {id:'pc-1',name:'PC 1',type:'PC_GAMING',osResourceType:'PC_GAMING',enabled:true},{id:'pc-2',name:'PC sans tarif',type:'PC_GAMING',osResourceType:'PC_GAMING',enabled:true}
   ],
-  sessions:[],payments:[],shifts:[{id:'shift-1',status:'open',openedAt:1700000000000}],v160RatePlans:[
+  sessions:[],payments:[],shifts:[],v160RatePlans:[
     {id:'bill-rate',scope:'RESOURCE',resourceId:'bill-1',resourceType:'BILLIARD_TABLE',billingModel:'PER_GAME',unitPrice:7,enabled:true},
     {id:'pc-rate',scope:'RESOURCE',resourceId:'pc-1',resourceType:'PC_GAMING',billingModel:'TIME_PRORATED',hourlyRate:30,enabled:true}
   ]
@@ -23,7 +23,7 @@ const historicTransfer=()=>{legacyTransferCalls++;return 'LEGACY_TRANSFER'};
 const ctx={console,Date,Set,Map,Math,JSON,Number,String,Object,Array,state,window:null,
   roundTo:(v,step=.5)=>step>0?Math.round(Number(v)/step)*step:Number(v),
   rateFor:(st,players=1)=>st.type==='SIM'?45:players===2?28:22,
-  now:()=>clock,uid:p=>`${p}_${++seq}`,currentShift:()=>state.shifts.find(s=>s.status==='open')||null,
+  now:()=>clock,uid:p=>`${p}_${++seq}`,currentShift:()=>state.shifts.filter(s=>String(s.status||'').toLowerCase()==='open'&&!s.closedAt).sort((a,b)=>Number(b.openedAt||0)-Number(a.openedAt||0))[0]||null,
   recalcSessionAmount:historicRecalc,extendSession:historicExtend,openTransfer:historicTransfer,
   scheduleAlarm:()=>{alarmCalls++},drawActiveSheet:()=>{},renderFloor:()=>{},toast:()=>{}
 };
@@ -42,13 +42,22 @@ const unpriced=F.prepare('pc-2',{mode:'open'});ok(!unpriced.ok&&unpriced.errors.
 const billIntent=F.buildSessionIntent('bill-1',{mode:'unit',units:3,players:2,payNow:true,note:'Table 1'},{operatorExplicit:true});
 let blocked=false;try{G.execute(billIntent,{idempotencyKey:'bill-click-1'})}catch(e){blocked=/opérateur/i.test(String(e.message))}ok(blocked,'start gate accepted implicit operator');
 blocked=false;try{G.execute(billIntent,{operatorExplicit:true})}catch(e){blocked=/Idempotency/i.test(String(e.message))}ok(blocked,'start gate accepted missing idempotency key');
-const savedShift=state.shifts;state.shifts=[];blocked=false;try{G.execute(billIntent,{operatorExplicit:true,idempotencyKey:'bill-click-1'})}catch(e){blocked=String(e.message)==='SHIFT_REQUIRED'}ok(blocked,'start gate ignored required cash shift');state.shifts=savedShift;
-const started=G.execute(billIntent,{operatorExplicit:true,idempotencyKey:'bill-click-1'});ok(started.ok&&!started.duplicate,'Billard did not start');ok(state.sessions.length===1&&state.payments.length===1,'Billard start/pay state mutation wrong');
-const billSession=state.sessions[0];ok(billSession.mode==='unit'&&near(billSession.totalAmount,21)&&billSession.endAt===null,'Billard runtime session wrong');ok(billSession.v160Contextual?.pricingSnapshot?.unitPrice===7,'Billard pricing snapshot missing');ok(near(state.payments[0].amount,21)&&state.payments[0].sessionId===billSession.id,'Billard pay-now payment wrong');
+
+// Critical recovered operator invariant: no manual visit to Cash is required.
+// A mandatory shift is created automatically with zero float, audited/persisted, then the sale continues.
+ok(state.shifts.length===0,'test must start without a shift');
+const started=G.execute(billIntent,{operatorExplicit:true,idempotencyKey:'bill-click-1'});ok(started.ok&&!started.duplicate,'Billard did not start');
+ok(state.shifts.length===1,'missing automatic operational shift');
+const autoShift=state.shifts[0];ok(autoShift.autoOpened===true&&autoShift.openingMode==='AUTO_OPERATIONAL'&&near(autoShift.openingCash,0),'automatic shift contract wrong');
+ok(String(autoShift.status).toLowerCase()==='open'&&!autoShift.closedAt,'automatic shift is not logically open');
+ok(persisted.some(e=>e.type==='shift.auto_opened'&&e.id===autoShift.id),'automatic shift audit/persistence event missing');
+ok(state.sessions.length===1&&state.payments.length===1,'Billard start/pay state mutation wrong');
+const billSession=state.sessions[0];ok(billSession.mode==='unit'&&near(billSession.totalAmount,21)&&billSession.endAt===null,'Billard runtime session wrong');ok(billSession.v160Contextual?.pricingSnapshot?.unitPrice===7,'Billard pricing snapshot missing');
+ok(near(state.payments[0].amount,21)&&state.payments[0].sessionId===billSession.id&&state.payments[0].shiftId===autoShift.id,'Billard pay-now payment/shift linkage wrong');
 
 // Historic recalc can never corrupt contextual pricing, even after rate-plan changes.
 billSession.totalAmount=999;G.recalcContextual(billSession);ok(near(billSession.totalAmount,21),'contextual recalc failed to restore Billard snapshot price');state.v160RatePlans.find(p=>p.id==='bill-rate').unitPrice=99;ctx.recalcSessionAmount(billSession);ok(near(billSession.totalAmount,21),'historic recalc path corrupted Billard after plan change');
-const countBefore=state.sessions.length;const duplicate=G.execute(billIntent,{operatorExplicit:true,idempotencyKey:'bill-click-1'});ok(duplicate.duplicate&&state.sessions.length===countBefore,'double click created a duplicate contextual session');
+const countBefore=state.sessions.length,shiftCountBefore=state.shifts.length;const duplicate=G.execute(billIntent,{operatorExplicit:true,idempotencyKey:'bill-click-1'});ok(duplicate.duplicate&&state.sessions.length===countBefore,'double click created a duplicate contextual session');ok(state.shifts.length===shiftCountBefore,'duplicate start opened another shift');
 
 // Stale quote must require a new operator review.
 const freshIntent=F.buildSessionIntent('pc-1',{mode:'fixed',duration:60,payNow:false},{operatorExplicit:true});state.v160RatePlans.find(p=>p.id==='pc-rate').hourlyRate=35;blocked=false;try{G.execute(freshIntent,{operatorExplicit:true,idempotencyKey:'pc-stale'})}catch(e){blocked=String(e.message)==='QUOTE_CHANGED_REVIEW_REQUIRED'}ok(blocked,'changed price did not invalidate stale operator quote');state.v160RatePlans.find(p=>p.id==='pc-rate').hourlyRate=30;
@@ -63,7 +72,8 @@ ok(ctx.openTransfer(pcSession)===false,'contextual transfer should fail closed')
 let ps5Blocked=false;try{F.buildSessionIntent('ps5-1',{mode:'fixed',duration:30,players:1},{operatorExplicit:true})}catch(_){ps5Blocked=true}ok(ps5Blocked,'PS5 escaped historic start path');
 ok(persisted.some(e=>e.type==='session.started_contextual')&&persisted.some(e=>e.type==='payment.created'),'contextual persistence events missing');
 console.log('V160_CONTEXTUAL_TIME_BUDGET_OPEN_OK');
-console.log('V160_CONTEXTUAL_START_SHIFT_IDEMPOTENCY_OK');
+console.log('V160_CONTEXTUAL_AUTO_OPERATIONAL_SHIFT_OK');
+console.log('V160_CONTEXTUAL_START_IDEMPOTENCY_OK');
 console.log('V160_CONTEXTUAL_PRICING_SNAPSHOT_LOCK_OK');
 console.log('V160_CONTEXTUAL_STALE_QUOTE_REVIEW_OK');
 console.log('V160_CONTEXTUAL_LEGACY_DELEGATION_OK');
