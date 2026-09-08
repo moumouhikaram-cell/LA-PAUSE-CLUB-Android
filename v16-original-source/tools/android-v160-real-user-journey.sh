@@ -34,7 +34,6 @@ fail(){
 
 need(){ command -v "$1" >/dev/null || fail "missing command $1"; }
 need adb; need node; need curl; need python3
-
 probe(){ node "$PROBE" "$@"; }
 
 device_ready(){
@@ -42,12 +41,9 @@ device_ready(){
   [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]]
 }
 wait_device(){ for _ in $(seq 1 60); do device_ready && return 0; sleep .5; done; return 1; }
-
 foreground(){
-  device_ready &&
-  timeout --foreground 4s adb shell dumpsys activity activities 2>/dev/null |
-    grep -m1 -E 'mResumedActivity|topResumedActivity' |
-    grep -q "$PKG"
+  device_ready && timeout --foreground 4s adb shell dumpsys activity activities 2>/dev/null |
+    grep -m1 -E 'mResumedActivity|topResumedActivity' | grep -q "$PKG"
 }
 wait_foreground(){ for _ in $(seq 1 50); do foreground && return 0; sleep .3; done; return 1; }
 
@@ -84,57 +80,50 @@ cdp_ready(){
   fail "CDP runtime not ready"
 }
 
-# Keep the historical WindowManager content-frame path first, but cache it and
-# fall back to activity/display bounds. Native #126/#30 showed that repeatedly
-# parsing dumpsys window on every locator attempt is both brittle and expensive.
+sdk_level(){ adb shell getprop ro.build.version.sdk 2>/dev/null | tr -d '\r'; }
+
+ui_webview_frame(){
+  local xml=/tmp/v160-real-ui.xml
+  timeout --foreground 7s adb shell uiautomator dump /sdcard/v160-real-ui.xml >/dev/null 2>&1 || return 2
+  timeout --foreground 4s adb exec-out cat /sdcard/v160-real-ui.xml > "$xml" 2>/dev/null || return 2
+  python3 - "$xml" <<'PY'
+import re,sys
+s=open(sys.argv[1],encoding='utf-8',errors='ignore').read()
+items=[]
+for m in re.finditer(r'<node\b[^>]*class="android\.webkit\.WebView"[^>]*>',s):
+    tag=m.group(0)
+    b=re.search(r'bounds="\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]"',tag)
+    if not b: continue
+    v=tuple(map(int,b.groups()))
+    if v[2]>v[0] and v[3]>v[1] and v[2]-v[0]>=200 and v[3]-v[1]>=200: items.append(v)
+if not items: raise SystemExit(2)
+v=max(items,key=lambda x:(x[2]-x[0])*(x[3]-x[1]))
+print(*v)
+PY
+}
+
 window_content_frame(){
   local f=/tmp/v160-real-window.txt
   timeout --foreground 4s adb shell dumpsys window windows > "$f" 2>/dev/null || return 2
   python3 - "$f" "$PKG" <<'PY'
 import re,sys
-s=open(sys.argv[1],encoding='utf-8',errors='ignore').read()
-pkg=sys.argv[2]
+s=open(sys.argv[1],encoding='utf-8',errors='ignore').read(); pkg=sys.argv[2]
 hits=[]
-for m in re.finditer(re.escape(pkg)+r'.{0,160}?MainActivity|MainActivity.{0,160}?'+re.escape(pkg),s,re.S):
-    a=max(0,m.start()-5000); b=min(len(s),m.end()+8000); hits.append(s[a:b])
+for m in re.finditer(re.escape(pkg)+r'.{0,180}?MainActivity|MainActivity.{0,180}?'+re.escape(pkg),s,re.S):
+    hits.append(s[max(0,m.start()-5000):min(len(s),m.end()+8000)])
 for block in hits or [s]:
-    pats=(
+    for pat in (
       r'\bcontent=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]',
       r'\bmContentFrame=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]',
       r'\bmFrame=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]',
       r'\bframe=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]',
       r'\bmAppBounds=Rect\((-?\d+),\s*(-?\d+)\s*-\s*(-?\d+),\s*(-?\d+)\)',
-    )
-    for pat in pats:
+    ):
         for m in re.finditer(pat,block):
             v=tuple(map(int,m.groups()))
             if v[2]>v[0] and v[3]>v[1] and v[2]-v[0]>=200 and v[3]-v[1]>=200:
                 print(*v); raise SystemExit(0)
 raise SystemExit(2)
-PY
-}
-
-activity_frame(){
-  local f=/tmp/v160-real-activity-top.txt
-  timeout --foreground 4s adb shell dumpsys activity top > "$f" 2>/dev/null || return 2
-  python3 - "$f" "$PKG" <<'PY'
-import re,sys
-s=open(sys.argv[1],encoding='utf-8',errors='ignore').read()
-pkg=sys.argv[2]
-if pkg not in s: raise SystemExit(2)
-c=[]
-for pat in (
-  r'mAppBounds=Rect\((-?\d+),\s*(-?\d+)\s*-\s*(-?\d+),\s*(-?\d+)\)',
-  r'\bbounds=Rect\((-?\d+),\s*(-?\d+)\s*-\s*(-?\d+),\s*(-?\d+)\)',
-  r'\bmBounds=Rect\((-?\d+),\s*(-?\d+)\s*-\s*(-?\d+),\s*(-?\d+)\)',
-):
-    for m in re.finditer(pat,s):
-        v=tuple(map(int,m.groups()))
-        if v[2]>v[0] and v[3]>v[1] and v[2]-v[0]>=200 and v[3]-v[1]>=200:
-            c.append(v)
-if not c: raise SystemExit(2)
-v=max(c,key=lambda x:(x[2]-x[0])*(x[3]-x[1]))
-print(*v)
 PY
 }
 
@@ -144,11 +133,9 @@ display_frame(){
   [[ -n "$out" ]] || return 2
   python3 - "$json" "$out" <<'PY'
 import json,re,sys
-p=json.load(open(sys.argv[1]))
-sizes=re.findall(r'(\d+)\s*x\s*(\d+)',sys.argv[2])
+p=json.load(open(sys.argv[1])); sizes=re.findall(r'(\d+)\s*x\s*(\d+)',sys.argv[2])
 if not sizes: raise SystemExit(2)
-w,h=map(int,sizes[-1])
-iw=float((p or {}).get('innerWidth') or 0); ih=float((p or {}).get('innerHeight') or 0)
+w,h=map(int,sizes[-1]); iw=float((p or {}).get('innerWidth') or 0); ih=float((p or {}).get('innerHeight') or 0)
 if iw<=0 or ih<=0: raise SystemExit(2)
 if (iw>ih and w<h) or (iw<ih and w>h): w,h=h,w
 print(0,0,w,h)
@@ -156,29 +143,27 @@ PY
 }
 
 webview_frame(){
-  local json="${1:-}" frame=""
-  if [[ -s "$FRAME_CACHE" ]]; then
-    cat "$FRAME_CACHE"
-    return 0
-  fi
-  if frame="$(window_content_frame 2>/dev/null)" && [[ -n "$frame" ]]; then
-    printf '%s\n' "$frame" > "$FRAME_CACHE"
-    log "WINDOW_CONTENT_FRAME $frame"
-    printf '%s\n' "$frame"
-    return 0
-  fi
-  if frame="$(activity_frame 2>/dev/null)" && [[ -n "$frame" ]]; then
-    printf '%s\n' "$frame" > "$FRAME_CACHE"
-    log "ACTIVITY_APP_FRAME_FALLBACK $frame"
-    printf '%s\n' "$frame"
-    return 0
+  local json="${1:-}" frame="" sdk
+  if [[ -s "$FRAME_CACHE" ]]; then cat "$FRAME_CACHE"; return 0; fi
+  sdk="$(sdk_level)"; sdk="${sdk:-0}"
+  if [[ "$sdk" -ge 35 ]]; then
+    if frame="$(ui_webview_frame 2>/dev/null)" && [[ -n "$frame" ]]; then
+      printf '%s\n' "$frame" > "$FRAME_CACHE"; log "UI_WEBVIEW_FRAME $frame"; printf '%s\n' "$frame"; return 0
+    fi
+    if frame="$(window_content_frame 2>/dev/null)" && [[ -n "$frame" ]]; then
+      printf '%s\n' "$frame" > "$FRAME_CACHE"; log "WINDOW_CONTENT_FRAME_FALLBACK $frame"; printf '%s\n' "$frame"; return 0
+    fi
+  else
+    if frame="$(window_content_frame 2>/dev/null)" && [[ -n "$frame" ]]; then
+      printf '%s\n' "$frame" > "$FRAME_CACHE"; log "WINDOW_CONTENT_FRAME $frame"; printf '%s\n' "$frame"; return 0
+    fi
+    if frame="$(ui_webview_frame 2>/dev/null)" && [[ -n "$frame" ]]; then
+      printf '%s\n' "$frame" > "$FRAME_CACHE"; log "UI_WEBVIEW_FRAME_FALLBACK $frame"; printf '%s\n' "$frame"; return 0
+    fi
   fi
   [[ -n "$json" ]] || return 2
   if frame="$(display_frame "$json" 2>/dev/null)" && [[ -n "$frame" ]]; then
-    printf '%s\n' "$frame" > "$FRAME_CACHE"
-    log "DISPLAY_FRAME_FALLBACK $frame"
-    printf '%s\n' "$frame"
-    return 0
+    printf '%s\n' "$frame" > "$FRAME_CACHE"; log "DISPLAY_FRAME_FALLBACK $frame"; printf '%s\n' "$frame"; return 0
   fi
   return 2
 }
@@ -189,8 +174,7 @@ rect(){
   probe "$mode" "$arg" > "$json" 2>/dev/null || return 2
   python3 - "$json" <<'PY' >/dev/null 2>&1 || return 3
 import json,sys
-p=json.load(open(sys.argv[1]))
-assert p
+assert json.load(open(sys.argv[1]))
 PY
   read x1 y1 x2 y2 < <(webview_frame "$json") || return 4
   python3 - "$json" "$x1" "$y1" "$x2" "$y2" <<'PY'
@@ -198,16 +182,10 @@ import json,sys
 p=json.load(open(sys.argv[1])); x1,y1,x2,y2=map(float,sys.argv[2:])
 iw=float(p.get('innerWidth') or 0); ih=float(p.get('innerHeight') or 0)
 if iw<=0 or ih<=0: raise SystemExit(3)
-sx=(x2-x1)/iw
-sy=(y2-y1)/ih
-mx=(float(p['left'])+float(p['right']))*.5
-my=(float(p['top'])+float(p['bottom']))*.5
-cx=x1+mx*sx
-cy=y1+my*sy
-vis=(0<=my<ih and float(p['right'])>0 and float(p['left'])<iw
-     and float(p.get('width') or 0)>0 and float(p.get('height') or 0)>0
-     and not p.get('disabled') and p.get('pointerEvents')!='none'
-     and p.get('display')!='none' and p.get('visibility')!='hidden')
+sx=(x2-x1)/iw; sy=(y2-y1)/ih
+mx=(float(p['left'])+float(p['right']))*.5; my=(float(p['top'])+float(p['bottom']))*.5
+cx=x1+mx*sx; cy=y1+my*sy
+vis=(0<=my<ih and float(p['right'])>0 and float(p['left'])<iw and float(p.get('width') or 0)>0 and float(p.get('height') or 0)>0 and not p.get('disabled') and p.get('pointerEvents')!='none' and p.get('display')!='none' and p.get('visibility')!='hidden')
 direction=-1 if my<0 else (1 if my>=ih else 0)
 print(round(cx),round(cy),1 if vis else 0,direction)
 PY
@@ -215,11 +193,8 @@ PY
 
 swipe_scroll(){
   local direction="$1" x1 y1 x2 y2 cx ylo yhi
-  device_ready || return 9
   read x1 y1 x2 y2 < <(webview_frame /tmp/v160-real-rect.json) || return 2
-  cx=$(( (x1+x2)/2 ))
-  ylo=$(( y1 + (y2-y1)*35/100 ))
-  yhi=$(( y1 + (y2-y1)*75/100 ))
+  cx=$(( (x1+x2)/2 )); ylo=$(( y1 + (y2-y1)*35/100 )); yhi=$(( y1 + (y2-y1)*75/100 ))
   if [[ "$direction" = -1 ]]; then
     adb shell input swipe "$cx" "$ylo" "$cx" "$yhi" 220 >/dev/null 2>&1
   else
@@ -243,16 +218,12 @@ locate(){
   for _ in $(seq 1 16); do
     device_ready || { locator_diagnostics "$mode" "$arg"; return 9; }
     if read x y vis direction < <(rect "$mode" "$arg"); then
-      if [[ "$vis" = 1 ]]; then
-        echo "$x $y"
-        return 0
-      fi
+      if [[ "$vis" = 1 ]]; then echo "$x $y"; return 0; fi
       swipe_scroll "$direction" || true
     fi
     sleep .25
   done
-  locator_diagnostics "$mode" "$arg"
-  return 1
+  locator_diagnostics "$mode" "$arg"; return 1
 }
 
 tap(){
@@ -267,26 +238,48 @@ tap(){
   wait_foreground || fail "lost foreground after $2"
 }
 
+focused_id(){
+  local id="$1"
+  probe rect-id "$id" 2>/dev/null | python3 -c 'import json,sys;p=json.load(sys.stdin) or {};print("true" if p.get("active") and p.get("activeId")==sys.argv[1] else "false")' "$id"
+}
+
 input_id(){
-  local id="$1" val="$2" x y got
+  local id="$1" val="$2" x y got focused info
   if ! read x y < <(locate rect-id "$id"); then
     device_ready || fail "device lost locating input $id"
     fail "input not reachable $id"
   fi
-  adb shell input tap "$x" "$y" >/dev/null 2>&1 || fail "focus $id"
-  sleep .2
-  for _ in $(seq 1 45); do adb shell input keyevent KEYCODE_DEL >/dev/null 2>&1 || true; done
+  focused=false
+  for attempt in 1 2 3; do
+    device_ready || fail "device lost focusing input $id"
+    adb shell input tap "$x" "$y" >/dev/null 2>&1 || fail "focus tap $id"
+    sleep .35
+    focused="$(focused_id "$id" || echo false)"
+    log "INPUT_FOCUS id=$id attempt=$attempt focused=$focused x=$x y=$y"
+    [[ "$focused" = true ]] && break
+    rm -f "$FRAME_CACHE"
+    read x y < <(locate rect-id "$id") || true
+  done
+  [[ "$focused" = true ]] || {
+    info="$(probe rect-id "$id" 2>/dev/null || true)"
+    fail "input focus missing $id info=$info"
+  }
+  adb shell input keyevent KEYCODE_MOVE_END >/dev/null 2>&1 || true
+  for _ in $(seq 1 60); do adb shell input keyevent KEYCODE_DEL >/dev/null 2>&1 || true; done
   adb shell input text "$val" >/dev/null 2>&1 || fail "type $id"
-  sleep .25
+  sleep .35
   got="$(probe rect-id "$id" | python3 -c 'import json,sys;print((json.load(sys.stdin) or {}).get("value",""))')"
-  [[ "$got" = "$val" ]] || fail "$id=$got expected=$val"
+  if [[ "$got" != "$val" ]]; then
+    focused="$(focused_id "$id" || echo false)"
+    fail "$id=$got expected=$val focused=$focused"
+  fi
   adb shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true
-  sleep .25
-  log "PHYSICAL_IME_DISMISSED $id"
+  sleep .35
+  wait_foreground || fail "IME dismissal lost foreground $id"
+  log "PHYSICAL_IME_DISMISSED $id value=$got"
 }
 
 state_json(){ probe state; }
-
 assert_state(){
   local code="$1" label="$2" j
   j="$(state_json)" || fail "state probe $label"
@@ -310,26 +303,16 @@ set_rotation(){
     adb shell settings put system user_rotation "$r" >/dev/null 2>&1 || true
   fi
 }
-
-rotate_lock(){
-  local r="$1"
-  set_rotation "$r"
-  sleep 1.5
-  wait_foreground || fail "rotation $r lost foreground"
-  log "ROTATION_LOCKED $r"
-}
+rotate_lock(){ set_rotation "$1"; sleep 1.5; wait_foreground || fail "rotation $1 lost foreground"; log "ROTATION_LOCKED $1"; }
 
 [[ -f "$APK" ]] || fail "APK missing"
 node --check "$PROBE" || fail "probe syntax"
 wait_device || fail "emulator unavailable"
-
 timeout --foreground 60s adb install -r "$APK" >> "$TRACE" 2>&1 || fail "install"
 timeout --foreground 15s adb shell pm clear "$PKG" >> "$TRACE" 2>&1 || fail "pm clear"
 adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || true
 set_rotation 0
-launch
-attach
-cdp_ready
+launch; attach; cdp_ready
 
 FRESH_STATE="$(state_json)"
 printf '%s' "$FRESH_STATE" | python3 -c 'import json,sys;p=json.load(sys.stdin);assert p["stations"]>=7 and p["activeSessions"]==0 and p["shift"] is None and p["clients"]>=0' || fail "fresh state $FRESH_STATE"
@@ -337,7 +320,7 @@ log "FRESH_STATE_OK $FRESH_STATE"
 BASE_CLIENTS="$(printf '%s' "$FRESH_STATE" | python3 -c 'import json,sys;print(json.load(sys.stdin)["clients"])')"
 BASE_COCA="$(printf '%s' "$FRESH_STATE" | python3 -c 'import json,sys;print(json.load(sys.stdin)["cocaStock"])')"
 
-# Real operator invariant: a sellable session is never blocked by an unopened cash shift.
+# Physical operator journey: session + client + snack, with automatic operational shift.
 tap rect-text "PS5 1"
 input_id newFirstV13 Test
 input_id newLastV13 Client
@@ -346,20 +329,18 @@ tap rect-css '[data-snack-plus="prod-cocacola"]'
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["shift"] is None and p["activeSessions"]==0' "PREPARED_WITHOUT_SHIFT"
 tap rect-id startSessionBtn
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["currentView"]=="floor" and p["shift"] is not None and str(p["shift"]["status"]).lower()=="open" and p["activeSessions"]==1 and p["payments"]==1 and p["orders"]==1 and p["paidOrders"]==1 and p["pending"] is None' "AUTO_SHIFT_AND_SESSION_START_ON_FIRST_CONFIRM"
-
 POST="$(state_json)"
 POST_CLIENTS="$(printf '%s' "$POST" | python3 -c 'import json,sys;print(json.load(sys.stdin)["clients"])')"
 POST_COCA="$(printf '%s' "$POST" | python3 -c 'import json,sys;print(json.load(sys.stdin)["cocaStock"])')"
 [[ "$POST_CLIENTS" -eq $((BASE_CLIENTS+1)) ]] || fail "client side effect duplicated/missing"
 [[ "$POST_COCA" -eq $((BASE_COCA-1)) ]] || fail "stock side effect duplicated/missing"
 
-# Hard process restart must preserve the business transaction exactly once.
-adb shell am force-stop "$PKG" >/dev/null 2>&1 || fail "force-stop"
-sleep .6
+# Hard process restart preserves transaction exactly once.
+adb shell am force-stop "$PKG" >/dev/null 2>&1 || fail "force-stop"; sleep .6
 launch; attach; cdp_ready
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["activeSessions"]==1 and p["payments"]==1 and p["orders"]==1 and p["paidOrders"]==1 and p["shift"] is not None' "PROCESS_RESTART_PRESERVES_TRANSACTION"
 
-# A package update install (-r, no pm clear) must preserve the exact same durable data.
+# Upgrade install preserves durable data.
 adb shell am force-stop "$PKG" >/dev/null 2>&1 || fail "pre-update force-stop"
 timeout --foreground 60s adb install -r "$APK" >> "$TRACE" 2>&1 || fail "update install -r"
 launch; attach; cdp_ready
@@ -370,13 +351,11 @@ UPDATE_COCA="$(state_json | python3 -c 'import json,sys;print(json.load(sys.stdi
 [[ "$UPDATE_COCA" -eq "$POST_COCA" ]] || fail "stock changed across update install"
 log "APK_UPDATE_DATA_PRESERVATION_OK clients=$UPDATE_CLIENTS cocaStock=$UPDATE_COCA"
 
-# Route state must survive a real Android rotation.
+# Route and transient sheet survive real Android rotation.
 tap rect-css '[data-view="sessions"]'
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["currentView"]=="sessions" and len((p["viewText"] or "").strip())>2' "SESSIONS_BEFORE_ROTATION"
 rotate_lock 1
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["currentView"]=="sessions" and len((p["viewText"] or "").strip())>2' "SESSIONS_SURVIVES_LANDSCAPE"
-
-# A transient active-session sheet must survive rotation too.
 tap rect-css '[data-view="floor"]'
 tap rect-text "PS5 1"
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["currentView"]=="floor" and p["sheetOpen"] is True and p["activeSessions"]==1' "ACTIVE_SHEET_BEFORE_ROTATION"
@@ -385,7 +364,7 @@ assert_state 'import json,sys;p=json.load(sys.stdin);assert p["currentView"]=="f
 android_back "sheet"
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["sheetOpen"] is False and p["activeSessions"]==1' "BACK_CLOSES_SHEET"
 
-# Drawer priority and internal route history.
+# Back priority: drawer, route history, modal, then root-safe.
 tap rect-id menuBtn
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["drawerOpen"] is True' "DRAWER_OPEN"
 android_back "drawer"
@@ -394,15 +373,11 @@ tap rect-css '[data-view="cash"]'
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["currentView"]=="cash" and p["shift"] is not None' "CASH_ROUTE"
 android_back "cash-to-floor"
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["currentView"]=="floor" and p["activeSessions"]==1' "BACK_RESTORES_FLOOR"
-
-# Modal has priority and cannot mutate shift when dismissed with Back.
 tap rect-css '[data-view="cash"]'
 tap rect-id closeShiftBtn
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["modalOpen"] is True and p["shift"] is not None' "CLOSE_SHIFT_MODAL"
 android_back "modal"
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["modalOpen"] is False and p["shift"] is not None' "BACK_DISMISSES_MODAL"
-
-# Close shift deliberately, then root Back MUST NOT close the app.
 tap rect-id closeShiftBtn
 tap rect-id modalOk
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["shift"] is None and p["currentView"]=="cash"' "SHIFT_CLOSED"
@@ -411,18 +386,12 @@ assert_state 'import json,sys;p=json.load(sys.stdin);assert p["currentView"]=="f
 android_back "root-floor"
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["currentView"]=="floor" and p["activeSessions"]==1' "ROOT_BACK_DOES_NOT_EXIT"
 
-# Final kill/relaunch proves closed-shift + active-session data still exist.
-adb shell am force-stop "$PKG" >/dev/null 2>&1 || fail "final force-stop"
-sleep .6
+# Final kill/relaunch proves closed shift + active session persistence.
+adb shell am force-stop "$PKG" >/dev/null 2>&1 || fail "final force-stop"; sleep .6
 launch; attach; cdp_ready
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["shift"] is None and p["activeSessions"]==1 and p["payments"]==1 and p["orders"]==1 and p["paidOrders"]==1' "FINAL_REOPEN_PERSISTENCE"
-
-PID="$(adb shell pidof "$PKG" 2>/dev/null | tr -d '\r')"
-[[ -n "$PID" ]] || fail "pid missing"
+PID="$(adb shell pidof "$PKG" 2>/dev/null | tr -d '\r')"; [[ -n "$PID" ]] || fail "pid missing"
 timeout --foreground 10s adb logcat -d --pid="$PID" > "$LOGCAT" 2>/dev/null || true
-if grep -Eqi 'FATAL EXCEPTION|AndroidRuntime:.*FATAL|Process com\.lapauseclub\.manager .* has died|chromium.*(crash|Aw, Snap)' "$LOGCAT"; then
-  fail "fatal runtime signal"
-fi
-
+if grep -Eqi 'FATAL EXCEPTION|AndroidRuntime:.*FATAL|Process com\.lapauseclub\.manager .* has died|chromium.*(crash|Aw, Snap)' "$LOGCAT"; then fail "fatal runtime signal"; fi
 rotate_lock 0
-log "ANDROID_V160_REAL_USER_JOURNEY_OK autoShift=1 update=preserved rotation=route+sheet back=root-safe persistence=kill-relaunch"
+log "ANDROID_V160_REAL_USER_JOURNEY_OK autoShift=1 update=preserved rotation=route+sheet back=root-safe persistence=kill-relaunch focus=physical"
