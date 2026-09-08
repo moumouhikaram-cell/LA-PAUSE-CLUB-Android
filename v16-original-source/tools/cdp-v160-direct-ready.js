@@ -1,13 +1,13 @@
 'use strict';
-/* Lightweight API33 readiness check.
- * The authoritative business snapshot remains `probe state`; this helper only proves
- * that the forwarded WebView accepts one tiny Runtime.evaluate before FRESH_STATE.
+/* Lightweight API33 transport readiness check.
+ * IMPORTANT: this helper MUST NOT call Runtime.evaluate. Native #133 proved that even a tiny
+ * preflight Runtime.evaluate can stall the fresh API33 emulator before FRESH_STATE.
+ * The authoritative WebView-JS readiness proof remains the first `probe state` snapshot.
  */
 const http=require('http');
-const {RawCdpWebSocket}=require('./cdp-v160-raw-websocket');
 const port=Number(process.env.LP160_CDP_PORT||9229);
 
-function discover(timeout=1400){
+function discover(timeout=1200){
   return new Promise((resolve,reject)=>{
     const req=http.get({host:'127.0.0.1',port,path:'/json'},res=>{
       let raw='';
@@ -26,14 +26,6 @@ function discover(timeout=1400){
 (async()=>{
   const pages=await discover();
   const page=pages.find(x=>x&&x.type==='page'&&x.webSocketDebuggerUrl)||pages.find(x=>x&&x.webSocketDebuggerUrl);
-  if(!page)throw new Error('no debuggable WebView page');
-  const ws=await RawCdpWebSocket.connect(page.webSocketDebuggerUrl,1800);
-  try{
-    const response=await ws.request({id:1,method:'Runtime.evaluate',params:{expression:"(()=>document.readyState==='complete'&&!!document.getElementById('view'))()",returnByValue:true,awaitPromise:true}},1800);
-    if(response&&response.error)throw new Error(JSON.stringify(response.error));
-    if(response?.result?.exceptionDetails)throw new Error('Runtime exception');
-    process.stdout.write(response?.result?.result?.value===true?'true':'false');
-  }finally{
-    ws.destroy();
-  }
+  process.stdout.write(page?'true':'false');
+  if(!page)process.exitCode=2;
 })().catch(()=>{process.stdout.write('false');process.exitCode=2;});

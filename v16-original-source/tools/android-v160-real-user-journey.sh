@@ -12,6 +12,11 @@ export LP160_DIRECT_READY_PROBE="$DIRECT_READY"
 [[ -f "$ENGINE" ]] || { echo "V160_REAL_JOURNEY_ADAPTER_FAIL engine missing" >&2; exit 2; }
 [[ -f "$DIRECT_READY" ]] || { echo "V160_REAL_JOURNEY_ADAPTER_FAIL direct ready probe missing" >&2; exit 2; }
 node --check "$DIRECT_READY" >/dev/null
+# API33 native #133: readiness may prove only the forwarded /json target. No preflight JS eval.
+if grep -Eq "method:[[:space:]]*['\"]Runtime\.evaluate['\"]" "$DIRECT_READY"; then
+  echo "V160_REAL_JOURNEY_ADAPTER_FAIL direct ready must not Runtime.evaluate" >&2
+  exit 2
+fi
 
 python3 - "$ENGINE" "$TMP" <<'PATCHPY'
 from pathlib import Path
@@ -118,8 +123,18 @@ PY'''
 if src.count(old_rect)!=1:
     raise SystemExit(f'V160_REAL_JOURNEY_ADAPTER_FAIL rect matches={src.count(old_rect)}')
 src=src.replace(old_rect,new_rect,1)
+
+# API36 native #36: the broad station-card center is not a deterministic click surface.
+# On an available station the historical product already renders one explicit child CTA;
+# click that CTA and let the existing station-card bubbling contract open PS5 1.
+old_first_station='''tap rect-text "PS5 1"\ninput_id newFirstV13 Test'''
+new_first_station='''log "STATION_OPEN_TARGET strategy=available-child-cta station=PS5_1"\ntap rect-text "DÉMARRER UNE SESSION"\ninput_id newFirstV13 Test'''
+if src.count(old_first_station)!=1:
+    raise SystemExit(f'V160_REAL_JOURNEY_ADAPTER_FAIL first station matches={src.count(old_first_station)}')
+src=src.replace(old_first_station,new_first_station,1)
+
 out.write_text(src,encoding='utf-8')
-print('V160_REAL_JOURNEY_ADAPTER_OK replacements=2')
+print('V160_REAL_JOURNEY_ADAPTER_OK replacements=3')
 PATCHPY
 
 bash -n "$TMP"
