@@ -73,6 +73,7 @@ jobs:
           grep -q '<script src="stabilize-v160-existing.js"></script>' "$INDEX"
           grep -q '<script src="stabilize-v160-shift-recovery.js"></script>' "$INDEX"
           grep -q '<script src="stabilize-v160-navigation.js"></script>' "$INDEX"
+          grep -q '<script src="enrich-v160-anonymous-client.js"></script>' "$INDEX"
           grep -q '<script src="enrich-v160-pricing-ui.js"></script>' "$INDEX"
           grep -q '<script src="enrich-v160-active-cockpit.js"></script>' "$INDEX"
           grep -q '<script src="enrich-v160-session-snacks.js"></script>' "$INDEX"
@@ -80,7 +81,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           s=Path('v16-original-source/app/src/main/assets/index.html').read_text(encoding='utf-8')
-          order=['app.js','v13.js','v14.js','v15.js','stabilize-v160-existing.js','stabilize-v160-shift-recovery.js','stabilize-v160-navigation.js','enrich-v160-core.js','enrich-v160-billing.js','enrich-v160-pricing-ui.js','enrich-v160-session-start.js','enrich-v160-active-cockpit.js','enrich-v160-session-snacks.js','enrich-v160-control-center.js','enrich-v160-control-center-bridge.js']
+          order=['app.js','v13.js','v14.js','v15.js','stabilize-v160-existing.js','stabilize-v160-shift-recovery.js','stabilize-v160-navigation.js','enrich-v160-core.js','enrich-v160-anonymous-client.js','enrich-v160-billing.js','enrich-v160-pricing-ui.js','enrich-v160-session-start.js','enrich-v160-active-cockpit.js','enrich-v160-session-snacks.js','enrich-v160-control-center.js','enrich-v160-control-center-bridge.js']
           pos=[s.index(x) for x in order]
           assert pos==sorted(pos),(order,pos)
           print('V160_STABILIZATION_LOAD_ORDER_OK')
@@ -88,6 +89,7 @@ jobs:
           node --check "$A/stabilize-v160-existing.js"
           node --check "$A/stabilize-v160-shift-recovery.js"
           node --check "$A/stabilize-v160-navigation.js"
+          node --check "$A/enrich-v160-anonymous-client.js"
           node --check "$A/enrich-v160-pricing-ui.js"
           node --check "$A/enrich-v160-active-cockpit.js"
           node --check "$A/enrich-v160-session-snacks.js"
@@ -117,6 +119,7 @@ jobs:
             test-v160-stabilization-native-runtime-recovery.js
             test-v160-enrichment.js
             test-v160-core-recovery.js
+            test-v160-anonymous-client.js
             test-v160-pricing-persistence.js
             test-v160-session-form.js
             test-v160-session-start.js
@@ -186,6 +189,7 @@ jobs:
           grep -qx 'assets/stabilize-v160-existing.js' v160-stabilization-assets.txt
           grep -qx 'assets/stabilize-v160-shift-recovery.js' v160-stabilization-assets.txt
           grep -qx 'assets/stabilize-v160-navigation.js' v160-stabilization-assets.txt
+          grep -qx 'assets/enrich-v160-anonymous-client.js' v160-stabilization-assets.txt
           grep -qx 'assets/enrich-v160-pricing-ui.js' v160-stabilization-assets.txt
           grep -qx 'assets/enrich-v160-active-cockpit.js' v160-stabilization-assets.txt
           grep -qx 'assets/enrich-v160-session-snacks.js' v160-stabilization-assets.txt
