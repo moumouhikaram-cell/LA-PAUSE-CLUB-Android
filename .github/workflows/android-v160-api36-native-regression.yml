@@ -9,6 +9,10 @@ on:
       - "v16-original-source/app/src/main/**"
       - "v16-original-source/tools/android-v160-back-no-exit-smoke.sh"
       - "v16-original-source/tools/android-v160-launch-smoke.sh"
+      - "v16-original-source/tools/android-v160-real-user-journey.sh"
+      - "v16-original-source/tools/android-v160-navigation-matrix.sh"
+      - "v16-original-source/tools/cdp-v160-stabilization-probe.js"
+      - "v16-original-source/tools/cdp-v160-raw-websocket.js"
       - ".github/workflows/android-v160-api36-native-regression.yml"
 
 permissions:
@@ -17,7 +21,7 @@ permissions:
 jobs:
   api36-native:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -47,7 +51,7 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" "platform-tools"
 
-      - name: Prove Android 16 Back compatibility contract
+      - name: Prove Android 16 Back and real-journey contracts
         shell: bash
         run: |
           set -euxo pipefail
@@ -57,9 +61,13 @@ jobs:
           grep -q 'window.nativeBack ? window.nativeBack() : false' v16-original-source/app/src/main/java/com/lapauseclub/manager/MainActivity.java
           node v16-original-source/tools/test-v160-stabilization-navigation.js
           node v16-original-source/tools/test-v160-native-back-contract.js
+          node v16-original-source/tools/test-v160-auto-operational-shift.js
+          node v16-original-source/tools/test-v160-operator-shortcuts.js
           bash -n v16-original-source/tools/android-v160-back-no-exit-smoke.sh
           bash -n v16-original-source/tools/android-v160-launch-smoke.sh
-          echo V160_API36_BACK_CONTRACT_OK
+          bash -n v16-original-source/tools/android-v160-real-user-journey.sh
+          bash -n v16-original-source/tools/android-v160-navigation-matrix.sh
+          echo V160_API36_REAL_JOURNEY_CONTRACT_OK
 
       - name: Park rejected generations and build exact classic v1.6
         shell: bash
@@ -94,7 +102,7 @@ jobs:
           (cd v16-original-source && gradle --no-daemon --stacktrace :app:assembleDebug)
           test -f v16-original-source/app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Android 16 physical Back regression
+      - name: Android 16 physical Back + rotation + persistence + 43-route regression
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 36
@@ -109,6 +117,8 @@ jobs:
           script: |
             bash v16-original-source/tools/android-v160-launch-smoke.sh
             bash v16-original-source/tools/android-v160-back-no-exit-smoke.sh
+            bash v16-original-source/tools/android-v160-real-user-journey.sh
+            bash v16-original-source/tools/android-v160-navigation-matrix.sh
 
       - name: Upload API36 diagnostics
         if: always()
@@ -118,5 +128,9 @@ jobs:
           path: |
             android-v160-launch-smoke-trace.txt
             android-v160-back-no-exit-trace.txt
+            android-v160-real-user-journey-trace.txt
+            android-v160-real-user-journey-logcat.txt
+            android-v160-navigation-matrix-trace.txt
+            android-v160-navigation-matrix-logcat.txt
           if-no-files-found: warn
           retention-days: 14
