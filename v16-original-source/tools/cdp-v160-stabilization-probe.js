@@ -1,7 +1,7 @@
 'use strict';
 /* Read-only CDP locator/state probe for the historical v1.6 stabilization journey.
- * CLI calls are forwarded to one localhost daemon. The daemon keeps one dependency-free raw
- * RFC6455 socket to the Android WebView and serializes every read-only Runtime.evaluate command.
+ * CLI calls are forwarded to one localhost daemon by default. API33 may opt into
+ * one-shot direct raw WebSocket evaluation with LP160_CDP_DIRECT=1.
  * It never clicks, types, mutates storage or calls render functions.
  */
 const http=require('http');
@@ -18,6 +18,7 @@ const INITIAL_READY_TIMEOUT_MS=12000;
 const DAEMON_REQUEST_TIMEOUT_MS=40000;
 const IS_DAEMON=mode==='--daemon';
 const RESET_MODE=mode==='--reset';
+const DIRECT_MODE=process.env.LP160_CDP_DIRECT==='1';
 function fail(msg){console.error('V160_STABILIZATION_CDP_FAIL '+msg);process.exit(2);}
 function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
 function adb(args,timeout=3500){
@@ -236,8 +237,19 @@ async function ensureDaemon(){
   for(let attempt=1;attempt<=20;attempt++){if(await daemonHealth())return;await sleep(100);}
   throw new Error('persistent CDP daemon did not start');
 }
+async function directClientMain(){
+  if(RESET_MODE){dropCdpSession('direct reset',true);return {reset:true,direct:true};}
+  const requestMode=mode==='ready'?'state':mode;
+  try{
+    const result=await evaluateReadOnly(requestMode,arg);
+    return mode==='ready'?!!(result&&result.bootReady===true):result;
+  }finally{
+    dropCdpSession('direct one-shot complete',true);
+  }
+}
 async function clientMain(){
   if(!mode)throw new Error('missing mode');
+  if(DIRECT_MODE)return directClientMain();
   await ensureDaemon();
   if(RESET_MODE)return daemonReset();
   const requestMode=mode;

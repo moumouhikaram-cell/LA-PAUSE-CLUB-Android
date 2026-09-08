@@ -61,6 +61,8 @@ jobs:
           node --check v16-original-source/app/src/main/assets/enrich-v160-operator-shortcuts.js
           node --check v16-original-source/app/src/main/assets/enrich-v160-device-control.js
           node --check v16-original-source/tools/cdp-v160-stabilization-probe.js
+          grep -q "DIRECT_MODE=process.env.LP160_CDP_DIRECT==='1'" v16-original-source/tools/cdp-v160-stabilization-probe.js
+          grep -q 'text_control=tag in' v16-original-source/tools/android-v160-real-user-journey.sh
           bash -n v16-original-source/tools/android-v160-launch-smoke.sh
           bash -n v16-original-source/tools/android-v160-real-user-journey.sh
           bash -n v16-original-source/tools/android-v160-navigation-matrix.sh
@@ -166,6 +168,8 @@ jobs:
 
       - name: Physical Android 13 compatibility + real user journey + full navigation matrix
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          LP160_CDP_DIRECT: "1"
         with:
           api-level: 33
           target: default

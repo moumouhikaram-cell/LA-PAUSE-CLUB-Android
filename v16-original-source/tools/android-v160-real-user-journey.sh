@@ -57,10 +57,10 @@ launch(){
 attach(){
   # A stale probe daemon may still own a requestQueue blocked on a dead WebView socket.
   # Kill only our localhost probe daemon before rebuilding the ADB forward. The next
-  # probe invocation autostarts a clean daemon; no product process or app data is touched.
+  # probe invocation autostarts a clean daemon unless API33 selected one-shot direct mode.
   pkill -f 'cdp-v160-stabilization-probe\.js --daemon' >/dev/null 2>&1 || true
   sleep .15
-  log "CDP_DAEMON_PREEMPTIVE_RESET"
+  log "CDP_DAEMON_PREEMPTIVE_RESET direct=${LP160_CDP_DIRECT:-0}"
   adb forward --remove tcp:$PORT >/dev/null 2>&1 || true
   local sock=""
   for _ in $(seq 1 35); do
@@ -192,8 +192,11 @@ sx=(x2-x1)/iw; sy=(y2-y1)/ih
 mx=(float(p['left'])+float(p['right']))*.5; my=(float(p['top'])+float(p['bottom']))*.5
 cx=x1+mx*sx; cy=y1+my*sy
 frame_h=max(1.0,y2-y1)
+tag=str(p.get('tag') or '').upper()
+text_control=tag in {'INPUT','TEXTAREA','SELECT'}
 safe_top=y1+max(72.0,frame_h*0.04)
-safe_bottom=y2-max(160.0,frame_h*0.09)
+bottom_guard=max(160.0,frame_h*0.09) if text_control else max(72.0,frame_h*0.04)
+safe_bottom=y2-bottom_guard
 dom_visible=(0<=my<ih and float(p['right'])>0 and float(p['left'])<iw and float(p.get('width') or 0)>0 and float(p.get('height') or 0)>0 and not p.get('disabled') and p.get('pointerEvents')!='none' and p.get('display')!='none' and p.get('visibility')!='hidden')
 touch_safe=(safe_top<=cy<=safe_bottom)
 vis=dom_visible and touch_safe
@@ -357,7 +360,6 @@ POST_COCA="$(printf '%s' "$POST" | python3 -c 'import json,sys;print(json.load(s
 adb shell am force-stop "$PKG" >/dev/null 2>&1 || fail "force-stop"; sleep .6
 launch; attach; cdp_ready
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["activeSessions"]==1 and p["payments"]==1 and p["orders"]==1 and p["paidOrders"]==1 and p["shift"] is not None' "PROCESS_RESTART_PRESERVES_TRANSACTION"
-
 adb shell am force-stop "$PKG" >/dev/null 2>&1 || fail "pre-update force-stop"
 timeout --foreground 60s adb install -r "$APK" >> "$TRACE" 2>&1 || fail "update install -r"
 launch; attach; cdp_ready
@@ -408,4 +410,4 @@ PID="$(adb shell pidof "$PKG" 2>/dev/null | tr -d '\r')"; [[ -n "$PID" ]] || fai
 timeout --foreground 10s adb logcat -d --pid="$PID" > "$LOGCAT" 2>/dev/null || true
 if grep -Eqi 'FATAL EXCEPTION|AndroidRuntime:.*FATAL|Process com\.lapauseclub\.manager .* has died|chromium.*(crash|Aw, Snap)' "$LOGCAT"; then fail "fatal runtime signal"; fi
 rotate_lock 0
-log "ANDROID_V160_REAL_USER_JOURNEY_OK autoShift=1 update=preserved rotation=route+sheet back=root-safe persistence=kill-relaunch focus=physical touch-safe=1 cdp-reset=preemptive"
+log "ANDROID_V160_REAL_USER_JOURNEY_OK autoShift=1 update=preserved rotation=route+sheet back=root-safe persistence=kill-relaunch focus=physical touch-safe=1 touch-safe-typed=1 cdp-reset=preemptive cdp-direct=${LP160_CDP_DIRECT:-0}"
