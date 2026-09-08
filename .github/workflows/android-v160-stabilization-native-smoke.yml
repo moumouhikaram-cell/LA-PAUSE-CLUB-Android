@@ -8,12 +8,11 @@ on:
     paths:
       - "v16-original-source/app/src/main/**"
       - "v16-original-source/tools/android-v160-launch-smoke.sh"
-      - "v16-original-source/tools/test-v160-native-back-contract.js"
-      - "v16-original-source/tools/android-v160-stabilization-journey.sh"
+      - "v16-original-source/tools/android-v160-real-user-journey.sh"
       - "v16-original-source/tools/android-v160-navigation-matrix.sh"
       - "v16-original-source/tools/cdp-v160-stabilization-probe.js"
       - "v16-original-source/tools/cdp-v160-raw-websocket.js"
-      - "v16-original-source/tools/test-v160-stabilization-*.js"
+      - "v16-original-source/tools/test-v160-*.js"
       - ".github/workflows/android-v160-stabilization-native-smoke.yml"
 
 permissions:
@@ -22,7 +21,7 @@ permissions:
 jobs:
   native-stabilization:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
 
@@ -59,9 +58,10 @@ jobs:
           node --check v16-original-source/app/src/main/assets/stabilize-v160-existing.js
           node --check v16-original-source/app/src/main/assets/stabilize-v160-shift-recovery.js
           node --check v16-original-source/app/src/main/assets/stabilize-v160-navigation.js
+          node --check v16-original-source/app/src/main/assets/enrich-v160-operator-shortcuts.js
           node --check v16-original-source/tools/cdp-v160-stabilization-probe.js
           bash -n v16-original-source/tools/android-v160-launch-smoke.sh
-          bash -n v16-original-source/tools/android-v160-stabilization-journey.sh
+          bash -n v16-original-source/tools/android-v160-real-user-journey.sh
           bash -n v16-original-source/tools/android-v160-navigation-matrix.sh
           node v16-original-source/tools/test-v160-design-frozen.js
           node v16-original-source/tools/test-v160-stabilization-navigation.js
@@ -69,6 +69,12 @@ jobs:
           node v16-original-source/tools/test-v160-stabilization-routes.js
           node v16-original-source/tools/test-v160-stabilization-interactions.js
           node v16-original-source/tools/test-v160-stabilization-shift-session.js
+          node v16-original-source/tools/test-v160-auto-operational-shift.js
+          node v16-original-source/tools/test-v160-operator-shortcuts.js
+          node v16-original-source/tools/test-v160-anonymous-client.js
+          node v16-original-source/tools/test-v160-pricing-persistence.js
+          node v16-original-source/tools/test-v160-active-cockpit.js
+          node v16-original-source/tools/test-v160-session-snacks.js
           node v16-original-source/tools/test-v160-stabilization-cash-dom.js
           node v16-original-source/tools/test-v160-stabilization-accounting.js
           node v16-original-source/tools/test-v160-stabilization-prepaid-sales.js
@@ -111,63 +117,47 @@ jobs:
           python3 - <<'PY'
           from html.parser import HTMLParser
           from pathlib import Path
-
           assets = Path("v16-original-source/app/src/main/assets")
           class Scripts(HTMLParser):
-              def __init__(self):
-                  super().__init__(); self.srcs = []
-              def handle_starttag(self, tag, attrs):
-                  if tag.lower() != "script": return
-                  src = dict(attrs).get("src")
-                  if src: self.srcs.append(src)
-          parser = Scripts(); parser.feed((assets / "index.html").read_text(encoding="utf-8"))
-          local = [s.split("?", 1)[0].split("#", 1)[0] for s in parser.srcs if "://" not in s and not s.startswith("//")]
-          missing = [s for s in local if not (assets / s).is_file()]
-          if missing:
-              raise SystemExit(f"index.html references missing local scripts before build: {missing}")
-          print("INDEX_LOCAL_SCRIPTS_OK", len(local))
+              def __init__(self): super().__init__(); self.srcs=[]
+              def handle_starttag(self,tag,attrs):
+                  if tag.lower()=="script":
+                      src=dict(attrs).get("src")
+                      if src:self.srcs.append(src)
+          p=Scripts();p.feed((assets/"index.html").read_text(encoding="utf-8"))
+          local=[s.split("?",1)[0].split("#",1)[0] for s in p.srcs if "://" not in s and not s.startswith("//")]
+          missing=[s for s in local if not (assets/s).is_file()]
+          if missing: raise SystemExit(f"index.html references missing local scripts before build: {missing}")
+          print("INDEX_LOCAL_SCRIPTS_OK",len(local))
           PY
 
           cd v16-original-source
           gradle --no-daemon --stacktrace :app:assembleDebug
           APK="app/build/outputs/apk/debug/app-debug.apk"
           test -f "$APK"
-
           python3 - "$APK" <<'PY'
-          import sys, zipfile
+          import sys,zipfile
           from html.parser import HTMLParser
-
-          apk = sys.argv[1]
+          apk=sys.argv[1]
           with zipfile.ZipFile(apk) as zf:
-              names = set(zf.namelist())
-              index_name = "assets/index.html"
-              if index_name not in names:
-                  raise SystemExit("APK missing assets/index.html")
-              html = zf.read(index_name).decode("utf-8")
+              names=set(zf.namelist()); html=zf.read("assets/index.html").decode("utf-8")
               class Scripts(HTMLParser):
-                  def __init__(self):
-                      super().__init__(); self.srcs = []
-                  def handle_starttag(self, tag, attrs):
-                      if tag.lower() != "script": return
-                      src = dict(attrs).get("src")
-                      if src: self.srcs.append(src)
-              parser = Scripts(); parser.feed(html)
-              local = [s.split("?", 1)[0].split("#", 1)[0] for s in parser.srcs if "://" not in s and not s.startswith("//")]
-              missing = [s for s in local if "assets/" + s not in names]
-              if missing:
-                  raise SystemExit(f"APK index.html references scripts absent from package: {missing}")
-              required = {
-                  "assets/stabilize-v160-existing.js",
-                  "assets/stabilize-v160-shift-recovery.js",
-                  "assets/stabilize-v160-navigation.js",
-              }
-              absent = sorted(required - names)
-              if absent:
-                  raise SystemExit(f"APK missing stabilization runtime: {absent}")
-              print("APK_INDEX_SCRIPT_INTEGRITY_OK", len(local))
+                  def __init__(self): super().__init__(); self.srcs=[]
+                  def handle_starttag(self,tag,attrs):
+                      if tag.lower()=="script":
+                          src=dict(attrs).get("src")
+                          if src:self.srcs.append(src)
+              p=Scripts();p.feed(html)
+              local=[s.split("?",1)[0].split("#",1)[0] for s in p.srcs if "://" not in s and not s.startswith("//")]
+              missing=[s for s in local if "assets/"+s not in names]
+              if missing: raise SystemExit(f"APK index.html references scripts absent from package: {missing}")
+              required={"assets/stabilize-v160-existing.js","assets/stabilize-v160-shift-recovery.js","assets/stabilize-v160-navigation.js","assets/enrich-v160-operator-shortcuts.js"}
+              absent=sorted(required-names)
+              if absent: raise SystemExit(f"APK missing stabilization runtime: {absent}")
+              print("APK_INDEX_SCRIPT_INTEGRITY_OK",len(local))
           PY
 
-      - name: Physical Android launch smoke
+      - name: Physical Android 13 compatibility + real user journey + full navigation matrix
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 33
@@ -179,7 +169,10 @@ jobs:
           heap-size: 384M
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
-          script: bash v16-original-source/tools/android-v160-launch-smoke.sh
+          script: |
+            bash v16-original-source/tools/android-v160-launch-smoke.sh
+            bash v16-original-source/tools/android-v160-real-user-journey.sh
+            bash v16-original-source/tools/android-v160-navigation-matrix.sh
 
       - name: Upload stabilization diagnostics
         if: always()
@@ -188,8 +181,8 @@ jobs:
           name: v160-stabilization-native-${{ github.run_number }}
           path: |
             android-v160-launch-smoke-trace.txt
-            android-v160-stabilization-journey-trace.txt
-            android-v160-stabilization-journey-logcat.txt
+            android-v160-real-user-journey-trace.txt
+            android-v160-real-user-journey-logcat.txt
             android-v160-navigation-matrix-trace.txt
             android-v160-navigation-matrix-logcat.txt
           if-no-files-found: warn
