@@ -32,21 +32,24 @@ public class SessionAlarmReceiver extends BroadcastReceiver {
     }
 
     private static boolean isStillActive(Context context, String sessionId) {
+        if (sessionId == null || sessionId.isEmpty()) return false;
         try {
             SharedPreferences prefs = context.getSharedPreferences("gaming_floor_store", Context.MODE_PRIVATE);
             String raw = prefs.getString("state_json", "");
-            if (raw.isEmpty()) return true;
+            if (raw.isEmpty()) return false;
             JSONArray arr = new JSONObject(raw).optJSONArray("sessions");
-            if (arr == null) return true;
+            if (arr == null) return false;
             for (int i=0;i<arr.length();i++) {
                 JSONObject s = arr.optJSONObject(i);
                 if (s != null && sessionId.equals(s.optString("id"))) {
-                    String status = s.optString("status", "");
-                    return "active".equals(status) || "paused".equals(status);
+                    // A paused session has no running end-clock. Its scheduled alerts must stay silent
+                    // until resume reschedules them with the shifted endAt.
+                    return "active".equals(s.optString("status", ""));
                 }
             }
         } catch (Exception ignored) {}
-        return true;
+        // Unknown/corrupt/stale session ids fail closed: never notify a ghost session.
+        return false;
     }
 
     public static void showNotification(Context context, int id, String title, String text) {
