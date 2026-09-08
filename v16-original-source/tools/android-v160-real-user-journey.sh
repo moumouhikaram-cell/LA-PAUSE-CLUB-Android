@@ -156,7 +156,18 @@ adb shell am force-stop "$PKG" >/dev/null 2>&1 || fail "force-stop"
 sleep .6; launch; attach; cdp_ready
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["activeSessions"]==1 and p["payments"]==1 and p["orders"]==1 and p["paidOrders"]==1 and p["shift"] is not None' "PROCESS_RESTART_PRESERVES_TRANSACTION"
 
-# Route state must survive a real Android 16 rotation.
+# A package update install (-r, no pm clear) must preserve the exact same durable data.
+adb shell am force-stop "$PKG" >/dev/null 2>&1 || fail "pre-update force-stop"
+timeout --foreground 60s adb install -r "$APK" >> "$TRACE" 2>&1 || fail "update install -r"
+launch; attach; cdp_ready
+assert_state 'import json,sys;p=json.load(sys.stdin);assert p["activeSessions"]==1 and p["payments"]==1 and p["orders"]==1 and p["paidOrders"]==1 and p["shift"] is not None and p["clients"]>=1' "APK_UPDATE_PRESERVES_BUSINESS_DATA"
+UPDATE_CLIENTS="$(state_json | python3 -c 'import json,sys;print(json.load(sys.stdin)["clients"])')"
+UPDATE_COCA="$(state_json | python3 -c 'import json,sys;print(json.load(sys.stdin)["cocaStock"])')"
+[[ "$UPDATE_CLIENTS" -eq "$POST_CLIENTS" ]] || fail "clients changed across update install"
+[[ "$UPDATE_COCA" -eq "$POST_COCA" ]] || fail "stock changed across update install"
+log "APK_UPDATE_DATA_PRESERVATION_OK clients=$UPDATE_CLIENTS cocaStock=$UPDATE_COCA"
+
+# Route state must survive a real Android rotation.
 tap rect-css '[data-view="sessions"]'
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["currentView"]=="sessions" and len((p["viewText"] or "").strip())>2' "SESSIONS_BEFORE_ROTATION"
 rotate_lock 1
@@ -205,4 +216,4 @@ PID="$(adb shell pidof "$PKG" 2>/dev/null | tr -d '\r')"; [[ -n "$PID" ]] || fai
 timeout --foreground 10s adb logcat -d --pid="$PID" > "$LOGCAT" 2>/dev/null || true
 if grep -Eqi 'FATAL EXCEPTION|AndroidRuntime:.*FATAL|Process com\.lapauseclub\.manager .* has died|chromium.*(crash|Aw, Snap)' "$LOGCAT"; then fail "fatal runtime signal"; fi
 rotate_lock 0
-log "ANDROID_V160_REAL_USER_JOURNEY_OK autoShift=1 rotation=route+sheet back=root-safe persistence=kill-relaunch"
+log "ANDROID_V160_REAL_USER_JOURNEY_OK autoShift=1 update=preserved rotation=route+sheet back=root-safe persistence=kill-relaunch"
