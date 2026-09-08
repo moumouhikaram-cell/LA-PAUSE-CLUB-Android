@@ -112,12 +112,16 @@ input_id(){
 state_json(){ probe state; }
 assert_state(){ local code="$1" label="$2" j; j="$(state_json)" || fail "state probe $label"; printf '%s' "$j" | python3 -c "$code" || fail "$label state=$j"; log "$label OK"; }
 android_back(){ local label="$1"; adb shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || fail "back $label"; sleep .5; wait_foreground || fail "Back closed app: $label"; log "BACK_HANDLED $label"; }
-rotate_lock(){
+set_rotation(){
   local r="$1"
   if adb shell cmd window user-rotation lock "$r" >/dev/null 2>&1; then :; else
     adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
     adb shell settings put system user_rotation "$r" >/dev/null 2>&1 || true
   fi
+}
+rotate_lock(){
+  local r="$1"
+  set_rotation "$r"
   sleep 1.5
   wait_foreground || fail "rotation $r lost foreground"
   log "ROTATION_LOCKED $r"
@@ -129,7 +133,7 @@ wait_device || fail "emulator unavailable"
 timeout --foreground 60s adb install -r "$APK" >> "$TRACE" 2>&1 || fail "install"
 timeout --foreground 15s adb shell pm clear "$PKG" >> "$TRACE" 2>&1 || fail "pm clear"
 adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || true
-rotate_lock 0
+set_rotation 0
 launch; attach; cdp_ready
 FRESH="$(state_json)"
 printf '%s' "$FRESH" | python3 -c 'import json,sys;p=json.load(sys.stdin);assert p["stations"]>=7 and p["activeSessions"]==0 and p["shift"] is None and p["clients"]>=0' || fail "fresh state $FRESH"
