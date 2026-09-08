@@ -13,6 +13,7 @@ on:
       - "v16-original-source/tools/android-v160-navigation-matrix.sh"
       - "v16-original-source/tools/cdp-v160-stabilization-probe.js"
       - "v16-original-source/tools/cdp-v160-raw-websocket.js"
+      - "v16-original-source/tools/test-v160-*.js"
       - ".github/workflows/android-v160-api36-native-regression.yml"
 
 permissions:
@@ -51,7 +52,7 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" "platform-tools"
 
-      - name: Prove Android 16 Back and real-journey contracts
+      - name: Prove Android 16 Back, Device Control and real-journey contracts
         shell: bash
         run: |
           set -euxo pipefail
@@ -59,10 +60,13 @@ jobs:
           grep -q 'android:enableOnBackInvokedCallback="false"' v16-original-source/app/src/main/AndroidManifest.xml
           grep -q 'public void onBackPressed()' v16-original-source/app/src/main/java/com/lapauseclub/manager/MainActivity.java
           grep -q 'window.nativeBack ? window.nativeBack() : false' v16-original-source/app/src/main/java/com/lapauseclub/manager/MainActivity.java
+          node --check v16-original-source/app/src/main/assets/enrich-v160-device-control.js
           node v16-original-source/tools/test-v160-stabilization-navigation.js
           node v16-original-source/tools/test-v160-native-back-contract.js
           node v16-original-source/tools/test-v160-auto-operational-shift.js
           node v16-original-source/tools/test-v160-operator-shortcuts.js
+          node v16-original-source/tools/test-v160-device-control.js
+          node v16-original-source/tools/test-v160-device-lan-native.js
           bash -n v16-original-source/tools/android-v160-back-no-exit-smoke.sh
           bash -n v16-original-source/tools/android-v160-launch-smoke.sh
           bash -n v16-original-source/tools/android-v160-real-user-journey.sh
@@ -78,10 +82,11 @@ jobs:
           while IFS= read -r -d '' src; do
             rel="${src#$ROOT/}"
             case "$rel" in
-              MainActivity.java|BootReceiver.java|SessionAlarmReceiver.java|core/CoreStore.java) ;;
+              MainActivity.java|DeviceLanBridge.java|BootReceiver.java|SessionAlarmReceiver.java|core/CoreStore.java) ;;
               *) mkdir -p "$PARK_JAVA/$(dirname "$rel")"; mv "$src" "$PARK_JAVA/$rel" ;;
             esac
           done < <(find "$ROOT" -type f -name '*.java' -print0)
+          test "$(find "$ROOT" -type f -name '*.java' | wc -l)" -eq 5
 
           ASSETS="v16-original-source/app/src/main/assets"
           PARK_ASSETS="$RUNNER_TEMP/parked-modern-assets"; mkdir -p "$PARK_ASSETS"
@@ -100,7 +105,12 @@ jobs:
           ! find "$ASSETS" -type f | grep -qi 'saas'
           ! find "$ASSETS" -type f | grep -qi 'onboarding'
           (cd v16-original-source && gradle --no-daemon --stacktrace :app:assembleDebug)
-          test -f v16-original-source/app/build/outputs/apk/debug/app-debug.apk
+          APK="v16-original-source/app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK"
+          TMP_DEX="$(mktemp -d)"
+          unzip -q "$APK" 'classes*.dex' -d "$TMP_DEX"
+          strings "$TMP_DEX"/classes*.dex | grep -q 'DeviceLanBridge'
+          echo V160_DEVICE_LAN_BRIDGE_PACKAGED_API36_OK
 
       - name: Android 16 physical Back + rotation + persistence + 43-route regression
         uses: reactivecircus/android-emulator-runner@v2
