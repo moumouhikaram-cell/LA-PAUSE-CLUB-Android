@@ -61,6 +61,7 @@ public class MainActivity extends Activity {
     private String pendingSaveMime;
     private final ExecutorService networkPool = Executors.newFixedThreadPool(2);
     private CoreStore coreStore;
+    private DeviceLanBridge deviceLanBridge;
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
@@ -71,6 +72,7 @@ public class MainActivity extends Activity {
         requestExactAlarmPermissionIfNeeded();
 
         coreStore = new CoreStore(getApplicationContext());
+        deviceLanBridge = new DeviceLanBridge(getApplicationContext());
         SharedPreferences legacyPrefs = getSharedPreferences("gaming_floor_store", MODE_PRIVATE);
         coreStore.bootstrapFromLegacy(legacyPrefs.getString("state_json", ""));
 
@@ -402,13 +404,52 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public boolean setSecureValue(String key, String value) {
+            return deviceLanBridge != null && deviceLanBridge.setSecureValue(key, value);
+        }
+
+        @JavascriptInterface
+        public String getSecureValue(String key) {
+            return deviceLanBridge == null ? "" : deviceLanBridge.getSecureValue(key);
+        }
+
+        @JavascriptInterface
+        public boolean deleteSecureValue(String key) {
+            return deviceLanBridge != null && deviceLanBridge.deleteSecureValue(key);
+        }
+
+        @JavascriptInterface
+        public void discoverLaPauseAgents(String requestId) {
+            if (requestId == null || requestId.trim().isEmpty()) return;
+            networkPool.submit(() -> {
+                JSONObject result;
+                try {
+                    result = deviceLanBridge == null ? new JSONObject().put("ok", false).put("error", "Bridge LAN indisponible") : deviceLanBridge.discover();
+                } catch (Exception ex) {
+                    result = new JSONObject();
+                    try {
+                        result.put("ok", false);
+                        result.put("error", ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage());
+                    } catch (Exception ignored) {}
+                }
+                final String payload = result.toString();
+                if (webView != null) {
+                    webView.post(() -> {
+                        if (webView != null) webView.evaluateJavascript(
+                                "window.onLaPauseLanDiscovery&&window.onLaPauseLanDiscovery(" + JSONObject.quote(requestId) + "," + JSONObject.quote(payload) + ")", null);
+                    });
+                }
+            });
+        }
+
+        @JavascriptInterface
         public void httpRequest(String requestId, String method, String url, String token, String body) {
             networkPool.submit(() -> {
                 HttpURLConnection conn = null;
                 try {
                     URL target = new URL(url);
                     String scheme = target.getProtocol();
-                    if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) throw new IllegalArgumentException("URL non supportÃ©e");
+                    if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) throw new IllegalArgumentException("URL non supportée");
                     conn = (HttpURLConnection) target.openConnection();
                     conn.setRequestMethod(method == null ? "GET" : method.toUpperCase());
                     conn.setConnectTimeout(8000);
