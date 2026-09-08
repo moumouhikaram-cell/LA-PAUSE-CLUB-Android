@@ -15,7 +15,11 @@ ok(/isSiteLocalAddress\(\)/.test(bridge)&&/isLinkLocalAddress\(\)/.test(bridge),
 ok(/prefix \+ "0\/24"/.test(bridge),'Scanner no longer declares the current /24 scope');
 ok(/agentId\.isEmpty\(\)/.test(bridge),'Scanner accepts agents without stable agentId');
 ok(!/https?:\/\/8\.8\.8\.8/.test(bridge),'Public test endpoint accidentally embedded');
-ok(!/entitlement/i.test(bridge)&&!/saas/i.test(bridge)&&!/workspace/i.test(bridge),'DeviceLanBridge imported forbidden SaaS/entitlement scope');
+// Detect actual forbidden dependencies/references, not explanatory comments containing the words.
+ok(!/import\s+.*(?:Entitlement|Saas|Workspace)/i.test(bridge)
+   && !/com\.lapauseclub\.manager\.security\./.test(bridge)
+   && !/\b(?:CoreSaasSchemaP5|EntitlementStore|EntitlementVerifier|AppIntegrity|WorkspaceStore)\b/.test(bridge),
+   'DeviceLanBridge imported forbidden SaaS/entitlement scope');
 
 ok(/private DeviceLanBridge deviceLanBridge;/.test(main),'MainActivity does not own isolated DeviceLanBridge');
 ok(/new DeviceLanBridge\(getApplicationContext\(\)\)/.test(main),'DeviceLanBridge not initialized');
