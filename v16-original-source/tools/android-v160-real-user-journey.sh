@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Gate-sync marker: CI + API33 + API36 must validate this exact harness SHA together.
 
 TRACE="$GITHUB_WORKSPACE/android-v160-real-user-journey-trace.txt"
 LOGCAT="$GITHUB_WORKSPACE/android-v160-real-user-journey-logcat.txt"
@@ -335,12 +336,10 @@ POST_COCA="$(printf '%s' "$POST" | python3 -c 'import json,sys;print(json.load(s
 [[ "$POST_CLIENTS" -eq $((BASE_CLIENTS+1)) ]] || fail "client side effect duplicated/missing"
 [[ "$POST_COCA" -eq $((BASE_COCA-1)) ]] || fail "stock side effect duplicated/missing"
 
-# Hard process restart preserves transaction exactly once.
 adb shell am force-stop "$PKG" >/dev/null 2>&1 || fail "force-stop"; sleep .6
 launch; attach; cdp_ready
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["activeSessions"]==1 and p["payments"]==1 and p["orders"]==1 and p["paidOrders"]==1 and p["shift"] is not None' "PROCESS_RESTART_PRESERVES_TRANSACTION"
 
-# Upgrade install preserves durable data.
 adb shell am force-stop "$PKG" >/dev/null 2>&1 || fail "pre-update force-stop"
 timeout --foreground 60s adb install -r "$APK" >> "$TRACE" 2>&1 || fail "update install -r"
 launch; attach; cdp_ready
@@ -351,7 +350,6 @@ UPDATE_COCA="$(state_json | python3 -c 'import json,sys;print(json.load(sys.stdi
 [[ "$UPDATE_COCA" -eq "$POST_COCA" ]] || fail "stock changed across update install"
 log "APK_UPDATE_DATA_PRESERVATION_OK clients=$UPDATE_CLIENTS cocaStock=$UPDATE_COCA"
 
-# Route and transient sheet survive real Android rotation.
 tap rect-css '[data-view="sessions"]'
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["currentView"]=="sessions" and len((p["viewText"] or "").strip())>2' "SESSIONS_BEFORE_ROTATION"
 rotate_lock 1
@@ -364,7 +362,6 @@ assert_state 'import json,sys;p=json.load(sys.stdin);assert p["currentView"]=="f
 android_back "sheet"
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["sheetOpen"] is False and p["activeSessions"]==1' "BACK_CLOSES_SHEET"
 
-# Back priority: drawer, route history, modal, then root-safe.
 tap rect-id menuBtn
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["drawerOpen"] is True' "DRAWER_OPEN"
 android_back "drawer"
@@ -386,7 +383,6 @@ assert_state 'import json,sys;p=json.load(sys.stdin);assert p["currentView"]=="f
 android_back "root-floor"
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["currentView"]=="floor" and p["activeSessions"]==1' "ROOT_BACK_DOES_NOT_EXIT"
 
-# Final kill/relaunch proves closed shift + active session persistence.
 adb shell am force-stop "$PKG" >/dev/null 2>&1 || fail "final force-stop"; sleep .6
 launch; attach; cdp_ready
 assert_state 'import json,sys;p=json.load(sys.stdin);assert p["shift"] is None and p["activeSessions"]==1 and p["payments"]==1 and p["orders"]==1 and p["paidOrders"]==1' "FINAL_REOPEN_PERSISTENCE"
