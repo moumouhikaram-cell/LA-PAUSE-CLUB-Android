@@ -12,6 +12,10 @@
   const POWER_COMMANDS=new Set(['POWER_ON','POWER_OFF']);
   const INPUT_COMMANDS=new Set(['SET_INPUT']);
   const HEARTBEAT_MS=30000;
+  const safeSetTimeout=typeof window.setTimeout==='function'?window.setTimeout.bind(window):()=>0;
+  const safeClearTimeout=typeof window.clearTimeout==='function'?window.clearTimeout.bind(window):()=>{};
+  const safeSetInterval=typeof window.setInterval==='function'?window.setInterval.bind(window):()=>0;
+  const safeClearInterval=typeof window.clearInterval==='function'?window.clearInterval.bind(window):()=>{};
   let discovery={status:'idle',requestId:'',agents:[],localIp:'',subnet:'',scanned:0,durationMs:0,error:'',updatedAt:0};
   let discoveryTimer=null;
   let heartbeatTimer=null;
@@ -188,14 +192,14 @@
     if(discovery.status==='scanning')return discovery.requestId;
     const requestId=typeof uid==='function'?uid('lan'):`lan_${Date.now()}`;
     discovery={status:'scanning',requestId,agents:[],localIp:'',subnet:'',scanned:0,durationMs:0,error:'',updatedAt:Date.now()};
-    clearTimeout(discoveryTimer);
-    discoveryTimer=setTimeout(()=>{if(discovery.requestId===requestId&&discovery.status==='scanning'){discovery.status='error';discovery.error='Découverte LAN expirée';discovery.updatedAt=Date.now();injectUi();}},15000);
+    safeClearTimeout(discoveryTimer);
+    discoveryTimer=safeSetTimeout(()=>{if(discovery.requestId===requestId&&discovery.status==='scanning'){discovery.status='error';discovery.error='Découverte LAN expirée';discovery.updatedAt=Date.now();injectUi();}},15000);
     bridge().discoverLaPauseAgents(requestId);
     injectUi();return requestId;
   }
   window.onLaPauseLanDiscovery=function(requestId,payload){
     if(requestId!==discovery.requestId)return;
-    clearTimeout(discoveryTimer);
+    safeClearTimeout(discoveryTimer);
     let p=payload;try{if(typeof p==='string')p=JSON.parse(p);}catch(_e){p={ok:false,error:'Réponse de découverte invalide'};}
     p=p||{};const normalized=[];
     if(p.ok!==false&&Array.isArray(p.agents))for(const raw of p.agents){try{const a=normalizeAgent(raw);if(!normalized.some(x=>x.agentId===a.agentId))normalized.push(a);}catch(_e){}}
@@ -207,7 +211,7 @@
     await Promise.all(devices.map(d=>probe(d.id).catch(()=>null)));
     injectUi();
   }
-  function startHeartbeat(){clearInterval(heartbeatTimer);heartbeatTimer=setInterval(heartbeatAll,HEARTBEAT_MS);}
+  function startHeartbeat(){safeClearInterval(heartbeatTimer);heartbeatTimer=safeSetInterval(heartbeatAll,HEARTBEAT_MS);}
 
   function h(v){try{return typeof esc==='function'?esc(String(v??'')):String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}catch(_e){return String(v??'');}}
   function notify(msg){try{if(typeof toast==='function')toast(msg);}catch(_e){}}
@@ -248,11 +252,11 @@
 
   const baseRenderTv=typeof window.renderTvStations==='function'?window.renderTvStations:null;
   if(baseRenderTv){
-    window.renderTvStations=function(){const r=baseRenderTv.apply(this,arguments);setTimeout(injectUi,0);return r;};
+    window.renderTvStations=function(){const r=baseRenderTv.apply(this,arguments);safeSetTimeout(injectUi,0);return r;};
     try{renderTvStations=window.renderTvStations;}catch(_e){}
   }
   startHeartbeat();
-  setTimeout(injectUi,0);
+  safeSetTimeout(injectUi,0);
 
   X.deviceControl={PROTOCOL,caps,commands,normalizeAgent,localEndpoint,byId,byAgent,health,supports,secureBridgeAvailable,discoveryAvailable,authKey,tokenFor,pairingMode,associate,pairSecure,ingestHealth,probe,queue,envelope,transportState,send,queueAndSend,clearPairing,startDiscovery,getDiscovery:()=>({...discovery}),heartbeatAll,injectUi};
   X.register('device-control',{mode:'LOCAL_OFFLINE_SECURE_V1.6_ADAPTER',ui:'HISTORIC_TV_STATIONS_ADDITIVE',autoDiscovery:false,autoPairing:false,autoSideEffects:false,secretsInClubState:false,heartbeatSeconds:30,protocol:PROTOCOL});
