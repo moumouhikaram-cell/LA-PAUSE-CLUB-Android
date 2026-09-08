@@ -1,6 +1,8 @@
 'use strict';
-/* LA PAUSE CLUB v1.6 — fail-closed start gate for contextual resource types.
- * Historic PS5/SIM start remains authoritative and untouched.
+/* LA PAUSE CLUB v1.6 — transactional start gate for contextual resource types.
+ * Historic PS5/SIM start remains authoritative. Contextual starts reuse the same
+ * operator cash invariant: no sellable session is blocked solely because no shift
+ * was opened manually; a zero-float audited operational shift is created instead.
  */
 (function(){
   const X=window.LP160;if(!X||!X.sessionForm||!X.billing)return;
@@ -12,8 +14,26 @@
   function S(){const s=X.safeState();if(!s)throw new Error('ClubState indisponible');return s;}
   function round(v){const s=S(),step=Math.max(0,n(s?.rates?.rounding,.5));return step>0?Math.round(n(v)/step)*step:n(v);}
   function station(id){return (S().stations||[]).find(st=>st.id===id)||null;}
-  function active(stationId){return (S().sessions||[]).find(s=>s.stationId===stationId&&['active','paused'].includes(s.status))||null;}
-  function currentShiftRow(){try{if(typeof currentShift==='function')return currentShift()}catch(_){}return (S().shifts||[]).find(x=>x.status==='open')||null;}
+  function active(stationId){return (S().sessions||[]).find(s=>s.stationId===stationId&&['active','paused'].includes(String(s.status||'').toLowerCase()))||null;}
+  function currentShiftRow(){
+    try{if(typeof currentShift==='function'){const sh=currentShift();if(sh)return sh}}catch(_){}
+    return (S().shifts||[]).filter(x=>String(x?.status||'').toLowerCase()==='open'&&!x?.closedAt).sort((a,b)=>n(b?.openedAt)-n(a?.openedAt))[0]||null;
+  }
+  function ensureOperationalShift(trigger='CONTEXTUAL_SESSION_START'){
+    const state=S();
+    if(state.cashSettings?.shiftRequired!==true)return currentShiftRow();
+    const existing=currentShiftRow();if(existing)return existing;
+    if(typeof X.ensureOperationalShift==='function'){
+      const created=X.ensureOperationalShift(trigger);
+      if(created)return created;
+    }
+    state.shifts=Array.isArray(state.shifts)?state.shifts:[];
+    const t=stamp(),sh={id:makeId('shift'),openedAt:t,closedAt:null,status:'open',openingCash:0,closingCash:null,expectedCash:null,difference:null,note:'Ouverture opérationnelle automatique · fond 0 DH',appVersion:'1.6.0',autoOpened:true,openingMode:'AUTO_OPERATIONAL',openedBy:'SYSTEM_OPERATOR_FLOW',trigger};
+    state.shifts.push(sh);
+    try{if(typeof auditV15==='function')auditV15('SHIFT_AUTO_OPEN','Caisse',`${trigger} · fond 0 DH`)}catch(_){}
+    X.persist('shift.auto_opened',sh.id,{openingCash:0,openingMode:sh.openingMode,trigger});
+    return sh;
+  }
   function isContextual(s){return !!(s&&s.v160Contextual&&s.v160Contextual.schema===1);}
   function elapsedMinutes(s,ref=stamp()){
     let end=s.finishedAt||ref,paused=n(s.pauseTotalMs,0);
@@ -69,20 +89,21 @@
     const duplicate=state.sessions.find(s=>s?.v160Contextual?.startIdempotencyKey===key);if(duplicate)return {ok:true,duplicate:true,session:clone(duplicate),payment:null};
     const st=station(intent.stationId);if(!st||st.enabled===false)throw new Error('Poste indisponible');
     if(active(st.id))throw new Error('Une session est déjà active sur ce poste');
-    if(state.cashSettings?.shiftRequired&&!currentShiftRow())throw new Error('SHIFT_REQUIRED');
     const fresh=X.sessionForm.validate(st,intent.draft||{});if(!fresh.ok)throw new Error(`Session invalide: ${fresh.errors.join(', ')}`);
     if(fresh.descriptor.legacyForm)throw new Error('PS5/SIM doivent utiliser le démarrage historique v1.6');
     if(String(fresh.descriptor.type)!==String(intent.resourceType)||!sameQuote(fresh.quote,intent.quote))throw new Error('QUOTE_CHANGED_REVIEW_REQUIRED');
+    const shift=state.cashSettings?.shiftRequired?ensureOperationalShift('CONTEXTUAL_SESSION_START'):currentShiftRow();
+    if(state.cashSettings?.shiftRequired&&!shift)throw new Error('OPERATIONAL_SHIFT_UNAVAILABLE');
     const session=buildSession(st,fresh,key),payNow=!!fresh.draft.payNow&&session.totalAmount>0;
     let payment=null;
     if(payNow){
-      const t=stamp();payment={id:makeId('pay'),sessionId:session.id,amount:round(session.totalAmount),method:state.cashSettings?.defaultMethod||'cash',at:t,shiftId:currentShiftRow()?.id||null,note:'Encaissement au démarrage · session contextuelle',createdAt:t};
+      const t=stamp();payment={id:makeId('pay'),sessionId:session.id,amount:round(session.totalAmount),method:state.cashSettings?.defaultMethod||'cash',at:t,shiftId:shift?.id||null,note:'Encaissement au démarrage · session contextuelle',createdAt:t};
     }
     state.sessions.push(session);if(payment)state.payments.push(payment);
-    X.persist('session.started_contextual',session.id,{session,billing:session.v160Contextual,paymentId:payment?.id||null});
+    X.persist('session.started_contextual',session.id,{session,billing:session.v160Contextual,paymentId:payment?.id||null,shiftId:shift?.id||null});
     if(payment)X.persist('payment.created',payment.id,payment);
     if(session.endAt){try{if(typeof scheduleAlarm==='function')scheduleAlarm(session)}catch(_){}}
-    return {ok:true,duplicate:false,session:clone(session),payment:payment?clone(payment):null};
+    return {ok:true,duplicate:false,session:clone(session),payment:payment?clone(payment):null,shift:shift?clone(shift):null};
   }
   function wrapRecalc(){
     const original=window.recalcSessionAmount;if(typeof original!=='function'||original.__lp160ContextualWrapped)return false;
@@ -107,6 +128,6 @@
     wrapped.__lp160ContextualWrapped=true;wrapped.__lp160Original=original;window.openTransfer=wrapped;try{openTransfer=wrapped}catch(_){}return true;
   }
   wrapRecalc();wrapExtend();wrapTransfer();
-  X.sessionStart={isContextual,recalcContextual,execute,wrapRecalc,wrapExtend,wrapTransfer};
-  X.register('session-start-contextual',{mode:'TRANSACTIONAL_FAIL_CLOSED',legacyPs5Sim:'UNCHANGED',idempotency:'REQUIRED',pricing:'SNAPSHOT_LOCKED',transfer:'BLOCKED_UNTIL_CONTEXTUAL_FLOW'});
+  X.sessionStart={isContextual,recalcContextual,execute,wrapRecalc,wrapExtend,wrapTransfer,ensureOperationalShift};
+  X.register('session-start-contextual',{mode:'TRANSACTIONAL_FAIL_CLOSED',legacyPs5Sim:'UNCHANGED',idempotency:'REQUIRED',pricing:'SNAPSHOT_LOCKED',cashInvariant:'AUTO_OPERATIONAL_SHIFT',transfer:'BLOCKED_UNTIL_CONTEXTUAL_FLOW'});
 })();
