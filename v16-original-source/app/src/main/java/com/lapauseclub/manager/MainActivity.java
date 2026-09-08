@@ -53,6 +53,7 @@ public class MainActivity extends Activity {
     private static final int REQ_NOTIFICATIONS = 4001;
     private static final int REQ_FILE_CHOOSER = 4002;
     private static final int REQ_SAVE_FILE = 4003;
+    private static final String SESSION_ACTION_PREFIX = "com.lapauseclub.manager.SESSION_";
 
     private WebView webView;
     private ValueCallback<Uri[]> fileChooserCallback;
@@ -189,6 +190,10 @@ public class MainActivity extends Activity {
         super.onDestroy();
     }
 
+    private static String sessionAlertAction(String type) {
+        return SESSION_ACTION_PREFIX + type.toUpperCase();
+    }
+
     public static void scheduleNativeAlerts(Context context, String sessionId, long endAt, long warningAt, String stationName) {
         if (sessionId == null || sessionId.isEmpty()) return;
         AlarmManager am = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
@@ -201,7 +206,7 @@ public class MainActivity extends Activity {
     private static void scheduleOne(Context context, AlarmManager am, String sessionId, String stationName, String type, long at, int requestCode) {
         if (at <= System.currentTimeMillis()) return;
         Intent intent = new Intent(context, SessionAlarmReceiver.class);
-        intent.setAction("com.lapauseclub.manager.SESSION_" + type.toUpperCase());
+        intent.setAction(sessionAlertAction(type));
         intent.putExtra("sessionId", sessionId); intent.putExtra("stationName", stationName); intent.putExtra("alertType", type);
         PendingIntent pi = PendingIntent.getBroadcast(context, requestCode, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         try {
@@ -212,6 +217,24 @@ public class MainActivity extends Activity {
         } catch (SecurityException ex) { am.set(AlarmManager.RTC_WAKEUP, at, pi); }
     }
 
+    public static void cancelNativeAlerts(Context context, String sessionId) {
+        if (sessionId == null || sessionId.isEmpty()) return;
+        AlarmManager am = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+        if (am == null) return;
+        String[] types = new String[]{"warning", "end", "critical"};
+        int[] codes = new int[]{sessionId.hashCode() ^ 0x45A1, sessionId.hashCode() ^ 0x79B2, sessionId.hashCode() ^ 0x63C3};
+        for (int i = 0; i < types.length; i++) {
+            Intent intent = new Intent(context, SessionAlarmReceiver.class);
+            // PendingIntent identity includes the Intent action. Cancellation must use exactly the
+            // same action + requestCode as scheduleOne or Android keeps the old alarm alive.
+            intent.setAction(sessionAlertAction(types[i]));
+            PendingIntent pi = PendingIntent.getBroadcast(context, codes[i], intent, PendingIntent.FLAG_NO_CREATE | PendingIntent.FLAG_IMMUTABLE);
+            if (pi != null) {
+                am.cancel(pi);
+                pi.cancel();
+            }
+        }
+    }
 
     public class AndroidBridge {
         private final SharedPreferences prefs = getSharedPreferences("gaming_floor_store", MODE_PRIVATE);
@@ -319,14 +342,7 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public void cancelSessionEnd(String sessionId) {
-            if (sessionId == null) return;
-            AlarmManager am = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
-            if (am == null) return;
-            for (int code : new int[]{sessionId.hashCode() ^ 0x45A1, sessionId.hashCode() ^ 0x79B2, sessionId.hashCode() ^ 0x63C3}) {
-                Intent intent = new Intent(MainActivity.this, SessionAlarmReceiver.class);
-                PendingIntent pi = PendingIntent.getBroadcast(MainActivity.this, code, intent, PendingIntent.FLAG_NO_CREATE | PendingIntent.FLAG_IMMUTABLE);
-                if (pi != null) { am.cancel(pi); pi.cancel(); }
-            }
+            MainActivity.cancelNativeAlerts(MainActivity.this, sessionId);
         }
 
         @JavascriptInterface
