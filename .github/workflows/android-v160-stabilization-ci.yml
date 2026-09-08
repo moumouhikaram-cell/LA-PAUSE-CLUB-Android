@@ -57,10 +57,12 @@ jobs:
           test "$(git hash-object v16-original-source/app/src/main/assets/v14.js)" = "42134cceabd9c15dc52cfde30b7d5ca3818b1502"
           test "$(git hash-object v16-original-source/app/src/main/assets/v15.css)" = "8b5d7ef51d3f5d49cf06ee27f32585dca9a0c34e"
           test "$(git hash-object v16-original-source/app/src/main/assets/v15.js)" = "ab2288f35b39620b7c6c0401d342ce9349f17959"
-          test "$(git hash-object v16-original-source/app/src/main/java/com/lapauseclub/manager/MainActivity.java)" = "fb69d37280e8abf8614af371359db6c0b03a7a05"
+          test "$(git hash-object v16-original-source/app/src/main/java/com/lapauseclub/manager/MainActivity.java)" = "16abc27f17644c25cc348891d62dc370608d72d3"
+          test "$(git hash-object v16-original-source/app/src/main/java/com/lapauseclub/manager/DeviceLanBridge.java)" = "56ee23237d343d7a0dc4b7034e485de1b5f876e5"
           test "$(git hash-object v16-original-source/app/src/main/java/com/lapauseclub/manager/core/CoreStore.java)" = "e5af1005e089e88782ac154b5bf72e33a82ac2e8"
           grep -q 'android:enableOnBackInvokedCallback="false"' v16-original-source/app/src/main/AndroidManifest.xml
           echo V160_HISTORICAL_VISUAL_AUTHORITY_FROZEN_OK
+          echo V160_DEVICE_LAN_NATIVE_HASH_FROZEN_OK
           echo V160_ANDROID16_BACK_COMPAT_DECLARED_OK
 
       - name: Full historical regression gates
@@ -78,12 +80,13 @@ jobs:
           grep -q '<script src="enrich-v160-operator-shortcuts.js"></script>' "$INDEX"
           grep -q '<script src="enrich-v160-active-cockpit.js"></script>' "$INDEX"
           grep -q '<script src="enrich-v160-session-snacks.js"></script>' "$INDEX"
+          grep -q '<script src="enrich-v160-device-control.js"></script>' "$INDEX"
           grep -q '<script src="enrich-v160-floor-builder-ui.js"></script>' "$INDEX"
           grep -q '<script src="enrich-v160-control-center-bridge.js"></script>' "$INDEX"
           python3 - <<'PY'
           from pathlib import Path
           s=Path('v16-original-source/app/src/main/assets/index.html').read_text(encoding='utf-8')
-          order=['app.js','v13.js','v14.js','v15.js','stabilize-v160-existing.js','stabilize-v160-shift-recovery.js','stabilize-v160-navigation.js','enrich-v160-core.js','enrich-v160-anonymous-client.js','enrich-v160-billing.js','enrich-v160-pricing-ui.js','enrich-v160-session-start.js','enrich-v160-session-form-ui.js','enrich-v160-operator-shortcuts.js','enrich-v160-active-cockpit.js','enrich-v160-session-snacks.js','enrich-v160-floor-builder.js','enrich-v160-floor-builder-ui.js','enrich-v160-control-center.js','enrich-v160-control-center-bridge.js']
+          order=['app.js','v13.js','v14.js','v15.js','stabilize-v160-existing.js','stabilize-v160-shift-recovery.js','stabilize-v160-navigation.js','enrich-v160-core.js','enrich-v160-anonymous-client.js','enrich-v160-billing.js','enrich-v160-pricing-ui.js','enrich-v160-session-start.js','enrich-v160-session-form-ui.js','enrich-v160-operator-shortcuts.js','enrich-v160-active-cockpit.js','enrich-v160-session-snacks.js','enrich-v160-device-control.js','enrich-v160-floor-builder.js','enrich-v160-floor-builder-ui.js','enrich-v160-control-center.js','enrich-v160-control-center-bridge.js']
           pos=[s.index(x) for x in order]
           assert pos==sorted(pos),(order,pos)
           print('V160_STABILIZATION_LOAD_ORDER_OK')
@@ -96,6 +99,7 @@ jobs:
           node --check "$A/enrich-v160-operator-shortcuts.js"
           node --check "$A/enrich-v160-active-cockpit.js"
           node --check "$A/enrich-v160-session-snacks.js"
+          node --check "$A/enrich-v160-device-control.js"
           node --check "$A/enrich-v160-floor-builder-ui.js"
           node --check "$A/enrich-v160-control-center-bridge.js"
           ! grep -q 'location.reload' "$A"/stabilize-v160-*.js
@@ -136,6 +140,7 @@ jobs:
             test-v160-control-center.js
             test-v160-control-center-bridge.js
             test-v160-device-control.js
+            test-v160-device-lan-native.js
             test-v160-floor-builder.js
             test-v160-floor-builder-ui.js
           )
@@ -154,11 +159,11 @@ jobs:
           while IFS= read -r -d '' src; do
             rel="${src#$ROOT/}"
             case "$rel" in
-              MainActivity.java|BootReceiver.java|SessionAlarmReceiver.java|core/CoreStore.java) ;;
+              MainActivity.java|DeviceLanBridge.java|BootReceiver.java|SessionAlarmReceiver.java|core/CoreStore.java) ;;
               *) mkdir -p "$PARK_JAVA/$(dirname "$rel")"; mv "$src" "$PARK_JAVA/$rel" ;;
             esac
           done < <(find "$ROOT" -type f -name '*.java' -print0)
-          test "$(find "$ROOT" -type f -name '*.java' | wc -l)" -eq 4
+          test "$(find "$ROOT" -type f -name '*.java' | wc -l)" -eq 5
 
           ASSETS="v16-original-source/app/src/main/assets"
           PARK_ASSETS="$RUNNER_TEMP/parked-modern-assets"; mkdir -p "$PARK_ASSETS"
@@ -209,6 +214,10 @@ jobs:
           ! grep -q '^assets/v250/' v160-stabilization-assets.txt
           ! grep -qi 'saas' v160-stabilization-assets.txt
           ! grep -qi 'onboarding' v160-stabilization-assets.txt
+          TMP_DEX="$(mktemp -d)"
+          unzip -q "$APK" 'classes*.dex' -d "$TMP_DEX"
+          strings "$TMP_DEX"/classes*.dex | grep -q 'DeviceLanBridge'
+          echo V160_DEVICE_LAN_BRIDGE_PACKAGED_OK
           sha256sum "$APK" | tee v160-stabilization-sha256.txt
 
       - uses: actions/upload-artifact@v4
