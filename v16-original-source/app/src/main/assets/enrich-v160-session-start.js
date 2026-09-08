@@ -55,6 +55,14 @@
     const eq=(x,y)=>Math.abs(n(x,0)-n(y,0))<0.0001;
     return eq(a.amount,b.amount)&&eq(a.rate,b.rate)&&eq(a.unitPrice,b.unitPrice)&&eq(a.minutes,b.minutes)&&eq(a.units,b.units);
   }
+  function unitState(s){
+    if(!isContextual(s))return null;
+    const ctx=s.v160Contextual,snap=ctx.pricingSnapshot||{},model=String(snap.billingModel||ctx.billingModel||'');
+    if(model!==M.GAME&&model!==M.PLAYER_GAME)return null;
+    const purchased=Math.max(1,Math.round(n(ctx.unitsPurchased,n(ctx.units,n(snap.units,1))))),played=Math.max(0,Math.min(purchased,Math.round(n(ctx.unitsPlayed,0))));
+    ctx.unitsPurchased=purchased;ctx.units=purchased;ctx.unitsPlayed=played;
+    return {purchased,played,remaining:Math.max(0,purchased-played),unitPrice:n(snap.unitPrice,0),model};
+  }
   function recalcContextual(s,ref=stamp()){
     if(!isContextual(s))return s;
     const snap=s.v160Contextual.pricingSnapshot||{},model=String(snap.billingModel||''),discount=Math.max(0,n(s.discountAmount,0));
@@ -63,7 +71,7 @@
       const mins=s.mode==='open'?elapsedMinutes(s,ref):Math.max(0,n(s.plannedMinutes,n(snap.initialMinutes,0)));
       base=round(n(snap.ratePerHour,0)*mins/60);s.ratePerHour=n(snap.ratePerHour,0);
     }else if(model===M.GAME||model===M.PLAYER_GAME){
-      base=round(n(snap.unitPrice,0)*Math.max(1,n(s.v160Contextual.units,n(snap.units,1))));s.ratePerHour=0;
+      const units=unitState(s);base=round(n(snap.unitPrice,0)*Math.max(1,n(units?.purchased,n(snap.units,1))));s.ratePerHour=0;
     }else if(model===M.BLOCK){base=round(n(snap.blockPrice,n(snap.initialBase,0)));s.ratePerHour=0;
     }else if(model===M.FIXED){base=round(n(snap.fixedPrice,n(snap.initialBase,0)));s.ratePerHour=0;
     }else if(model===M.CUSTOM){base=round(n(snap.initialBase,0));s.ratePerHour=0;}
@@ -71,13 +79,13 @@
   }
   function buildSession(st,v,idempotencyKey){
     const t=stamp(),q=v.quote||{},d=v.draft||{},snap=snapshot(st,v),pricingMode=String(d.mode||'fixed');
-    const timed=pricingMode!=='open'&&n(q.minutes,0)>0,runtimeMode=pricingMode==='open'?'open':timed?'fixed':pricingMode;
+    const timed=pricingMode!=='open'&&n(q.minutes,0)>0,runtimeMode=pricingMode==='open'?'open':timed?'fixed':pricingMode,initialUnits=Math.max(1,n(d.units,n(q.units,1)));
     const s={
       id:makeId('sess'),stationId:st.id,status:'active',mode:runtimeMode,startAt:t,endAt:timed?t+n(q.minutes,0)*60000:null,pausedAt:null,pauseTotalMs:0,
       players:Math.max(1,n(d.players,1)),plannedMinutes:timed?n(q.minutes,0):null,ratePerHour:n(snap.ratePerHour,0),baseAmount:0,discountAmount:Math.max(0,n(d.discountAmount,0)),totalAmount:0,
       customerId:d.customerId||null,note:d.note||'',createdAt:t,updatedAt:t,revision:1,finishedAt:null,cancelledAt:null,
       gameTitle:d.gameTitle||'',gameCategory:d.gameCategory||'',
-      v160Contextual:{schema:1,resourceType:v.descriptor.type,pricingMode,billingModel:snap.billingModel,units:Math.max(1,n(d.units,1)),pricingSnapshot:snap,startIdempotencyKey:idempotencyKey,operatorExplicit:true}
+      v160Contextual:{schema:1,resourceType:v.descriptor.type,pricingMode,billingModel:snap.billingModel,units:initialUnits,unitsPurchased:initialUnits,unitsPlayed:0,payNow:!!d.payNow,unitActionKeys:[],pricingSnapshot:snap,startIdempotencyKey:idempotencyKey,operatorExplicit:true}
     };
     return recalcContextual(s,t);
   }
@@ -105,6 +113,35 @@
     if(session.endAt){try{if(typeof scheduleAlarm==='function')scheduleAlarm(session)}catch(_){}}
     return {ok:true,duplicate:false,session:clone(session),payment:payment?clone(payment):null,shift:shift?clone(shift):null};
   }
+  function addUnits(s,units=1,opt={}){
+    if(opt.operatorExplicit!==true)throw new Error('Validation opérateur explicite obligatoire');
+    if(!isContextual(s))throw new Error('Session contextuelle requise');
+    const u=unitState(s);if(!u)throw new Error('Ajout de partie indisponible pour ce tarif');
+    units=Math.max(1,Math.round(n(units,1)));
+    const key=String(opt.idempotencyKey||'').trim();if(!key)throw new Error('Idempotency key obligatoire');
+    const keys=Array.isArray(s.v160Contextual.unitActionKeys)?s.v160Contextual.unitActionKeys:(s.v160Contextual.unitActionKeys=[]);
+    if(keys.includes(key))return {ok:true,duplicate:true,session:clone(s),payment:null,delta:0};
+    const state=S();state.payments=Array.isArray(state.payments)?state.payments:[];
+    const before=n(s.totalAmount,0);s.v160Contextual.unitsPurchased=u.purchased+units;s.v160Contextual.units=s.v160Contextual.unitsPurchased;s.updatedAt=stamp();s.revision=n(s.revision,0)+1;recalcContextual(s);
+    const delta=Math.max(0,round(n(s.totalAmount)-before));keys.push(key);if(keys.length>100)keys.splice(0,keys.length-100);
+    let payment=null;
+    if(s.v160Contextual.payNow===true&&delta>0){
+      const shift=state.cashSettings?.shiftRequired?ensureOperationalShift('CONTEXTUAL_ADD_GAME'):currentShiftRow();
+      if(state.cashSettings?.shiftRequired&&!shift)throw new Error('OPERATIONAL_SHIFT_UNAVAILABLE');
+      const t=stamp();payment={id:makeId('pay'),sessionId:s.id,amount:delta,method:state.cashSettings?.defaultMethod||'cash',at:t,shiftId:shift?.id||null,note:`+${units} partie(s) · session contextuelle`,createdAt:t};state.payments.push(payment);X.persist('payment.created',payment.id,payment);
+    }
+    X.persist('session.units_added',s.id,{units,unitsPurchased:s.v160Contextual.unitsPurchased,unitsPlayed:s.v160Contextual.unitsPlayed,totalAmount:s.totalAmount,incrementalRevenue:delta,paymentId:payment?.id||null});
+    try{if(typeof drawActiveSheet==='function')drawActiveSheet(s)}catch(_){}try{if(typeof renderFloor==='function')renderFloor()}catch(_){}
+    return {ok:true,duplicate:false,session:clone(s),payment:payment?clone(payment):null,delta};
+  }
+  function markUnitPlayed(s,opt={}){
+    if(opt.operatorExplicit!==true)throw new Error('Validation opérateur explicite obligatoire');
+    const u=unitState(s);if(!u)throw new Error('Suivi de parties indisponible');
+    if(u.played>=u.purchased)return {ok:false,reason:'NO_REMAINING_UNIT',state:u};
+    s.v160Contextual.unitsPlayed=u.played+1;s.updatedAt=stamp();s.revision=n(s.revision,0)+1;
+    const next=unitState(s);X.persist('session.unit_played',s.id,next);try{if(typeof drawActiveSheet==='function')drawActiveSheet(s)}catch(_){}try{if(typeof renderFloor==='function')renderFloor()}catch(_){}
+    return {ok:true,state:clone(next)};
+  }
   function wrapRecalc(){
     const original=window.recalcSessionAmount;if(typeof original!=='function'||original.__lp160ContextualWrapped)return false;
     const wrapped=function(s){if(isContextual(s))return recalcContextual(s);return original.apply(this,arguments)};
@@ -128,6 +165,6 @@
     wrapped.__lp160ContextualWrapped=true;wrapped.__lp160Original=original;window.openTransfer=wrapped;try{openTransfer=wrapped}catch(_){}return true;
   }
   wrapRecalc();wrapExtend();wrapTransfer();
-  X.sessionStart={isContextual,recalcContextual,execute,wrapRecalc,wrapExtend,wrapTransfer,ensureOperationalShift};
-  X.register('session-start-contextual',{mode:'TRANSACTIONAL_FAIL_CLOSED',legacyPs5Sim:'UNCHANGED',idempotency:'REQUIRED',pricing:'SNAPSHOT_LOCKED',cashInvariant:'AUTO_OPERATIONAL_SHIFT',transfer:'BLOCKED_UNTIL_CONTEXTUAL_FLOW'});
+  X.sessionStart={isContextual,recalcContextual,execute,unitState,addUnits,markUnitPlayed,wrapRecalc,wrapExtend,wrapTransfer,ensureOperationalShift};
+  X.register('session-start-contextual',{mode:'TRANSACTIONAL_FAIL_CLOSED',legacyPs5Sim:'UNCHANGED',idempotency:'REQUIRED',pricing:'SNAPSHOT_LOCKED',cashInvariant:'AUTO_OPERATIONAL_SHIFT',perGame:'PURCHASED_PLAYED_REMAINING',transfer:'BLOCKED_UNTIL_CONTEXTUAL_FLOW'});
 })();
