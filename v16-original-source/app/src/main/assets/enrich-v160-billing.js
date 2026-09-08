@@ -28,13 +28,50 @@
     if(raw==='TABLE_TENNIS'||raw==='PING_PONG')return 'TABLE_TENNIS';
     if(raw==='PRIVATE_ROOM')return 'PRIVATE_ROOM';
     if(raw==='ARCADE'||raw==='ARCADE_MACHINE')return 'ARCADE';
-    return raw||'CUSTOM';
+    return PROFILE[raw]?raw:'CUSTOM';
   }
+  function canonicalType(raw){return typeOf({osResourceType:raw});}
+  function plans(){const s=X.safeState();if(!s)return [];s.v160RatePlans=Array.isArray(s.v160RatePlans)?s.v160RatePlans:[];return s.v160RatePlans;}
   function planFor(st){
     const s=X.safeState();if(!s||!st)return null;
-    const plans=Array.isArray(s.v160RatePlans)?s.v160RatePlans:[];
-    return plans.find(p=>p.enabled!==false&&p.scope==='RESOURCE'&&p.resourceId===st.id)
-      ||plans.find(p=>p.enabled!==false&&p.scope==='TYPE'&&p.resourceType===typeOf(st))||null;
+    const list=plans();
+    return list.find(p=>p.enabled!==false&&p.scope==='RESOURCE'&&p.resourceId===st.id)
+      ||list.find(p=>p.enabled!==false&&p.scope==='TYPE'&&p.resourceType===typeOf(st))||null;
+  }
+  function typePlan(resourceType){const t=canonicalType(resourceType);return plans().find(p=>p.enabled!==false&&p.scope==='TYPE'&&p.resourceType===t)||null;}
+  function validatePlan(t,patch={}){
+    const profile=PROFILE[t]||PROFILE.CUSTOM,model=String(patch.billingModel||patch.pricingModel||profile.defaultModel);
+    if(!Object.values(MODEL).includes(model))throw new Error('Modèle tarifaire invalide');
+    const out={billingModel:model};
+    if(model===MODEL.TIME){out.hourlyRate=Math.max(0,n(patch.hourlyRate));if(out.hourlyRate<=0)throw new Error('Tarif horaire obligatoire');}
+    else if(model===MODEL.GAME||model===MODEL.PLAYER_GAME){out.unitPrice=Math.max(0,n(patch.unitPrice,n(patch.gamePrice)));if(out.unitPrice<=0)throw new Error('Prix par partie obligatoire');if(model===MODEL.PLAYER_GAME&&patch.playerRates&&typeof patch.playerRates==='object')out.playerRates={...patch.playerRates};}
+    else if(model===MODEL.BLOCK){out.blockMinutes=Math.max(1,Math.round(n(patch.blockMinutes,60)));out.blockPrice=Math.max(0,n(patch.blockPrice,n(patch.unitPrice)));if(out.blockPrice<=0)throw new Error('Prix du bloc obligatoire');}
+    else if(model===MODEL.FIXED){out.fixedPrice=Math.max(0,n(patch.fixedPrice,n(patch.sessionPrice,n(patch.unitPrice))));if(out.fixedPrice<=0)throw new Error('Prix fixe obligatoire');if(n(patch.defaultDurationMinutes)>0)out.defaultDurationMinutes=Math.round(n(patch.defaultDurationMinutes));}
+    else if(model===MODEL.CUSTOM){out.unitPrice=Math.max(0,n(patch.unitPrice));}
+    return out;
+  }
+  function saveTypePlan(resourceType,patch={},opt={}){
+    if(opt.operatorExplicit!==true)throw new Error('Validation opérateur explicite obligatoire');
+    const s=X.safeState();if(!s)throw new Error('ClubState indisponible');const t=canonicalType(resourceType);if(['CONSOLE','SIM_RACING'].includes(t))throw new Error('PS5/SIM restent gérés par les tarifs historiques v1.6');
+    const clean=validatePlan(t,patch),list=plans();let row=list.find(p=>p.scope==='TYPE'&&p.resourceType===t);
+    if(!row){row={id:`v160-type-${String(t).toLowerCase()}`,scope:'TYPE',resourceType:t,enabled:true,createdAt:Date.now()};list.push(row);}
+    Object.assign(row,clean,{enabled:true,updatedAt:Date.now()});
+    let cleared=0;
+    if(opt.clearResourceOverrides!==false){
+      for(const p of list){
+        if(p.scope!=='RESOURCE'||p.enabled===false)continue;
+        const st=(s.stations||[]).find(x=>x.id===p.resourceId);if(st&&typeOf(st)===t){p.enabled=false;p.disabledReason='SUPERSEDED_BY_TYPE_PRICE';p.updatedAt=Date.now();cleared++;}
+      }
+    }
+    X.persist('v160.pricing.type_saved',row.id,{resourceType:t,billingModel:row.billingModel,clearedResourceOverrides:cleared});
+    return {plan:JSON.parse(JSON.stringify(row)),clearedResourceOverrides:cleared};
+  }
+  function saveResourcePlan(resourceId,patch={},opt={}){
+    if(opt.operatorExplicit!==true)throw new Error('Validation opérateur explicite obligatoire');
+    const s=X.safeState();if(!s)throw new Error('ClubState indisponible');const st=(s.stations||[]).find(x=>x.id===resourceId);if(!st)throw new Error('Ressource inconnue');const t=typeOf(st);if(['CONSOLE','SIM_RACING'].includes(t))throw new Error('PS5/SIM restent gérés par les tarifs historiques v1.6');
+    const clean=validatePlan(t,patch),list=plans();let row=list.find(p=>p.scope==='RESOURCE'&&p.resourceId===resourceId);
+    if(!row){row={id:`v160-resource-${resourceId}`,scope:'RESOURCE',resourceId,resourceType:t,enabled:true,createdAt:Date.now()};list.push(row);}
+    Object.assign(row,clean,{resourceType:t,enabled:true,updatedAt:Date.now()});X.persist('v160.pricing.resource_saved',row.id,{resourceId,resourceType:t,billingModel:row.billingModel});return JSON.parse(JSON.stringify(row));
   }
   function legacyRate(st,players){
     try{return typeof rateFor==='function'?n(rateFor(st,players),0):0}catch(_){return 0}
@@ -64,8 +101,8 @@
     if(model===MODEL.CUSTOM){const amount=Math.max(0,n(draft.customAmount,0));return {model,known:amount>0,amount:round(amount),minutes:null,unitPrice:amount};}
     return {model,known:false,amount:0,minutes:null};
   }
-  function ensure(){const s=X.safeState();if(!s)return;s.v160RatePlans=Array.isArray(s.v160RatePlans)?s.v160RatePlans:[];s.v160Enhancement=s.v160Enhancement||{};s.v160Enhancement.billing={schema:1,enabled:true,updatedAt:Date.now()};}
+  function ensure(){const s=X.safeState();if(!s)return;s.v160RatePlans=Array.isArray(s.v160RatePlans)?s.v160RatePlans:[];s.v160Enhancement=s.v160Enhancement||{};s.v160Enhancement.billing={schema:2,enabled:true,updatedAt:Date.now()};}
   ensure();
-  X.billing={MODEL,PROFILE,typeOf,planFor,quote};
-  X.register('billing-universal',{mode:'ADDITIVE',legacyPs5Sim:'PRESERVED',resourceTypes:Object.keys(PROFILE)});
+  X.billing={MODEL,PROFILE,typeOf,canonicalType,planFor,typePlan,quote,saveTypePlan,saveResourcePlan};
+  X.register('billing-universal',{mode:'ADDITIVE',legacyPs5Sim:'PRESERVED',resourceTypes:Object.keys(PROFILE),pricingWrite:'TYPE_AND_RESOURCE_EXPLICIT'});
 })();
