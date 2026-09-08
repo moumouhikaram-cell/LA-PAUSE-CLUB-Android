@@ -1,0 +1,5 @@
+LA PAUSE CLUB v1.7.2 release checkpoint
+Visual authority: exact v1.6 dashboard with dynamic media
+No operator-v170 or operator-shell-v171 visual layer
+VersionCode: 22
+VersionName: 1.7.2
