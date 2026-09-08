@@ -59,6 +59,7 @@ jobs:
           node --check v16-original-source/app/src/main/assets/stabilize-v160-shift-recovery.js
           node --check v16-original-source/app/src/main/assets/stabilize-v160-navigation.js
           node --check v16-original-source/app/src/main/assets/enrich-v160-operator-shortcuts.js
+          node --check v16-original-source/app/src/main/assets/enrich-v160-device-control.js
           node --check v16-original-source/tools/cdp-v160-stabilization-probe.js
           bash -n v16-original-source/tools/android-v160-launch-smoke.sh
           bash -n v16-original-source/tools/android-v160-real-user-journey.sh
@@ -81,6 +82,8 @@ jobs:
           node v16-original-source/tools/test-v160-stabilization-booking-refund.js
           node v16-original-source/tools/test-v160-stabilization-raw-cdp-socket.js
           node v16-original-source/tools/test-v160-stabilization-native-runtime-recovery.js
+          node v16-original-source/tools/test-v160-device-control.js
+          node v16-original-source/tools/test-v160-device-lan-native.js
 
       - name: Park unrelated modern modules and build exact v1.6
         shell: bash
@@ -91,11 +94,11 @@ jobs:
           while IFS= read -r -d '' src; do
             rel="${src#$ROOT/}"
             case "$rel" in
-              MainActivity.java|BootReceiver.java|SessionAlarmReceiver.java|core/CoreStore.java) ;;
+              MainActivity.java|DeviceLanBridge.java|BootReceiver.java|SessionAlarmReceiver.java|core/CoreStore.java) ;;
               *) mkdir -p "$PARK_JAVA/$(dirname "$rel")"; mv "$src" "$PARK_JAVA/$rel" ;;
             esac
           done < <(find "$ROOT" -type f -name '*.java' -print0)
-          test "$(find "$ROOT" -type f -name '*.java' | wc -l)" -eq 4
+          test "$(find "$ROOT" -type f -name '*.java' | wc -l)" -eq 5
 
           ASSETS="v16-original-source/app/src/main/assets"
           PARK_ASSETS="$RUNNER_TEMP/parked-modern-assets"; mkdir -p "$PARK_ASSETS"
@@ -151,11 +154,15 @@ jobs:
               local=[s.split("?",1)[0].split("#",1)[0] for s in p.srcs if "://" not in s and not s.startswith("//")]
               missing=[s for s in local if "assets/"+s not in names]
               if missing: raise SystemExit(f"APK index.html references scripts absent from package: {missing}")
-              required={"assets/stabilize-v160-existing.js","assets/stabilize-v160-shift-recovery.js","assets/stabilize-v160-navigation.js","assets/enrich-v160-operator-shortcuts.js"}
+              required={"assets/stabilize-v160-existing.js","assets/stabilize-v160-shift-recovery.js","assets/stabilize-v160-navigation.js","assets/enrich-v160-operator-shortcuts.js","assets/enrich-v160-device-control.js"}
               absent=sorted(required-names)
               if absent: raise SystemExit(f"APK missing stabilization runtime: {absent}")
               print("APK_INDEX_SCRIPT_INTEGRITY_OK",len(local))
           PY
+          TMP_DEX="$(mktemp -d)"
+          unzip -q "$APK" 'classes*.dex' -d "$TMP_DEX"
+          strings "$TMP_DEX"/classes*.dex | grep -q 'DeviceLanBridge'
+          echo V160_DEVICE_LAN_BRIDGE_PACKAGED_API33_OK
 
       - name: Physical Android 13 compatibility + real user journey + full navigation matrix
         uses: reactivecircus/android-emulator-runner@v2
