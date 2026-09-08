@@ -57,7 +57,7 @@ jobs:
           test "$(git hash-object v16-original-source/app/src/main/assets/v14.js)" = "42134cceabd9c15dc52cfde30b7d5ca3818b1502"
           test "$(git hash-object v16-original-source/app/src/main/assets/v15.css)" = "8b5d7ef51d3f5d49cf06ee27f32585dca9a0c34e"
           test "$(git hash-object v16-original-source/app/src/main/assets/v15.js)" = "ab2288f35b39620b7c6c0401d342ce9349f17959"
-          test "$(git hash-object v16-original-source/app/src/main/java/com/lapauseclub/manager/MainActivity.java)" = "bab0a577e167e42a4e35f430c7b6a6b85fabc305"
+          test "$(git hash-object v16-original-source/app/src/main/java/com/lapauseclub/manager/MainActivity.java)" = "fb69d37280e8abf8614af371359db6c0b03a7a05"
           test "$(git hash-object v16-original-source/app/src/main/java/com/lapauseclub/manager/core/CoreStore.java)" = "e5af1005e089e88782ac154b5bf72e33a82ac2e8"
           grep -q 'android:enableOnBackInvokedCallback="false"' v16-original-source/app/src/main/AndroidManifest.xml
           echo V160_HISTORICAL_VISUAL_AUTHORITY_FROZEN_OK
@@ -129,6 +129,7 @@ jobs:
             test-v160-operator-shortcuts.js
             test-v160-active-cockpit.js
             test-v160-session-snacks.js
+            test-v160-notification-lifecycle.js
             test-v160-session-stack-health.js
             test-v160-control-center.js
             test-v160-control-center-bridge.js
