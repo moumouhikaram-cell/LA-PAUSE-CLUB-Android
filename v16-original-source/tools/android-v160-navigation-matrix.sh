@@ -3,6 +3,7 @@ set -euo pipefail
 TRACE="$GITHUB_WORKSPACE/android-v160-navigation-matrix-trace.txt"
 LOGCAT="$GITHUB_WORKSPACE/android-v160-navigation-matrix-logcat.txt"
 PROBE="$GITHUB_WORKSPACE/v16-original-source/tools/cdp-v160-stabilization-probe.js"
+DIRECT_READY="$GITHUB_WORKSPACE/v16-original-source/tools/cdp-v160-direct-ready.js"
 PKG="com.lapauseclub.manager"
 ACT="$PKG/.MainActivity"
 PORT=9229
@@ -26,14 +27,16 @@ attach(){
   return 1
 }
 cdp_ready(){
-  local value=""
-  for attempt in $(seq 1 12); do
-    if value="$(probe ready)"; then
-      if [[ "$value" = "true" ]]; then log "NAV_CDP_RUNTIME_READY attempt=$attempt"; return 0; fi
-      log "NAV_CDP_RUNTIME_NOT_READY attempt=$attempt value=$value"
+  local value="" attempts=12
+  [[ "${LP160_CDP_DIRECT:-0}" = 1 ]] && attempts=8
+  for attempt in $(seq 1 "$attempts"); do
+    if [[ "${LP160_CDP_DIRECT:-0}" = 1 ]]; then
+      value="$(node "$DIRECT_READY" 2>/dev/null || true)"
     else
-      log "NAV_CDP_RUNTIME_PROBE_RETRY attempt=$attempt"
+      value="$(probe ready 2>/dev/null || true)"
     fi
+    if [[ "$value" = "true" ]]; then log "NAV_CDP_RUNTIME_READY attempt=$attempt direct=${LP160_CDP_DIRECT:-0}"; return 0; fi
+    log "NAV_CDP_RUNTIME_NOT_READY attempt=$attempt value=$value direct=${LP160_CDP_DIRECT:-0}"
     sleep .3
   done
   return 1
@@ -102,11 +105,25 @@ if not p: raise SystemExit(2)
 iw=float(p.get('innerWidth') or 0); ih=float(p.get('innerHeight') or 0)
 if iw<=0 or ih<=0: raise SystemExit(3)
 scale=(x2-x1)/iw
-mx=(float(p['left'])+float(p['right']))*.5; my=(float(p['top'])+float(p['bottom']))*.5
+left=float(p['left']); top=float(p['top']); right=float(p['right']); bottom=float(p['bottom'])
+mx=(left+right)*.5; my=(top+bottom)*.5
 cx=x1+mx*scale; cy=y1+my*scale
-vis=(0<=my<ih and float(p['right'])>0 and float(p['left'])<iw and float(p.get('width') or 0)>0 and float(p.get('height') or 0)>0 and not p.get('disabled') and p.get('pointerEvents')!='none')
-dir=-1 if my<0 else (1 if my>=ih else 0)
-print(round(cx),round(cy),1 if vis else 0,dir)
+physical_top=y1+top*scale; physical_bottom=y1+bottom*scale
+frame_h=max(1.0,y2-y1)
+safe_top=y1+max(72.0,frame_h*0.04)
+safe_bottom=y2-max(136.0,frame_h*0.071)
+dom_visible=(0<=my<ih and right>0 and left<iw and float(p.get('width') or 0)>0 and float(p.get('height') or 0)>0 and not p.get('disabled') and p.get('pointerEvents')!='none')
+edge=3.0
+allowed_top=max(safe_top,physical_top+edge)
+allowed_bottom=min(safe_bottom,physical_bottom-edge)
+touch_safe=allowed_top<=allowed_bottom
+target_y=min(max(cy,allowed_top),allowed_bottom) if touch_safe else cy
+vis=dom_visible and touch_safe
+if vis: direction=0
+elif not dom_visible: direction=-1 if my<0 else (1 if my>=ih else 0)
+elif physical_bottom<safe_top: direction=-1
+else: direction=1
+print(round(cx),round(target_y),1 if vis else 0,direction)
 PY
 }
 locate(){
@@ -134,6 +151,7 @@ open_menu(){ tap rect-id menuBtn; }
 route(){ local target="$1" expected="${2:-$1}"; open_menu; tap rect-css "[data-go=\"$target\"]"; state_assert "$expected"; }
 
 ready || fail "device unavailable"
+node --check "$DIRECT_READY" >/dev/null || fail "direct ready probe syntax"
 adb shell am start -W -n "$ACT" >> "$TRACE" 2>&1 || fail "launch"
 wait_foreground || fail "MainActivity not foreground"
 attach || fail "CDP attach"
@@ -157,4 +175,4 @@ done
 PID="$(adb shell pidof "$PKG" 2>/dev/null | tr -d '\r')"; [[ -n "$PID" ]] || fail "pid missing"
 timeout --foreground 10s adb logcat -d --pid="$PID" > "$LOGCAT" 2>/dev/null || true
 if grep -Eqi 'FATAL EXCEPTION|AndroidRuntime:.*FATAL|Process com\.lapauseclub\.manager .* has died|chromium.*(crash|Aw, Snap)' "$LOGCAT"; then fail "fatal runtime signal"; fi
-log "ANDROID_V160_PHYSICAL_NAVIGATION_MATRIX_OK routes=43"
+log "ANDROID_V160_PHYSICAL_NAVIGATION_MATRIX_OK routes=43 touch-safe-intersection=1 direct-ready=${LP160_CDP_DIRECT:-0}"
