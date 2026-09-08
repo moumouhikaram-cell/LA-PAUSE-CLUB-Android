@@ -47,8 +47,6 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          # Native/functional files may evolve only through explicit regression fixes.
-          # The historical visual authority remains byte-for-byte frozen.
           test "$(git hash-object v16-original-source/app/build.gradle.kts)" = "e40c86ad23fbf3042fc25d5b9e1a58139f172414"
           test "$(git hash-object v16-original-source/app/src/main/AndroidManifest.xml)" = "d57e9a2be9a001476aaeba2786c1fbcf6c30e689"
           test "$(git hash-object v16-original-source/app/src/main/assets/app.css)" = "ee2d33799164b14d012abc0aecc3c94c5e214250"
@@ -76,10 +74,11 @@ jobs:
           grep -q '<script src="stabilize-v160-shift-recovery.js"></script>' "$INDEX"
           grep -q '<script src="stabilize-v160-navigation.js"></script>' "$INDEX"
           grep -q '<script src="enrich-v160-active-cockpit.js"></script>' "$INDEX"
+          grep -q '<script src="enrich-v160-control-center-bridge.js"></script>' "$INDEX"
           python3 - <<'PY'
           from pathlib import Path
           s=Path('v16-original-source/app/src/main/assets/index.html').read_text(encoding='utf-8')
-          order=['app.js','v13.js','v14.js','v15.js','stabilize-v160-existing.js','stabilize-v160-shift-recovery.js','stabilize-v160-navigation.js','enrich-v160-core.js','enrich-v160-session-start.js','enrich-v160-active-cockpit.js']
+          order=['app.js','v13.js','v14.js','v15.js','stabilize-v160-existing.js','stabilize-v160-shift-recovery.js','stabilize-v160-navigation.js','enrich-v160-core.js','enrich-v160-session-start.js','enrich-v160-active-cockpit.js','enrich-v160-control-center.js','enrich-v160-control-center-bridge.js']
           pos=[s.index(x) for x in order]
           assert pos==sorted(pos),(order,pos)
           print('V160_STABILIZATION_LOAD_ORDER_OK')
@@ -88,6 +87,7 @@ jobs:
           node --check "$A/stabilize-v160-shift-recovery.js"
           node --check "$A/stabilize-v160-navigation.js"
           node --check "$A/enrich-v160-active-cockpit.js"
+          node --check "$A/enrich-v160-control-center-bridge.js"
           ! grep -q 'location.reload' "$A"/stabilize-v160-*.js
           ! grep -qi 'v250/' "$A"/stabilize-v160-*.js
           ! grep -qi 'saas' "$A"/stabilize-v160-*.js
@@ -119,6 +119,7 @@ jobs:
             test-v160-active-cockpit.js
             test-v160-session-stack-health.js
             test-v160-control-center.js
+            test-v160-control-center-bridge.js
             test-v160-device-control.js
             test-v160-floor-builder.js
           )
@@ -181,6 +182,7 @@ jobs:
           grep -qx 'assets/stabilize-v160-navigation.js' v160-stabilization-assets.txt
           grep -qx 'assets/enrich-v160-active-cockpit.js' v160-stabilization-assets.txt
           grep -qx 'assets/enrich-v160-control-center.js' v160-stabilization-assets.txt
+          grep -qx 'assets/enrich-v160-control-center-bridge.js' v160-stabilization-assets.txt
           grep -qx 'assets/enrich-v160-device-control.js' v160-stabilization-assets.txt
           grep -qx 'assets/enrich-v160-floor-builder.js' v160-stabilization-assets.txt
           ! grep -q '^assets/v250/' v160-stabilization-assets.txt
