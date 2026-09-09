@@ -98,9 +98,9 @@ rect(){
   local mode="$1" arg="$2" json=/tmp/v160-nav-rect.json x1 y1 x2 y2
   read x1 y1 x2 y2 < <(webview_frame) || return 2
   probe "$mode" "$arg" > "$json" || return 2
-  python3 - "$json" "$x1" "$y1" "$x2" "$y2" <<'PY'
+  python3 - "$json" "$x1" "$y1" "$x2" "$y2" "$arg" <<'PY'
 import json,sys
-p=json.load(open(sys.argv[1])); x1,y1,x2,y2=map(float,sys.argv[2:])
+p=json.load(open(sys.argv[1])); x1,y1,x2,y2=map(float,sys.argv[2:6]); arg=sys.argv[6]
 if not p: raise SystemExit(2)
 iw=float(p.get('innerWidth') or 0); ih=float(p.get('innerHeight') or 0)
 if iw<=0 or ih<=0: raise SystemExit(3)
@@ -111,7 +111,12 @@ cx=x1+mx*scale; cy=y1+my*scale
 physical_top=y1+top*scale; physical_bottom=y1+bottom*scale
 frame_h=max(1.0,y2-y1)
 safe_top=y1+max(72.0,frame_h*0.04)
-safe_bottom=y2-max(136.0,frame_h*0.071)
+# Drawer routes live above the persistent bottom navigation. Native API36 #38 proved a
+# data-go target around y=1657 can look geometrically visible yet remain non-clickable.
+# Force only drawer targets further upward; bottom-nav [data-view] keeps the standard guard.
+drawer_target='data-go=' in arg
+bottom_guard=max(300.0,frame_h*0.156) if drawer_target else max(136.0,frame_h*0.071)
+safe_bottom=y2-bottom_guard
 dom_visible=(0<=my<ih and right>0 and left<iw and float(p.get('width') or 0)>0 and float(p.get('height') or 0)>0 and not p.get('disabled') and p.get('pointerEvents')!='none')
 edge=3.0
 allowed_top=max(safe_top,physical_top+edge)
@@ -175,4 +180,4 @@ done
 PID="$(adb shell pidof "$PKG" 2>/dev/null | tr -d '\r')"; [[ -n "$PID" ]] || fail "pid missing"
 timeout --foreground 10s adb logcat -d --pid="$PID" > "$LOGCAT" 2>/dev/null || true
 if grep -Eqi 'FATAL EXCEPTION|AndroidRuntime:.*FATAL|Process com\.lapauseclub\.manager .* has died|chromium.*(crash|Aw, Snap)' "$LOGCAT"; then fail "fatal runtime signal"; fi
-log "ANDROID_V160_PHYSICAL_NAVIGATION_MATRIX_OK routes=43 touch-safe-intersection=1 direct-ready=${LP160_CDP_DIRECT:-0}"
+log "ANDROID_V160_PHYSICAL_NAVIGATION_MATRIX_OK routes=43 touch-safe-intersection=1 drawer-bottom-guard=300 direct-ready=${LP160_CDP_DIRECT:-0}"
