@@ -170,6 +170,7 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         env:
           LP160_CDP_DIRECT: "0"
+          LP160_SIMPLE_FRAME: "1"
         with:
           api-level: 33
           target: default
