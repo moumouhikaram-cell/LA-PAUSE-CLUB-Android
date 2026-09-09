@@ -169,7 +169,7 @@ jobs:
       - name: Physical Android 13 compatibility + real user journey + full navigation matrix
         uses: reactivecircus/android-emulator-runner@v2
         env:
-          LP160_CDP_DIRECT: "1"
+          LP160_CDP_DIRECT: "0"
         with:
           api-level: 33
           target: default
