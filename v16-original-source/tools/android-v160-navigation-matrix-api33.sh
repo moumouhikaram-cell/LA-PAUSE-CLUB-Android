@@ -5,7 +5,7 @@ ENGINE="$ROOT/v16-original-source/tools/android-v160-navigation-matrix.sh"
 TMP="${RUNNER_TEMP:-/tmp}/android-v160-navigation-matrix-api33-effective.sh"
 [[ -f "$ENGINE" ]] || { echo "V160_API33_NAV_ADAPTER_FAIL engine missing" >&2; exit 2; }
 
-python3 - "$ENGINE" "$TMP" <<'PY'
+python3 - "$ENGINE" "$TMP" <<'PYWRAP'
 from pathlib import Path
 import sys
 src=Path(sys.argv[1]).read_text(encoding='utf-8')
@@ -49,7 +49,7 @@ if src.count(old)!=1:
 src=src.replace(old,new,1)
 out.write_text(src,encoding='utf-8')
 print('V160_API33_NAV_ADAPTER_OK simple-frame=wm-size')
-PY
+PYWRAP
 bash -n "$TMP"
 set +e
 LP160_SIMPLE_FRAME=1 bash "$TMP"
