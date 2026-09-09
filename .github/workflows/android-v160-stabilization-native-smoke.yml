@@ -178,6 +178,7 @@ jobs:
           cores: 2
           ram-size: 2048M
           heap-size: 384M
+          emulator-build: 11237101
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
           script: |
