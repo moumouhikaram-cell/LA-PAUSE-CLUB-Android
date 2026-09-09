@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Gate-sync marker: API33 uses Emulator 33.1.24 build 11237101; CI + API33 + API36 validate this exact harness SHA.
 TRACE="$GITHUB_WORKSPACE/android-v160-navigation-matrix-trace.txt"
 LOGCAT="$GITHUB_WORKSPACE/android-v160-navigation-matrix-logcat.txt"
 PROBE="$GITHUB_WORKSPACE/v16-original-source/tools/cdp-v160-stabilization-probe.js"
