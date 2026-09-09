@@ -133,8 +133,18 @@ if src.count(old_first_station)!=1:
     raise SystemExit(f'V160_REAL_JOURNEY_ADAPTER_FAIL first station matches={src.count(old_first_station)}')
 src=src.replace(old_first_station,new_first_station,1)
 
+# API36 native #37: after landscape rotation an active station has no start CTA. The broad
+# text locator lands around the card body and is not deterministic. Tap the neutral header
+# inside PS5 1 instead; it is not a button, so the existing article click handler bubbles to
+# openStation without extending time or invoking any other business action.
+old_active_station='''tap rect-css '[data-view="floor"]'\ntap rect-text "PS5 1"\nassert_state 'import json,sys;p=json.load(sys.stdin);assert p["currentView"]=="floor" and p["sheetOpen"] is True and p["activeSessions"]==1' "ACTIVE_SHEET_BEFORE_ROTATION"'''
+new_active_station='''tap rect-css '[data-view="floor"]'\nlog "STATION_OPEN_TARGET strategy=active-neutral-header station=PS5_1"\ntap rect-css '[data-station="ps5-1"] .v13-head'\nassert_state 'import json,sys;p=json.load(sys.stdin);assert p["currentView"]=="floor" and p["sheetOpen"] is True and p["activeSessions"]==1' "ACTIVE_SHEET_BEFORE_ROTATION"'''
+if src.count(old_active_station)!=1:
+    raise SystemExit(f'V160_REAL_JOURNEY_ADAPTER_FAIL active station matches={src.count(old_active_station)}')
+src=src.replace(old_active_station,new_active_station,1)
+
 out.write_text(src,encoding='utf-8')
-print('V160_REAL_JOURNEY_ADAPTER_OK replacements=3')
+print('V160_REAL_JOURNEY_ADAPTER_OK replacements=4')
 PATCHPY
 
 bash -n "$TMP"
