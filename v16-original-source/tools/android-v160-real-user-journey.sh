@@ -56,6 +56,67 @@ if src.count(old_ready)!=1:
     raise SystemExit(f'V160_REAL_JOURNEY_ADAPTER_FAIL cdp_ready matches={src.count(old_ready)}')
 src=src.replace(old_ready,new_ready,1)
 
+old_frame=r'''webview_frame(){
+  local json="${1:-}" frame="" sdk
+  if [[ -s "$FRAME_CACHE" ]]; then cat "$FRAME_CACHE"; return 0; fi
+  sdk="$(sdk_level)"; sdk="${sdk:-0}"
+  if [[ "$sdk" -ge 35 ]]; then
+    if frame="$(ui_webview_frame 2>/dev/null)" && [[ -n "$frame" ]]; then
+      printf '%s\n' "$frame" > "$FRAME_CACHE"; log "UI_WEBVIEW_FRAME $frame"; printf '%s\n' "$frame"; return 0
+    fi
+    if frame="$(window_content_frame 2>/dev/null)" && [[ -n "$frame" ]]; then
+      printf '%s\n' "$frame" > "$FRAME_CACHE"; log "WINDOW_CONTENT_FRAME_FALLBACK $frame"; printf '%s\n' "$frame"; return 0
+    fi
+  else
+    if frame="$(window_content_frame 2>/dev/null)" && [[ -n "$frame" ]]; then
+      printf '%s\n' "$frame" > "$FRAME_CACHE"; log "WINDOW_CONTENT_FRAME $frame"; printf '%s\n' "$frame"; return 0
+    fi
+    if frame="$(ui_webview_frame 2>/dev/null)" && [[ -n "$frame" ]]; then
+      printf '%s\n' "$frame" > "$FRAME_CACHE"; log "UI_WEBVIEW_FRAME_FALLBACK $frame"; printf '%s\n' "$frame"; return 0
+    fi
+  fi
+  [[ -n "$json" ]] || return 2
+  if frame="$(display_frame "$json" 2>/dev/null)" && [[ -n "$frame" ]]; then
+    printf '%s\n' "$frame" > "$FRAME_CACHE"; log "DISPLAY_FRAME_FALLBACK $frame"; printf '%s\n' "$frame"; return 0
+  fi
+  return 2
+}'''
+new_frame=r'''webview_frame(){
+  local json="${1:-}" frame="" sdk
+  if [[ "${LP160_SIMPLE_FRAME:-0}" = 1 ]]; then
+    [[ -n "$json" ]] || return 2
+    if frame="$(display_frame "$json" 2>/dev/null)" && [[ -n "$frame" ]]; then
+      log "DISPLAY_FRAME_DIRECT $frame"; printf '%s\n' "$frame"; return 0
+    fi
+    return 2
+  fi
+  if [[ -s "$FRAME_CACHE" ]]; then cat "$FRAME_CACHE"; return 0; fi
+  sdk="$(sdk_level)"; sdk="${sdk:-0}"
+  if [[ "$sdk" -ge 35 ]]; then
+    if frame="$(ui_webview_frame 2>/dev/null)" && [[ -n "$frame" ]]; then
+      printf '%s\n' "$frame" > "$FRAME_CACHE"; log "UI_WEBVIEW_FRAME $frame"; printf '%s\n' "$frame"; return 0
+    fi
+    if frame="$(window_content_frame 2>/dev/null)" && [[ -n "$frame" ]]; then
+      printf '%s\n' "$frame" > "$FRAME_CACHE"; log "WINDOW_CONTENT_FRAME_FALLBACK $frame"; printf '%s\n' "$frame"; return 0
+    fi
+  else
+    if frame="$(window_content_frame 2>/dev/null)" && [[ -n "$frame" ]]; then
+      printf '%s\n' "$frame" > "$FRAME_CACHE"; log "WINDOW_CONTENT_FRAME $frame"; printf '%s\n' "$frame"; return 0
+    fi
+    if frame="$(ui_webview_frame 2>/dev/null)" && [[ -n "$frame" ]]; then
+      printf '%s\n' "$frame" > "$FRAME_CACHE"; log "UI_WEBVIEW_FRAME_FALLBACK $frame"; printf '%s\n' "$frame"; return 0
+    fi
+  fi
+  [[ -n "$json" ]] || return 2
+  if frame="$(display_frame "$json" 2>/dev/null)" && [[ -n "$frame" ]]; then
+    printf '%s\n' "$frame" > "$FRAME_CACHE"; log "DISPLAY_FRAME_FALLBACK $frame"; printf '%s\n' "$frame"; return 0
+  fi
+  return 2
+}'''
+if src.count(old_frame)!=1:
+    raise SystemExit(f'V160_REAL_JOURNEY_ADAPTER_FAIL webview_frame matches={src.count(old_frame)}')
+src=src.replace(old_frame,new_frame,1)
+
 old_rect=r'''  python3 - "$json" "$x1" "$y1" "$x2" "$y2" <<'PY'
 import json,sys
 p=json.load(open(sys.argv[1])); x1,y1,x2,y2=map(float,sys.argv[2:])
@@ -143,7 +204,7 @@ if src.count(old_active_station)!=1:
 src=src.replace(old_active_station,new_active_station,1)
 
 out.write_text(src,encoding='utf-8')
-print('V160_REAL_JOURNEY_ADAPTER_OK replacements=4')
+print('V160_REAL_JOURNEY_ADAPTER_OK replacements=5')
 PATCHPY
 
 bash -n "$TMP"
